@@ -21,7 +21,8 @@ ak_landcapes <- lapply(landscapes_files[1:5], \(ind) {
   # r <- project(r, crs(daymet_studyarea), method = "near", res = 100)
   r <- project(r, crs("ESRI:102001"), method = "near", res = 100)
   values(r) <- seq_len(ncell(r))
+  names(r) <- "ru"
   writeRaster(r, file.path(out, "env.grid.txt"), overwrite = TRUE, filetype = "AAIGrid", datatype = "INT4S")
   # datatype should be INT4U but that is not handled well by R (https://rdrr.io/cran/terra/man/datatype.html)
-  # writeRaster(r, file.path(out, "env.grid.tif"), overwrite = TRUE)
+  writeRaster(r, file.path(out, "env.grid.tif"), overwrite = TRUE, datatype = "INT4S")
   })
