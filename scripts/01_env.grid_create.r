@@ -7,7 +7,7 @@ library(sf)
 # daymet_studyarea <- rast('./data/ak_noislands_daymetpixels.tif')
 # The following are Arielle's files from the Z drive, they seem to be from the 
 # ABOVE 15 dataset, I'm not sure where the plot area came from.
-# Order matters, the first 5 are AK the next 15 are CAN. Make sure order is correct:
+# Order matters, first 5 are AK the next 15 are CAN. Make sure order is correct:
 landscapes_files <- list.files(path = "./data/plot_areas", pattern = "\\.tif$", full.names = TRUE)
 landscapes_files[order(as.integer(sub(".*?(\\d+)\\.tif$", "\\1", landscapes_files)))]
 # The following is adapted from Arielle. She uses crs(raster) <- "ESRI:102001", this relabels but does not reproject.
