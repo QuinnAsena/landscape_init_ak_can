@@ -3,6 +3,7 @@ library(sf)
 library(tidyr)
 library(dplyr)
 library(lubridate)
+library(future.apply)
 
 # Load one layer of the whole of Alaska as a template to crop landcapes
 ak_climate <- rast(
@@ -68,10 +69,24 @@ lapply(rasValue, tail, 20)
 
 # Different NorESM timespan? 1980 vs 1950?
 
-process_climate <- function(gcm, ssp, var, year, ak_climate_sp_files, ak_climate_tif_files, in_dir) {
-  out_dir <- file.path(in_dir, gcm, ssp, var)
+process_climate <- function(gcm, ssp, var, year, ak_climate_dirs) {
+  out_dir <- file.path(ak_climate_dirs, gcm, ssp, var)
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   ak_clim_in <- file.path("Z:/project_data/downscaling/Alaska", paste0("Downscaled CMIP6 ", gcm), ssp, var, paste0("CMIP6 ", gcm, "-", ssp, "-", var, "-", year, ".nc"))
+
+  ak_climate_sp_files <- list.files(
+    ak_climate_dirs, full.names = TRUE, pattern = "\\.shp$"
+  )
+
+  ak_climate_tif_files <- list.files(
+    ak_climate_dirs, full.names = TRUE, pattern = "\\.tif$"
+  )
+
+  landscape_id <- sub(
+    ".*[\\\\/]landscape_([0-9]+)[\\\\/].*",
+    "landscape\\1",
+    ak_climate_sp_files
+  )
 
   ak_climate_var <- rast(ak_clim_in)
   ak_climate_sp <- vect(ak_climate_sp_files)
@@ -100,115 +115,71 @@ process_climate <- function(gcm, ssp, var, year, ak_climate_sp_files, ak_climate
       names_to = "y_day",
       values_to = "value") |>
     dplyr::mutate(
-      y_day = as.numeric(sub("vp_", "", y_day)),
+      y_day = as.numeric(sub(paste0(var, "_"), "", y_day)),
       day_of_year = ifelse(lubridate::leap_year(year) & y_day >= 60, y_day + 1, y_day),
       date = lubridate::make_date(year) + lubridate::days(day_of_year - 1),
-      value = round(value, 3)) |>
-    dplyr::select(climate.gridCell, value, date)
+      value = round(value, 3),
+      gcm = gcm,
+      ssp = ssp,
+      landscape = landscape_id) |>
+    dplyr::select(climate.gridCell, value, date, gcm, ssp, landscape) |>
+    dplyr::rename(!!var := value)
+    # names(df)[names(df) == "value"] <- var # for base R rename. no tidy evaluation. 
   write.table(ak_climate_var_df, file.path(out_dir, paste0(gcm, "-", ssp, "-", var, "-", year, ".txt")), row.names = FALSE, sep = "\t")
 }
 
- paste0(gcm, "-", ssp, "-", var, "-", "year", ".txt")
 
+# --------- Parallel processing for multiple files --------
 gcm <- "NorEsm2-MM"
 ssp <- "ssp126"
-var <- "vp"
-year <- 2015
-
+var <- c("tasmax", "hurs", "pr", "rsds", "tasmin", "vp")
+year <- 2015:2016
 
 dirs <- normalizePath(list.dirs(full.names = TRUE))
-ak_climate_dirs <- dirs[grepl(".*[\\\\/]landscape_[0-9]+[\\\\/]climate.*", dirs)]
-ak_climate_sp_files <- list.files(
-  ak_climate_dirs, full.names = TRUE, pattern = "\\.shp$"
+ak_climate_dirs <- dirs[grepl(".*[\\\\/]landscape_[0-9]+[\\\\/]climate$", dirs)]
+# make sure landscapes are ordered
+landscape_id <- as.integer(
+  sub(".*landscape_([0-9]+)[\\\\/]climate$", "\\1", ak_climate_dirs)
+)
+ord <- order(landscape_id)
+ak_climate_dirs <- ak_climate_dirs[ord]
+landscape_id    <- landscape_id[ord]
+
+ak_climate_df <- data.frame(
+  landscape = landscape_id,
+  ak_climate_dirs = ak_climate_dirs
 )
 
-ak_climate_tif_files <- list.files(
-  ak_climate_dirs, full.names = TRUE, pattern = "\\.tif$"
+# stringsAsFactors = FALSE needed for "var" names
+param_grid <- base::merge(
+  expand.grid(
+    landscape = landscape_id,
+    gcm  = gcm,
+    ssp  = ssp,
+    var  = var,
+    year = year,
+    stringsAsFactors = FALSE
+  ),
+  ak_climate_df,
+  by = "landscape"
 )
 
 
-process_climate(
-  gcm = gcm,
-  ssp = ssp,
-  var = "vp",
-  year = year,
-  ak_climate_sp_files = ak_climate_sp_files[1],
-  ak_climate_tif_files = ak_climate_tif_files[1],
-  in_dir = ak_climate_dirs[1])
+library(future.apply)
 
+plan(multisession, workers = 6)
 
-
-gcm <- "NorEsm2-MM"
-model <- gcm
-ssp <- "ssp126"
-var <- "vp"
-year <- 1950
-
-
-
-
-
-
-climate.grid.repr <- ak_climate_proj[[1]]
-
-ignore_leap_years <- function(year, day_of_year) {
-  # Check if the year is a leap year
-  if (leap_year(year) && day_of_year > 59) {
-    # Add 1 to skip the leap day (February 29)
-    day_of_year <- day_of_year + 1
-  }
-return(day_of_year)
-  }
-ncol <- function(x) dim(x)[2]
-
-process.climate = function(model,ssp,var){
-r=rast(file.path("Z:/project_data/downscaling/Alaska", paste0("Downscaled CMIP6 ", gcm), ssp, var, paste0("CMIP6 ", gcm, "-", ssp, "-", var, "-", year, ".nc")))
-plot(r[[1]])
-r.repr=project(r,climate.grid.repr, method="bilinear")
-plot(r.repr[[1]])
-if(var=="rsds"){
-  r.repr = (r.repr * 86400)/1000000  #Convert radiation from watts/m2 to megajoules m2 day-1 (day length/1000000 joules per megajoule)
-}else{
-  r.repr=r.repr
-}
-
-t=as.data.frame(terra::extract(r.repr,climate.grid.sp,bind=T))
-names(t)[1] <- "climate.gridCell"
-n=ncol(t)
-t_long <- tidyr::gather(t, y_day,value , 2:n)
-if(var=="vp" &year<1980){
-  t_long <- t_long %>% separate(y_day, c('vp', 'y_day'), sep = "\\.") # Had to add this given the name in vapor pressure changed
-}else{
-t_long <- t_long %>% separate(y_day, c('vp', 'y_day'), sep = '_')
-}
-t_long$vp=NULL
-t_long = t_long %>% mutate(y_day= as.numeric(y_day)) 
-t_long = t_long %>% mutate(day_of_year = mapply(ignore_leap_years,year,y_day))
-t_long = t_long %>% mutate(date= make_date(year) + days(day_of_year-1))
-t_long$y_day=NULL
-t_long$day_of_year=NULL
-t_long$value=round(t_long$value, digits=3)
-write.table(t_long,paste0("D:/workspace/Winslow/iLand_AK/cpcrw/materials/climate/",model,"/",ssp,"/",model,"-",ssp,"-",var,"-",year,".txt"),row.names = F, sep = "\t")
-}  
-
-
-dir.create(paste0("D:/workspace/Winslow/iLand_AK/cpcrw/materials/climate/",gcm,"/ssp245"),recursive = T)
-
-dir.create(paste0("D:/workspace/Winslow/iLand_AK/cpcrw/materials/climate/",gcm,"/ssp126"),recursive = T)
-
-dir.create(paste0("D:/workspace/Winslow/iLand_AK/cpcrw/materials/climate/",gcm,"/ssp370"),recursive = T)
-
-
-i="ssp126"
-j="vp"
-year=1950
-
-
-for(i in levels(as.factor(c("ssp126","ssp245","ssp370")))){      
-  for(j in levels(as.factor(c("hurs","pr","rsds","tasmax","tasmin","vp")))){          #
-  for(year in 1950:2100){
-  process.climate(gcm,i,j)
-  print(paste0("Processed var ",j," and year ",year))
-}
-  }
-}
+res <- future_lapply(
+  seq_len(nrow(param_grid)),
+  function(i) {
+    process_climate(
+      gcm  = param_grid$gcm[i],
+      ssp  = param_grid$ssp[i],
+      var  = param_grid$var[i],
+      year = param_grid$year[i],
+      ak_climate_dirs = param_grid$ak_climate_dirs[i]
+    )
+  },
+  future.seed = TRUE
+)
+plan(sequential)
