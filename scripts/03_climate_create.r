@@ -1,12 +1,12 @@
 library(terra)
 library(sf)
-# library(tidyr)
+library(tidyr)
 library(lubridate)
 library(dplyr)
 library(purrr)
 library(DBI)
 library(future.apply)
-
+library(RSQLite)
 
 process_sqlite <- function(gcm, ssp, var, ak_landscape_dirs) {
 
@@ -57,7 +57,7 @@ process_sqlite <- function(gcm, ssp, var, ak_landscape_dirs) {
       month = lubridate::month(date),
       day = lubridate::day(date)
     ) |>
-    unite("model.climate.tableName", c(landscape, climate.gridCell), remove = TRUE) |>
+    tidyr::unite("model.climate.tableName", c(landscape, climate.gridCell), remove = TRUE) |>
     rename(max_temp = tasmax,
            min_temp = tasmin,
            rad = rsds,

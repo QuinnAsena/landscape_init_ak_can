@@ -24,5 +24,6 @@ ak_landcapes <- lapply(landscapes_files[1:5], \(ind) {
   names(r) <- "ru"
   writeRaster(r, file.path(out, "env.grid.txt"), overwrite = TRUE, filetype = "AAIGrid", datatype = "INT4S")
   # datatype should be INT4U but that is not handled well by R (https://rdrr.io/cran/terra/man/datatype.html)
+  # Probably doesn't matter for ASCII filetype above anyway
   writeRaster(r, file.path(out, "env.grid.tif"), overwrite = TRUE, datatype = "INT4S")
   })

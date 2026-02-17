@@ -13,7 +13,14 @@ ak_climate <- rast(
 
 # Load env.grid files (careful of crs here, they are in ESRI:102001)
 env_files <- list.files(path = "C:/Users/asenaq/Documents/GitHub/landscape_init_ak_can", 
-                        pattern = "grid.tif$", full.names = TRUE, recursive = TRUE)
+                        pattern = "env.grid.tif$", full.names = TRUE, recursive = TRUE)
+
+landscape_ord <- as.integer(
+  sub(".*landscape_([0-9]+).*$", "\\1", env_files)
+)
+ord <- order(landscape_ord)
+env_files <- env_files[ord]
+
 landscape_names <- sub(".*(landscape_[0-9]+).*", "\\1", env_files)
 
 # Aggregate the env.grid to match 1000x1000 of climtae data
@@ -23,12 +30,15 @@ env_grids_coarse <- lapply(env_files, \(ind) {
 names(env_grids_coarse) <- landscape_names
 
 # Convert env.grid to points for extraction
-env_grids_sp <- lapply(env_files, \(ind) {
-  r <- rast(ind)
+env_grids_sp <- Map(\(env_files, nm) {
+  out <- file.path(nm, "climate")
+  r <- rast(env_files)
   r <- as.points(r, values = TRUE)
   names(r) <- "env.gridCell"
+  writeVector(r, file.path(out, "env_cells_extract.shp"),
+              overwrite = TRUE)
   r
-})
+}, env_files, landscape_names)
 names(env_grids_sp) <- landscape_names
 
 # reproject climate to env.grid (matches resolution and extent)
@@ -39,7 +49,7 @@ ak_climate_proj <- Map(\(tmpl, nm) {
   values(r) <- seq_len(ncell(r))
   names(r)  <- "climate.gridCell"
   writeRaster(r, file.path(out, "climate.grid.tif"),
-              overwrite = TRUE)
+              overwrite = TRUE) # datatype = "INT4S"?
   r
 }, env_grids_coarse, names(env_grids_coarse))
 
@@ -137,7 +147,7 @@ year <- 2015:2016
 
 dirs <- normalizePath(list.dirs(full.names = TRUE))
 ak_climate_dirs <- dirs[grepl(".*[\\\\/]landscape_[0-9]+[\\\\/]climate$", dirs)]
-# make sure landscapes are ordered
+ # make sure landscapes are ordered
 landscape_id <- as.integer(
   sub(".*landscape_([0-9]+)[\\\\/]climate$", "\\1", ak_climate_dirs)
 )
