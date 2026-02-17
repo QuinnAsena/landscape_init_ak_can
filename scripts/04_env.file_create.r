@@ -25,3 +25,6 @@ plot(lcp1_forested)
 water_msk <- ifel(lcp1 != 15, NA, lcp1)
 lcp1_water <- mask(lcp1, water_msk)
 plot(lcp1_water, col = "red")
+
+
+silt <- rast("Z:/project_data/na_boreal/data_sets/soils/ak/silt_ak.tif")

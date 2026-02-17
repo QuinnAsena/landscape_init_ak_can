@@ -1,6 +1,7 @@
 library(terra)
 library(sf)
 library(rstac)
+library(here)
 
 # Load env.grid files (careful of crs here, they are in ESRI:102001)
 env_files <- list.files(path = "C:/Users/asenaq/Documents/GitHub/landscape_init_ak_can", 
@@ -19,8 +20,7 @@ ak_landcapes <- lapply(env_files, function(x) {
 
 download_dem <- function(landscape, landscape_name) {
 
-  outdir <- file.path(landscape_names, "gis", "dem", "arcticdem_10m")
-  print(outdir)
+  outdir <- here(landscape_name, "gis", "dem", "arcticdem_10m")
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
 
   stac_url <- "https://stac.pgc.umn.edu/api/v1/"
@@ -56,8 +56,6 @@ download_dem <- function(landscape, landscape_name) {
   tile_ids <- vapply(stac_query$features, function(x) x$id, character(1))
   tile_base <- file.path(outdir, "arcticdem", "mosaics", "v4.1", "10m")
   #tile_dirs <- sub("_10m_v4\\.1$", "", tile_ids)
-
-  tile_base <- file.path(outdir, "arcticdem", "mosaics", "v4.1", "10m")
 
   if (dir.exists(tile_base) &&
     length(list.files(tile_base, recursive = TRUE)) > 0) {
