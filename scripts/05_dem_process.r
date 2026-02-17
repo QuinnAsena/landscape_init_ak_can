@@ -23,9 +23,11 @@ process_dem <- function(ak_landscape_dirs, perma_rast) {
     dem_rasts_merge <- project(rast(dem_files), env_grid_10, method = "bilinear")
   }
   writeRaster(dem_rasts_merge, filename = here::here(landscape_names, "gis", "dem_lcp10.tif"), overwrite = TRUE)
-
+  # terrain() creates NA values around the border of the raster.
   aspect <- terrain(dem_rasts_merge, v = "aspect", unit = "degrees")
   writeRaster(aspect, filename = here::here(landscape_names, "gis", "aspect_lcp10.tif"), overwrite = TRUE)
+
+  # No slope raster?
 
   if (length(hillshade_files) > 1) {
     hillshade_rasts <- lapply(hillshade_files, rast)

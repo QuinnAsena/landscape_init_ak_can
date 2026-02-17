@@ -3,7 +3,6 @@ library(sf)
 library(rstac)
 library(here)
 
-# Load env.grid files (careful of crs here, they are in ESRI:102001)
 env_files <- list.files(path = "C:/Users/asenaq/Documents/GitHub/landscape_init_ak_can", 
                         pattern = "env.grid.tif$", full.names = TRUE, recursive = TRUE)
 
