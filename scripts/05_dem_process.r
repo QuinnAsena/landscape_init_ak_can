@@ -41,6 +41,8 @@ process_dem <- function(ak_landscape_dirs, perma_rast) {
 
 }
 
+#--------------- Run the function ---------------#
+
 dirs <- normalizePath(list.dirs(full.names = TRUE))
 ak_landscape_dirs <- dirs[grepl(".*[\\\\/]landscape_[0-9]+$", dirs)]
 

@@ -67,4 +67,6 @@ download_dem <- function(landscape, landscape_name) {
                   output_dir = outdir)
 }
 
+#--------------- Run the function ---------------#
+
 Map(download_dem, ak_landcapes, landscape_names)

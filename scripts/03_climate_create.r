@@ -88,6 +88,9 @@ process_sqlite <- function(gcm, ssp, var, ak_landscape_dirs) {
   dbDisconnect(db.conn)
 }
 
+
+#--------------- Run the function ---------------#
+
 gcm <- "NorEsm2-MM"
 ssp <- "ssp126"
 var <- c("tasmax", "hurs", "pr", "rsds", "tasmin", "vp")

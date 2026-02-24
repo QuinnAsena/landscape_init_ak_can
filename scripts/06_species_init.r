@@ -2,9 +2,25 @@ library(terra)
 library(purrr)
 library(dplyr)
 
-#ak_landscape_dirs <- ak_landscape_dirs[2]
+dirs <- normalizePath(list.dirs(full.names = TRUE))
+ak_landscape_dirs <- dirs[grepl(".*[\\\\/]landscape_[0-9]+$", dirs)]
 
-process_species <- function(ak_landscape_dirs) {
+landscape_ord <- as.integer(
+  sub(".*landscape_([0-9]+).*$", "\\1", ak_landscape_dirs)
+)
+ord <- order(landscape_ord)
+ak_landscape_dirs <- ak_landscape_dirs[ord]
+
+
+water_dir <- "Z:/personal_storage/arielle_storage/Files/GIS_Inputs/water_tiffs/"
+water_files <- list.files(path = water_dir, pattern = "\\.tif$", full.names = TRUE)
+water_files <- water_files[order(as.integer(sub(".*?(\\d+)\\.tif$", "\\1", water_files)))][1:5]
+
+
+ak_landscape_dirs <- ak_landscape_dirs[2]
+water_files <- water_files[2]
+
+process_species <- function(ak_landscape_dirs, water_files) {
 
   out_dir <- file.path(ak_landscape_dirs, "gis", "init")
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
@@ -12,13 +28,27 @@ process_species <- function(ak_landscape_dirs) {
   layers <- c(
     dem        = "dem_lcp10.tif",
     aspect     = "aspect_lcp10.tif",
-    hillshade  = "hillshade_lcp10.tif",
+    # hillshade  = "hillshade_lcp10.tif",
     env_grid   = "env.grid_disagg_10.tif",
     permafrost = "permafrost_lcp10.tif"
   )
 
   rasters <- lapply(file.path(ak_landscape_dirs, "gis", layers), rast)
   names(rasters) <- names(layers)
+
+  # Arielle uses the surface water dataset instead of the ABoVE dataset to
+  # define water areas. Both look similar when plot but the surface water dataset
+  # they found was more accurate and would not overlap forested area with water
+  water_rast <- rast(water_files)
+#   plot(rasters$dem)
+#   env_grid_water <- ifel(rasters$env_grid == 15, 1, 0)
+#   plot(env_grid_water)
+  water_rast <- disagg(water_rast, fact = 3, method = "near")
+  compareGeom(water_rast, rasters$env_grid, stopOnError = TRUE)
+  water_rast <- ifel(water_rast == 1, 1, NA)
+  dist <- distance(water_rast)
+  water_mask <- ifel(dist <= 50, NA, 1)
+  rasters <- lapply(rasters, mask, mask = water_mask)
 
   raster_df <- lapply(rasters, as.data.frame, xy = TRUE) |>
     purrr::reduce(dplyr::left_join, by = c("x", "y"))
@@ -27,7 +57,7 @@ process_species <- function(ak_landscape_dirs) {
   raster_df <- raster_df |>
     rename(Above = ABoVE_LandCover_Bh03v02_31,
            elevation = ends_with("v4.1_dem"),
-           hillshade = ends_with("v4.1_browse"),
+           # hillshade = ends_with("v4.1_browse"),
            permafrost = permafrost_repr) |>
     mutate(
       aspect.dir = case_when(
@@ -85,6 +115,9 @@ process_species <- function(ak_landscape_dirs) {
   writeRaster(forest.species, filename = file.path(out_dir, "forest_species_init.tif"), overwrite = TRUE)
 }
 
+
+#--------------- Run the function ---------------#
+
 dirs <- normalizePath(list.dirs(full.names = TRUE))
 ak_landscape_dirs <- dirs[grepl(".*[\\\\/]landscape_[0-9]+$", dirs)]
 
@@ -94,4 +127,10 @@ landscape_ord <- as.integer(
 ord <- order(landscape_ord)
 ak_landscape_dirs <- ak_landscape_dirs[ord]
 
-lapply(ak_landscape_dirs, process_species)
+water_dir <- "Z:/personal_storage/arielle_storage/Files/GIS_Inputs/water_tiffs/"
+water_files <- list.files(path = water_dir, pattern = "\\.tif$", full.names = TRUE)
+water_files <- water_files[order(as.integer(sub(".*?(\\d+)\\.tif$", "\\1", water_files)))][1:5]
+
+Map(process_species, ak_landscape_dirs, water_files)
+
+# lapply(ak_landscape_dirs, process_species)
