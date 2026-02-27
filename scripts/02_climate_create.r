@@ -141,7 +141,8 @@ process_climate <- function(gcm, ssp, var, year, ak_climate_dirs) {
 
 # --------- Parallel processing for multiple files --------
 gcm <- "NorEsm2-MM"
-ssp <- "ssp126"
+# ssp <- "ssp126"
+ssp <- "historical"
 var <- c("tasmax", "hurs", "pr", "rsds", "tasmin", "vp")
 year <- 2015:2016
 
