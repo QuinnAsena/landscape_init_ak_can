@@ -1,0 +1,161 @@
+library(terra)
+library(dplyr)
+library(tidyr)
+# This script converts Winslow's "generating envieonmtnt file.Rmd"
+# Read all the outputs from step 02 and 06
+dirs <- normalizePath(list.dirs(full.names = TRUE))
+ak_landscape_dirs <- dirs[grepl(".*[\\\\/]landscape_[0-9]+$", dirs)]
+
+landscape_ord <- as.integer(
+  sub(".*landscape_([0-9]+).*$", "\\1", ak_landscape_dirs)
+)
+ord <- order(landscape_ord)
+ak_landscape_dirs <- ak_landscape_dirs[ord]
+
+env_files <- list.files(
+  path = ak_landscape_dirs, 
+  pattern = "env.grid.tif$", full.names = TRUE, recursive = TRUE)
+
+env_sp_files <- list.files(
+  path = ak_landscape_dirs, 
+  pattern = "env_cells_extract.shp$", full.names = TRUE, recursive = TRUE)
+
+climate_link_files <- list.files(
+  path = ak_landscape_dirs, 
+  pattern = "env.grid-climate.grid-link.txt$", full.names = TRUE, recursive = TRUE)
+
+sp_init_files <- list.files(
+  path = ak_landscape_dirs, 
+  pattern = "forest_species_init.tif$", full.names = TRUE, recursive = TRUE)
+
+# Read all the soils data (all ak)
+soil_files <- list.files("Z:/project_data/na_boreal/data_sets/soils/ak", full.names = TRUE)
+soil_names <- sub("_ak\\.tif$", "", basename(soil_files))
+soil_rast <- lapply(soil_files, terra::rast)
+names(soil_rast) <- soil_names
+
+soil_rast <- Map(\(r, nm) {
+  nnm <- paste0(nm, "_mean")
+  names(r) <- nnm
+  r
+}, soil_rast, soil_names)
+
+
+
+build_env_file <- function(i) {
+
+  message("Processing: ", ak_landscape_dirs[i])
+  landscape_names <- sub(".*(landscape_[0-9]+).*", "\\1", ak_landscape_dirs)[i]
+
+  env.grid <- rast(env_files[i])
+  env.grid.sp <- vect(env_sp_files[i])
+  sp_init <- rast(sp_init_files[i])
+  climate.link <- read.table(climate_link_files[i], header = TRUE) 
+  climate.link <- climate.link |>
+    rename(env.grid = env.grid)
+
+  out_dir <- file.path(ak_landscape_dirs[i], "gis")
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
+  # combine the climate link to the env.grid
+  env.grid.sp_join <- terra::merge(env.grid.sp, climate.link, by = "env.grid", all.x = TRUE)
+  env.grid.df <- as.data.frame(env.grid.sp_join) |>
+    mutate(add = landscape_names) |>
+    tidyr::unite("model.climate.tableName", c(add, climate.grid), remove = T)
+
+  species.table <- terra::extract(sp_init, env.grid.sp_join, df = TRUE)
+  sum(is.na(species.table$forest_species_init))
+  plot(ifel(is.na(sp_init), 1, NA))
+
+  soil_rast_proj <- lapply(soil_rast, project, y = env.grid, method = "bilinear")
+  soil_tables <- lapply(soil_rast_proj, terra::extract, y = env.grid.sp_join, df = TRUE)
+  lapply(soil_tables, head)
+
+  x <- lapply(soil_rast_proj, \(r) {
+    r <- ifel(is.na(r), 1, NA)
+  }) |> rast()
+  plot(x)
+  
+  total <- purrr::reduce(c(soil_tables, list(species.table)), left_join, by = "ID")
+  head(total)
+  
+  colSums(is.na(total))
+  
+  set.seed(1984 + i)
+  total <- total |>
+    mutate(
+      across(ends_with("mean"), ~ replace_na(.x, 0)),
+      model.site.youngLabileC = case_when(
+        forest_species_init %in% c(1, 2) ~ runif(n(), 48682, 96901),
+        forest_species_init %in% c(3, 4) ~ runif(n(), 17371, 31765),
+        forest_species_init == 5       ~ runif(n(), 33026.5, 64336),
+        TRUE                           ~ runif(n(), 48682, 96901)
+      ),
+      model.site.youngLabileN = case_when(
+        forest_species_init %in% c(1, 2) ~ model.site.youngLabileC / 32.62,
+        forest_species_init %in% c(3, 4) ~ model.site.youngLabileC / 23.58,
+        forest_species_init == 5       ~ model.site.youngLabileC / 28.01,
+        TRUE                           ~ model.site.youngLabileC / 32.62
+      ),
+      model.site.youngRefractoryC = case_when(
+        forest_species_init %in% c(1, 2) ~ 17000,
+        forest_species_init %in% c(3, 4) ~ 20020,
+        forest_species_init == 5       ~ 18500,
+        TRUE                           ~ 17000
+      ),
+      model.site.youngRefractoryN = case_when(
+        forest_species_init %in% c(1, 2) ~ model.site.youngRefractoryC / 425,
+        forest_species_init %in% c(3, 4) ~ model.site.youngRefractoryC / 417.1,
+        forest_species_init == 5       ~ model.site.youngRefractoryC / 421.05,
+        TRUE                           ~ model.site.youngRefractoryC / 425
+      ),
+      model.site.somC = 35000,
+      model.site.somN = model.site.somC / 20,
+      model.settings.permafrost.moss.biomass = case_when(
+        forest_species_init == 1 ~ runif(n(), 1.55, 2.79),
+        forest_species_init == 2 ~ runif(n(), 0.31, 0.93),
+        forest_species_init %in% c(3, 4) ~ runif(n(), 0, 0.0001),
+        forest_species_init == 5 ~ runif(n(), 0.62, 1.55),
+        TRUE                     ~ runif(n(), 1.55, 2.79)
+      )
+    )
+  
+  
+  
+  total_join <- total |>
+    rename(env.grid = ID) |>
+    left_join(env.grid.df, by = "env.grid") |>
+    mutate(across(everything(), ~ tidyr::replace_na(.x, 0)))
+  
+  env.file <- total_join |>
+    mutate(across(
+        c(depth_mean, sand_mean, silt_mean, clay_mean,
+          model.site.youngLabileC, model.site.youngLabileN,
+          model.site.youngRefractoryC, model.site.youngRefractoryN,
+          model.site.somC, model.site.somN),
+        ~ round(.x, 0)
+      )) |>
+      mutate(model.settings.permafrost.moss.biomass = round(model.settings.permafrost.moss.biomass, 4)) |>
+      mutate(model.climate.tableName = model.climate.tableName,
+             model.site.availableNitrogen = 45) |>
+      select(
+        env.grid,
+        model.climate.tableName,
+        model.site.availableNitrogen,
+        model.site.soilDepth     = depth_mean,
+        model.site.pctSand       = sand_mean,
+        model.site.pctSilt       = silt_mean,
+        model.site.pctClay       = clay_mean,
+        model.site.youngLabileC,
+        model.site.youngLabileN,
+        model.site.youngRefractoryC,
+        model.site.youngRefractoryN,
+        model.site.somC,
+        model.site.somN,
+        model.settings.permafrost.moss.biomass
+      )
+  
+  write.table(env.file, file.path(out_dir, "env.file.txt"), row.names = FALSE, sep = "\t")
+}
+
+lapply(seq_along(ak_landscape_dirs), build_env_file)

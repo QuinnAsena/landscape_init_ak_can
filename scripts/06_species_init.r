@@ -1,7 +1,10 @@
 library(terra)
 library(purrr)
 library(dplyr)
-
+# This script converts Winslow's "forest_products_and_species" script and
+# Uses Arielle's approach of masking with a seperate water product.
+# Confirmed with Winslow that the water prodect is not identical to 
+# the water layer in the ABoVE data, and should be more accurate.
 dirs <- normalizePath(list.dirs(full.names = TRUE))
 ak_landscape_dirs <- dirs[grepl(".*[\\\\/]landscape_[0-9]+$", dirs)]
 
@@ -11,14 +14,10 @@ landscape_ord <- as.integer(
 ord <- order(landscape_ord)
 ak_landscape_dirs <- ak_landscape_dirs[ord]
 
-
+# Load up water product
 water_dir <- "Z:/personal_storage/arielle_storage/Files/GIS_Inputs/water_tiffs/"
 water_files <- list.files(path = water_dir, pattern = "\\.tif$", full.names = TRUE)
 water_files <- water_files[order(as.integer(sub(".*?(\\d+)\\.tif$", "\\1", water_files)))][1:5]
-
-
-ak_landscape_dirs <- ak_landscape_dirs[2]
-water_files <- water_files[2]
 
 process_species <- function(ak_landscape_dirs, water_files) {
 
@@ -81,7 +80,7 @@ process_species <- function(ak_landscape_dirs, water_files) {
     )
 
   # This is very slightly different to Winslow's code in that NA values in aspect
-  # will default to the value in the Above category rather than to NA.
+  # will default to the value in the Above category rather than remaining NA.
   raster_df <- raster_df |>
     mutate(
       species = case_when(
@@ -96,7 +95,7 @@ process_species <- function(ak_landscape_dirs, water_files) {
         Above %in% 5:9                                      ~ "Potential-forest",
         TRUE                                                ~ NA_character_,
       ),
-      species2 = case_when(
+      forest_species_init = case_when(
         species == "Black.spruce" ~ 1, 
         species == "White.spruce" ~ 2,
         species == "Aspen"       ~ 3,
@@ -109,7 +108,7 @@ process_species <- function(ak_landscape_dirs, water_files) {
     filter(forest.type != "Non-forest")
 
   raster_df_small <- raster_df |>
-    select(x, y, species2)
+    select(x, y, forest_species_init)
 
   forest.species <- rast(raster_df_small, type = "xyz", crs = crs(rasters[[1]]))
   writeRaster(forest.species, filename = file.path(out_dir, "forest_species_init.tif"), overwrite = TRUE)

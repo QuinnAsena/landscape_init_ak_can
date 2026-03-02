@@ -3,6 +3,8 @@ library(sf)
 library(rstac)
 library(here)
 
+# This is my script to pull DEM data from Arctic DEM
+# Load in env.grids as templates
 env_files <- list.files(path = "C:/Users/asenaq/Documents/GitHub/landscape_init_ak_can", 
                         pattern = "env.grid.tif$", full.names = TRUE, recursive = TRUE)
 

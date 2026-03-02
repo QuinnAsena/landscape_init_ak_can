@@ -1,6 +1,8 @@
 library(terra)
 library(here)
-
+# This script is a mashup of Winslow's "forest_products_and_species.Rmd" and 
+# Arielle's "landscapes_Alaska5." Mostly became a new script to process DEM files
+# downloaded in step 4. hillshade is not necessary, but W uses it for plotting at some point.
 perma_rast <- rast("Z:/project_data/na_boreal/data_sets/permafrost/permafrost_repr.tif")
 
 process_dem <- function(ak_landscape_dirs, perma_rast) {

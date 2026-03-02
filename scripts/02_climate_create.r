@@ -5,22 +5,21 @@ library(dplyr)
 library(lubridate)
 library(future.apply)
 
+# This script converts Winslow's "climate_processing_step1.Rmd"
 # Load one layer of the whole of Alaska as a template to crop landcapes
 ak_climate <- rast(
   "Z:/project_data/downscaling/Alaska/Downscaled CMIP6 NorESM2-MM/ssp126/tasmax/CMIP6 NorESM2-MM-ssp126-tasmax-2015.nc",
   lyrs = 4)
 # plot(ak_climate)
-
 # Load env.grid files (careful of crs here, they are in ESRI:102001)
 env_files <- list.files(path = "C:/Users/asenaq/Documents/GitHub/landscape_init_ak_can", 
                         pattern = "env.grid.tif$", full.names = TRUE, recursive = TRUE)
-
+# Read env.grids from step 01 as templates. Order matters.
 landscape_ord <- as.integer(
   sub(".*landscape_([0-9]+).*$", "\\1", env_files)
 )
 ord <- order(landscape_ord)
 env_files <- env_files[ord]
-
 landscape_names <- sub(".*(landscape_[0-9]+).*", "\\1", env_files)
 
 # Aggregate the env.grid to match 1000x1000 of climtae data
@@ -34,7 +33,8 @@ env_grids_sp <- Map(\(env_files, nm) {
   out <- file.path(nm, "climate")
   r <- rast(env_files)
   r <- as.points(r, values = TRUE)
-  names(r) <- "env.gridCell"
+  # shape files have a 10 chr limit in field names. renamed from env.gridCell
+  names(r) <- "env.grid"
   writeVector(r, file.path(out, "env_cells_extract.shp"),
               overwrite = TRUE)
   r
@@ -47,7 +47,8 @@ ak_climate_proj <- Map(\(tmpl, nm) {
   dir.create(out, recursive = TRUE, showWarnings = FALSE)
   r <- project(ak_climate, tmpl, method = "near")
   values(r) <- seq_len(ncell(r))
-  names(r)  <- "climate.gridCell"
+  # renamed "climate.gridCell" to climate.grid.
+  names(r)  <- "climate.grid"
   writeRaster(r, file.path(out, "climate.grid.tif"),
               overwrite = TRUE) # datatype = "INT4S"?
   r
@@ -69,15 +70,11 @@ ak_climate_sp <- Map(\(idx, nm) {
 rasValue <- Map(\(r, p, nm) {
   out <- file.path(nm, "climate")
   env_clim_link <- terra::extract(r, p, df = TRUE, bind = TRUE)
-  write.table(env_clim_link, file.path(out, "env.grid to climate.grid link.txt"),
+  write.table(env_clim_link, file.path(out, "env.grid-climate.grid-link.txt"),
               row.names = FALSE)
   env_clim_link
 }, ak_climate_proj, env_grids_sp, names(ak_climate_proj))
 
-lapply(rasValue, head, 20)
-lapply(rasValue, tail, 20)
-
-# Different NorESM timespan? 1980 vs 1950?
 
 process_climate <- function(gcm, ssp, var, year, ak_climate_dirs) {
   out_dir <- file.path(ak_climate_dirs, gcm, ssp, var)
@@ -117,11 +114,10 @@ process_climate <- function(gcm, ssp, var, year, ak_climate_dirs) {
   }
 
   ak_climate_var_df <- as.data.frame(terra::extract(ak_climate_var_proj, ak_climate_sp, bind = TRUE))
-  names(ak_climate_var_df)[1] <- "climate.gridCell" # shape files have a 10 chr limit in field names. maybe gpkg is a workaround?
-
+  
   ak_climate_var_df <- ak_climate_var_df |>
     tidyr::pivot_longer(
-      cols = -climate.gridCell,
+      cols = -climate.grid,
       names_to = "y_day",
       values_to = "value") |>
     dplyr::mutate(
@@ -132,7 +128,7 @@ process_climate <- function(gcm, ssp, var, year, ak_climate_dirs) {
       gcm = gcm,
       ssp = ssp,
       landscape = landscape_id) |>
-    dplyr::select(climate.gridCell, value, date, gcm, ssp, landscape) |>
+    dplyr::select(climate.grid, value, date, gcm, ssp, landscape) |>
     dplyr::rename(!!var := value)
     # names(df)[names(df) == "value"] <- var # for base R rename. no tidy evaluation. 
   write.table(ak_climate_var_df, file.path(out_dir, paste0(gcm, "-", ssp, "-", var, "-", year, ".txt")), row.names = FALSE, sep = "\t")
@@ -162,7 +158,7 @@ ak_climate_df <- data.frame(
 )
 
 # stringsAsFactors = FALSE needed for "var" names
-param_grid <- base::merge(
+param_grid <- left_join(
   expand.grid(
     landscape = landscape_id,
     gcm  = gcm,
@@ -174,7 +170,6 @@ param_grid <- base::merge(
   ak_climate_df,
   by = "landscape"
 )
-
 
 library(future.apply)
 

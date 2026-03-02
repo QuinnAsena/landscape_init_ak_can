@@ -8,6 +8,7 @@ library(DBI)
 library(future.apply)
 library(RSQLite)
 
+# This script converts Winslow's "climate_processing_step2.Rmd"
 process_sqlite <- function(gcm, ssp, var, ak_landscape_dirs) {
 
   out_dir <- file.path(ak_landscape_dirs, "databases")

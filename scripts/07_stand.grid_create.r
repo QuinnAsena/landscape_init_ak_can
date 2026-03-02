@@ -10,7 +10,7 @@ walker <- read.table("C:/Users/asenaq/Documents/GitHub/landscape_init_ak_can/dat
 heights <- read.table("C:/Users/asenaq/Documents/GitHub/landscape_init_ak_can/data/empirical/Johnstone_tree_heights.txt", header = TRUE, sep = "\t")
 
 # Species keys in the data
-#  sp    key  num.stands  common name
+# sp = key = num.stands = common name
 # bene = pb = 16 = birch
 # potr = ta = 25 = aspen
 # pima = bs = 66 = black spruce
@@ -77,7 +77,7 @@ johnstone_walker_classified <- johnstone_walker |>
 
 #---------- Heights ----------#
 # Species naming gets confusing as the use of abbeviated latin name
-# Is not always consistent with common name (e.g., bene vs birch)
+# is not always consistent with common name (e.g., bene vs birch)
 # create a dictionary to link species to their distribution
 dist_dict <- tibble(
   species = c("spruce", "aspen", "birch"),
@@ -156,6 +156,7 @@ dist_dict3 <- johnstone_walker_classified |>
   full_join(dist_dict2, by = c("forest_type" = "species_short"))
 
 # My notes from comparing scripts of species, abbreviation and stand number
+# Stand number is from original script, only diff is I have 70 mixed stands
 # bene = pb = 16 = birch
 # potr = ta = 25 = aspen
 # pima = bs = 66 = spruce
