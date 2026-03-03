@@ -28,7 +28,7 @@ sp_init_files <- list.files(
   path = ak_landscape_dirs, 
   pattern = "forest_species_init.tif$", full.names = TRUE, recursive = TRUE)
 
-# Read all the soils data (all ak)
+# Read all the soils data (all ak). This has already been processed at some point
 soil_files <- list.files("Z:/project_data/na_boreal/data_sets/soils/ak", full.names = TRUE)
 soil_names <- sub("_ak\\.tif$", "", basename(soil_files))
 soil_rast <- lapply(soil_files, terra::rast)
@@ -39,7 +39,6 @@ soil_rast <- Map(\(r, nm) {
   names(r) <- nnm
   r
 }, soil_rast, soil_names)
-
 
 
 build_env_file <- function(i) {
@@ -72,15 +71,19 @@ build_env_file <- function(i) {
   lapply(soil_tables, head)
 
   x <- lapply(soil_rast_proj, \(r) {
-    r <- ifel(is.na(r), 1, NA)
+    ifel(is.na(r), 1, NA)
   }) |> rast()
   plot(x)
-  
+
   total <- purrr::reduce(c(soil_tables, list(species.table)), left_join, by = "ID")
   head(total)
-  
+
   colSums(is.na(total))
-  
+  # need to recalculate the constants based on landscape area?
+  # "Relative soil fertility, expressed as plant-available nitrogen, was set to 45 kg ha−1 yr−1 (Hansen et al., 2021)"
+  # "The C:N ratio of moss litter is set at 30 (Melvin et al., 2015)"
+  # youngLabileC here "Table B4Initial conditions for iLand carbon cycle"
+  # If the original value of 70000 (now n() below) is the landscape area, check if n() is correct!
   set.seed(1984 + i)
   total <- total |>
     mutate(
@@ -119,41 +122,37 @@ build_env_file <- function(i) {
         TRUE                     ~ runif(n(), 1.55, 2.79)
       )
     )
-  
-  
-  
+
   total_join <- total |>
     rename(env.grid = ID) |>
     left_join(env.grid.df, by = "env.grid") |>
     mutate(across(everything(), ~ tidyr::replace_na(.x, 0)))
   
   env.file <- total_join |>
-    mutate(across(
+    mutate(
+      across(
         c(depth_mean, sand_mean, silt_mean, clay_mean,
           model.site.youngLabileC, model.site.youngLabileN,
           model.site.youngRefractoryC, model.site.youngRefractoryN,
-          model.site.somC, model.site.somN),
-        ~ round(.x, 0)
-      )) |>
-      mutate(model.settings.permafrost.moss.biomass = round(model.settings.permafrost.moss.biomass, 4)) |>
-      mutate(model.climate.tableName = model.climate.tableName,
-             model.site.availableNitrogen = 45) |>
-      select(
-        env.grid,
-        model.climate.tableName,
-        model.site.availableNitrogen,
-        model.site.soilDepth     = depth_mean,
-        model.site.pctSand       = sand_mean,
-        model.site.pctSilt       = silt_mean,
-        model.site.pctClay       = clay_mean,
-        model.site.youngLabileC,
-        model.site.youngLabileN,
-        model.site.youngRefractoryC,
-        model.site.youngRefractoryN,
-        model.site.somC,
-        model.site.somN,
-        model.settings.permafrost.moss.biomass
-      )
+          model.site.somC, model.site.somN), ~ round(.x, 0)),
+      model.settings.permafrost.moss.biomass = round(model.settings.permafrost.moss.biomass, 4),
+      model.site.availableNitrogen = 45) |>
+    select(
+      env.grid,
+      model.climate.tableName,
+      model.site.availableNitrogen,
+      model.site.soilDepth     = depth_mean,
+      model.site.pctSand       = sand_mean,
+      model.site.pctSilt       = silt_mean,
+      model.site.pctClay       = clay_mean,
+      model.site.youngLabileC,
+      model.site.youngLabileN,
+      model.site.youngRefractoryC,
+      model.site.youngRefractoryN,
+      model.site.somC,
+      model.site.somN,
+      model.settings.permafrost.moss.biomass
+    )
   
   write.table(env.file, file.path(out_dir, "env.file.txt"), row.names = FALSE, sep = "\t")
 }

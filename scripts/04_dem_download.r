@@ -32,17 +32,17 @@ download_dem <- function(landscape, landscape_name) {
   # Print available collections
   rstac::get_request(collections_query)
   # Get a bounding box per landscape in the correct crs for stac query (4326)
-  bbox_3413 <- as.polygons(ext(landscape), crs = crs(landscape)) |>
+  bbox_4326 <- as.polygons(ext(landscape), crs = crs(landscape)) |>
     st_as_sf() |>
     sf::st_transform(4326) |>
     sf::st_bbox() |>
     as.numeric()
-  bbox_3413
+  bbox_4326
   # Define a STAC query to find items in the "arcticdem-mosaics-v4.1-10m"
   stac_query <- stac_search(
     stac_api,
     collections = "arcticdem-mosaics-v4.1-10m",
-    bbox = bbox_3413
+    bbox = bbox_4326
   ) |>
     post_request() |>
     items_fetch()
