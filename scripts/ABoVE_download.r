@@ -46,16 +46,21 @@ bboxes <- lapply(ak_landcapes, \(landscape){
   bbox
 })
 
-download_above <- function(bbox, username, password, out_loc) {
-# Request tiles based on bounding box (returns urls)
-  outdir <- file.path(out_loc, "AboVE_data")
-  dir.create(outdir, recursive = TRUE)
+concept_ids <- c(
+    Decadal_Water_Maps_1324 = "C2162118169-ORNL_CLOUD",
+    Annual_Landcover_ABoVE_1691 = "C2143403402-ORNL_CLOUD")
+
+
+download_above <- function(bbox, username, password, out_loc, concept_id, concept_name) {
+  # Request tiles based on bounding box (returns urls)
+  outdir <- file.path(out_loc, concept_name)
+  dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
 
   req <- request(
     "https://cmr.earthdata.nasa.gov/search/granules.json"
   ) |>
     req_url_query(
-      concept_id = "C2143403402-ORNL_CLOUD",
+      concept_id = concept_id,
       bounding_box = paste(bbox, collapse = ","),
       page_size = 2000
     )
@@ -68,52 +73,153 @@ download_above <- function(bbox, username, password, out_loc) {
       x$links[[1]]$href
     }, character(1))
 
-  urls <- urls[grepl("\\.tif", urls)]
-  urls <- urls[!grepl("Simplified", urls)]
+  if (concept_name == "Annual_Landcover_ABoVE_1691") {
+    urls <- urls[grepl("\\.tif", urls)]
+    urls <- urls[!grepl("Simplified", urls)]
+  }
+  
+  if (concept_name == "Decadal_Water_Maps_1324") {
+    urls <- urls[!grepl("QA", urls)]
+  }
+
 
   os_type <- Sys.info()["sysname"]
-  # For mac/linux
-  if (os_type %in% c("Linux", "Darwin")) {
-    lapply(urls, \(u) {
+  
+  lapply(urls, \(u) {
+    if (file.exists(file.path(outdir, basename(u)))) {
+      warning("Tile already present. Skipping download.")
+      return(invisible(NULL))
+    }
 
-      if (file.exists(file.path(outdir, basename(u)))) {
-        warning("ABoVR tiles already present. Skipping download.")
-        return(invisible(NULL))}
-
-      fname <- basename(u)
+    outfile <- file.path(outdir, basename(u))
+    
+    if (os_type %in% c("Linux", "Darwin")) {
       cmd <- sprintf(
         'wget --user=%s --password=%s --no-check-certificate "%s" -O "%s"',
-        username, password, u, file.path(outdir, fname)
+        username, password, u, outfile
       )
-      result <- system(cmd)
-    })
-    
-    } else if (os_type == "Windows") {
-    # For windows is wget is not installed
-      lapply(urls, \(u) {
-        if (file.exists(file.path(outdir, basename(u)))) {
-          warning("ABoVR tiles already present. Skipping download.")
-          return(invisible(NULL))}
-
-        fname <- basename(u)
-        cmd <- sprintf(
-          'curl -u %s:%s "%s" -o "%s" -L',
-          username, password, u, file.path(outdir, fname)
-        )
-        result <- system(cmd)
-      })
+    } else {
+      cmd <- sprintf(
+        'curl -u %s:%s "%s" -o "%s" -L',
+        username, password, u, outfile
+      )
     }
+    system(cmd)
+  })
 }
 
+
+
+download_params <- expand.grid(
+  bbox_index  = seq_along(bboxes),
+  concept_name = names(concept_ids),
+  KEEP.OUT.ATTRS = FALSE,
+  stringsAsFactors = FALSE
+)
+
+download_params$bbox <- bboxes[download_params$bbox_index]
+download_params$concept_id <- concept_ids[download_params$concept_name]
+download_params$out_loc <- ak_landscape_dirs[download_params$bbox_index]
 
 plan(multisession, workers = 5)
 
 future_mapply(
   FUN = download_above,
-  bbox = bboxes,
-  out_loc = ak_landscape_dirs,
+  bbox = download_params$bbox,
+  out_loc = download_params$out_loc,
+  concept_id = download_params$concept_id,
+  concept_name = download_params$concept_name,
   MoreArgs = list(username = "quinnasena", password = "7BGrZ/4KSj.K^B,"),
-  SIMPLIFY = FALSE
+  SIMPLIFY = FALSE, future.seed = TRUE
 )
 
 plan(sequential)
+
+
+
+
+
+
+
+
+
+
+
+# for (i in seq_along(concept_ids)) {
+#    print(names(concept_ids[1]))
+# }
+
+
+# download_above <- function(bbox, username, password, out_loc, concept_id) {
+# # Request tiles based on bounding box (returns urls)
+#   outdir <- file.path(out_loc, names(concept_id))
+#   dir.create(outdir, recursive = TRUE)
+
+#   req <- request(
+#     "https://cmr.earthdata.nasa.gov/search/granules.json"
+#   ) |>
+#     req_url_query(
+#       concept_id = concept_id,
+#       bounding_box = paste(bbox, collapse = ","),
+#       page_size = 2000
+#     )
+
+#   res <- req_perform(req)
+#   meta <- resp_body_json(res)
+
+#   urls <- vapply(meta$feed$entry,
+#     function(x) {
+#       x$links[[1]]$href
+#     }, character(1))
+
+#   if (names(concept_id) == "Annual_Landcover_ABoVE_1691") {
+#     urls <- urls[grepl("\\.tif", urls)]
+#     urls <- urls[!grepl("Simplified", urls)]}
+
+#   os_type <- Sys.info()["sysname"]
+#   # For mac/linux
+#   if (os_type %in% c("Linux", "Darwin")) {
+#     lapply(urls, \(u) {
+
+#       if (file.exists(file.path(outdir, basename(u)))) {
+#         warning("ABoVR tiles already present. Skipping download.")
+#         return(invisible(NULL))}
+
+#       fname <- basename(u)
+#       cmd <- sprintf(
+#         'wget --user=%s --password=%s --no-check-certificate "%s" -O "%s"',
+#         username, password, u, file.path(outdir, fname)
+#       )
+#       result <- system(cmd)
+#     })
+    
+#     } else if (os_type == "Windows") {
+#     # For windows is wget is not installed
+#       lapply(urls, \(u) {
+#         if (file.exists(file.path(outdir, basename(u)))) {
+#           warning("ABoVR tiles already present. Skipping download.")
+#           return(invisible(NULL))}
+
+#         fname <- basename(u)
+#         cmd <- sprintf(
+#           'curl -u %s:%s "%s" -o "%s" -L',
+#           username, password, u, file.path(outdir, fname)
+#         )
+#         result <- system(cmd)
+#       })
+#     }
+# }
+
+
+# plan(multisession, workers = 5)
+
+# future_mapply(
+#   FUN = download_above,
+#   bbox = bboxes,
+#   out_loc = ak_landscape_dirs,
+#   MoreArgs = list(username = "quinnasena", password = "7BGrZ/4KSj.K^B,"),
+#   SIMPLIFY = FALSE
+# )
+
+# plan(sequential)
+
