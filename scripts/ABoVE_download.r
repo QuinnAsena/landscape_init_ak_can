@@ -51,6 +51,18 @@ concept_ids <- c(
     Annual_Landcover_ABoVE_1691 = "C2143403402-ORNL_CLOUD")
 
 
+
+
+# https://www.earthdata.nasa.gov/data/catalog/ornl-cloud-decadal-water-maps-1324-1.1
+# https://www.earthdata.nasa.gov/data/catalog/ornl-cloud-annual-landcover-above-1691-1
+
+bbox <- paste(bboxes[[1]], collapse = ",")
+username = "quinnasena"
+password = "7BGrZ/4KSj.K^B,"
+out_loc <- ak_landscape_dirs[1]
+concept_id <- concept_ids[[1]]
+concept_name <- names(concept_ids[1])
+
 download_above <- function(bbox, username, password, out_loc, concept_id, concept_name) {
   # Request tiles based on bounding box (returns urls)
   outdir <- file.path(out_loc, concept_name)
@@ -95,16 +107,35 @@ download_above <- function(bbox, username, password, out_loc, concept_id, concep
     
     if (os_type %in% c("Linux", "Darwin")) {
       cmd <- sprintf(
-        'wget --user=%s --password=%s --no-check-certificate "%s" -O "%s"',
-        username, password, u, outfile
+        'wget --netrc "%s" -O "%s"',
+        u, outfile
       )
     } else {
       cmd <- sprintf(
-        'curl -u %s:%s "%s" -o "%s" -L',
-        username, password, u, outfile
+        'curl -L --netrc "%s" -o "%s"',
+        u, outfile
       )
     }
-    system(cmd)
+
+    # if (os_type %in% c("Linux", "Darwin")) {
+    #   cmd <- sprintf(
+    #     'wget --user=%s --password=%s --no-check-certificate "%s" -O "%s"',
+    #     username, password, u, outfile
+    #   )
+    # } else {
+    #   cmd <- sprintf(
+    #     'curl -u %s:%s "%s" -o "%s" -L',
+    #     username, password, u, outfile
+    #   )
+    # }
+    # system(cmd)
+
+   status <- system(cmd, ignore.stdout = TRUE, ignore.stderr = TRUE)
+
+   if (status != 0 || file.info(outfile)$size < 5000) {
+     warning("Download likely failed: ", basename(outfile))
+   }
+
   })
 }
 
@@ -134,14 +165,6 @@ future_mapply(
 )
 
 plan(sequential)
-
-
-
-
-
-
-
-
 
 
 

@@ -79,11 +79,8 @@ build_env_file <- function(i) {
   head(total)
 
   colSums(is.na(total))
-  # need to recalculate the constants based on landscape area?
-  # "Relative soil fertility, expressed as plant-available nitrogen, was set to 45 kg ha−1 yr−1 (Hansen et al., 2021)"
-  # "The C:N ratio of moss litter is set at 30 (Melvin et al., 2015)"
-  # youngLabileC here "Table B4Initial conditions for iLand carbon cycle"
-  # If the original value of 70000 (now n() below) is the landscape area, check if n() is correct!
+
+
   set.seed(1984 + i)
   total <- total |>
     mutate(
