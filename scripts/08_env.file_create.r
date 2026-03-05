@@ -29,7 +29,7 @@ sp_init_files <- list.files(
   pattern = "forest_species_init.tif$", full.names = TRUE, recursive = TRUE)
 
 # Read all the soils data (all ak). This has already been processed at some point
-soil_files <- list.files("Z:/project_data/na_boreal/data_sets/soils/ak", full.names = TRUE)
+soil_files <- list.files("//10.60.2.10/FF_Lab/project_data/na_boreal/data_sets/soils/ak", full.names = TRUE)
 soil_names <- sub("_ak\\.tif$", "", basename(soil_files))
 soil_rast <- lapply(soil_files, terra::rast)
 names(soil_rast) <- soil_names

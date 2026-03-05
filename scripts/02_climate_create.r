@@ -8,18 +8,24 @@ library(future.apply)
 # This script converts Winslow's "climate_processing_step1.Rmd"
 # Load one layer of the whole of Alaska as a template to crop landcapes
 ak_climate <- rast(
-  "Z:/project_data/downscaling/Alaska/Downscaled CMIP6 NorESM2-MM/ssp126/tasmax/CMIP6 NorESM2-MM-ssp126-tasmax-2015.nc",
+  "//10.60.2.10/FF_Lab/project_data/downscaling/Alaska/Downscaled CMIP6 NorESM2-MM/ssp126/tasmax/CMIP6 NorESM2-MM-ssp126-tasmax-2015.nc",
   lyrs = 4)
 # plot(ak_climate)
 # Load env.grid files (careful of crs here, they are in ESRI:102001)
-env_files <- list.files(path = "C:/Users/asenaq/Documents/GitHub/landscape_init_ak_can", 
-                        pattern = "env.grid.tif$", full.names = TRUE, recursive = TRUE)
-# Read env.grids from step 01 as templates. Order matters.
-landscape_ord <- as.integer(
-  sub(".*landscape_([0-9]+).*$", "\\1", env_files)
+dirs <- normalizePath(list.dirs(full.names = TRUE))
+ak_landscape_dirs <- dirs[grepl(".*[\\\\/]landscape_[0-9]+$", dirs)]
+
+# make sure landscapes are ordered
+landscape_id <- as.integer(
+  sub(".*landscape_([0-9]+)$", "\\1", ak_landscape_dirs)
 )
-ord <- order(landscape_ord)
-env_files <- env_files[ord]
+ord <- order(landscape_id)
+ak_landscape_dirs <- ak_landscape_dirs[ord]
+
+env_files <- list.files(path = ak_landscape_dirs, 
+                        pattern = "env.grid.tif$", full.names = TRUE, recursive = TRUE)
+
+
 landscape_names <- sub(".*(landscape_[0-9]+).*", "\\1", env_files)
 
 # Aggregate the env.grid to match 1000x1000 of climtae data
@@ -31,6 +37,7 @@ names(env_grids_coarse) <- landscape_names
 # Convert env.grid to points for extraction
 env_grids_sp <- Map(\(env_files, nm) {
   out <- file.path(nm, "climate")
+  dir.create(out, recursive = TRUE)
   r <- rast(env_files)
   r <- as.points(r, values = TRUE)
   # shape files have a 10 chr limit in field names. renamed from env.gridCell
@@ -69,6 +76,7 @@ ak_climate_sp <- Map(\(idx, nm) {
 # env.grid RUs now align with climate gridcells
 rasValue <- Map(\(r, p, nm) {
   out <- file.path(nm, "climate")
+  dir.create(out, recursive = TRUE, showWarnings = FALSE)
   env_clim_link <- terra::extract(r, p, df = TRUE, bind = TRUE)
   write.table(env_clim_link, file.path(out, "env.grid-climate.grid-link.txt"),
               row.names = FALSE)
@@ -79,10 +87,10 @@ rasValue <- Map(\(r, p, nm) {
 process_climate <- function(gcm, ssp, var, year, ak_climate_dirs) {
   out_dir <- file.path(ak_climate_dirs, gcm, ssp, var)
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
-  ak_clim_in <- file.path("Z:/project_data/downscaling/Alaska", paste0("Downscaled CMIP6 ", gcm), ssp, var, paste0("CMIP6 ", gcm, "-", ssp, "-", var, "-", year, ".nc"))
+  ak_clim_in <- file.path("//10.60.2.10/FF_Lab/project_data/downscaling/Alaska", paste0("Downscaled CMIP6 ", gcm), ssp, var, paste0("CMIP6 ", gcm, "-", ssp, "-", var, "-", year, ".nc"))
 
   ak_climate_sp_files <- list.files(
-    ak_climate_dirs, full.names = TRUE, pattern = "\\.shp$"
+    ak_climate_dirs, full.names = TRUE, pattern = "\\climate_cells_extract.shp$"
   )
 
   ak_climate_tif_files <- list.files(
@@ -97,6 +105,7 @@ process_climate <- function(gcm, ssp, var, year, ak_climate_dirs) {
 
   ak_climate_var <- rast(ak_clim_in)
   ak_climate_sp <- vect(ak_climate_sp_files)
+  names(ak_climate_sp) <- "climate.grid"
   ak_climate_proj <- rast(ak_climate_tif_files)
 
   ak_climate_var_proj <- project(ak_climate_var, ak_climate_proj, method="bilinear")
@@ -114,7 +123,7 @@ process_climate <- function(gcm, ssp, var, year, ak_climate_dirs) {
   }
 
   ak_climate_var_df <- as.data.frame(terra::extract(ak_climate_var_proj, ak_climate_sp, bind = TRUE))
-  
+
   ak_climate_var_df <- ak_climate_var_df |>
     tidyr::pivot_longer(
       cols = -climate.grid,

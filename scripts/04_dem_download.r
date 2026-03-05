@@ -5,15 +5,21 @@ library(here)
 
 # This is my script to pull DEM data from Arctic DEM
 # Load in env.grids as templates
-env_files <- list.files(path = "C:/Users/asenaq/Documents/GitHub/landscape_init_ak_can", 
+dirs <- normalizePath(list.dirs(full.names = TRUE))
+ak_landscape_dirs <- dirs[grepl(".*[\\\\/]landscape_[0-9]+$", dirs)]
+
+# make sure landscapes are ordered
+landscape_id <- as.integer(
+  sub(".*landscape_([0-9]+)$", "\\1", ak_landscape_dirs)
+)
+ord <- order(landscape_id)
+ak_landscape_dirs <- ak_landscape_dirs[ord]
+
+env_files <- list.files(path = ak_landscape_dirs, 
                         pattern = "env.grid.tif$", full.names = TRUE, recursive = TRUE)
 
-landscape_ord <- as.integer(
-  sub(".*landscape_([0-9]+).*$", "\\1", env_files)
-)
-ord <- order(landscape_ord)
-env_files <- env_files[ord]
 landscape_names <- sub(".*(landscape_[0-9]+).*", "\\1", env_files)
+
 
 ak_landcapes <- lapply(env_files, function(x) {
   rast(x)

@@ -3,7 +3,7 @@ library(here)
 # This script is a mashup of Winslow's "forest_products_and_species.Rmd" and 
 # Arielle's "landscapes_Alaska5." Mostly became a new script to process DEM files
 # downloaded in step 4. hillshade is not necessary, but W uses it for plotting at some point.
-perma_rast <- rast("Z:/project_data/na_boreal/data_sets/permafrost/permafrost_repr.tif")
+perma_rast <- rast("//10.60.2.10/FF_Lab/project_data/na_boreal/data_sets/permafrost/permafrost_repr.tif")
 
 process_dem <- function(ak_landscape_dirs, perma_rast) {
   env_files_10m <- list.files(path = ak_landscape_dirs, pattern = "env.grid_disagg_10.tif$", full.names = TRUE, recursive = TRUE)
@@ -40,7 +40,6 @@ process_dem <- function(ak_landscape_dirs, perma_rast) {
     hillshade_rasts_merge <- project(rast(hillshade_files), env_grid_10, method = "bilinear")
   }
   writeRaster(hillshade_rasts_merge, filename = here::here(landscape_names, "gis", "hillshade_lcp10.tif"), overwrite = TRUE)
-
 }
 
 #--------------- Run the function ---------------#
