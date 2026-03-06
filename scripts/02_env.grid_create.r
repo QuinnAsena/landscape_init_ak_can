@@ -1,19 +1,13 @@
 library(terra)
 library(sf)
-# This script reproduces "landscape_envgrids.Rmd" from Ariel. ESRI:102001 is equivalent to input file native albers
-# The following are Arielle's files from the Z drive, they seem to be from the
-# Order matters, first 5 are AK the next 15 are CAN. Make sure order is correct:
-dirs <- normalizePath(list.dirs(full.names = TRUE))
-ak_landscape_dirs <- dirs[grepl(".*[\\\\/]landscape_[0-9]+$", dirs)]
+library(here)
+# This script originated from "landscape_envgrids.Rmd" from Ariel.
+# ESRI:102001 is equivalent to input file native albers
 
-landscape_ord <- as.integer(
-  sub(".*landscape_([0-9]+).*$", "\\1", ak_landscape_dirs)
-)
-ord <- order(landscape_ord)
-ak_landscape_dirs <- ak_landscape_dirs[ord]
+dirs <- list.dirs(here(), recursive = FALSE)
+landscape_dirs <- dirs[grepl("landscape_", basename(dirs))]
 
-
-ak_landcapes <- lapply(ak_landscape_dirs, \(ind) {
+landcapes <- lapply(landscape_dirs, \(ind) {
   out <- file.path(ind, "gis")
   dir.create(out, recursive = TRUE, showWarnings = FALSE)
 
@@ -21,8 +15,13 @@ ak_landcapes <- lapply(ak_landscape_dirs, \(ind) {
 
   r0 <- rast(above_lc)
   r <- project(r0[[1]], crs("ESRI:102001"), method = "near", res = 100)
-  values(r) <- seq_len(ncell(r))
+  plot(ifel(is.na(r), 1, NA))
+
+  non_na_idx <- which(!is.na(values(r)))
+  values(r)[non_na_idx] <- seq_along(non_na_idx)
+  plot(r)
   names(r) <- "ru"
+
   writeRaster(r, file.path(out, "env.grid.txt"), overwrite = TRUE, filetype = "AAIGrid", datatype = "INT4S")
   # datatype should be INT4U but that is not handled well by R (https://rdrr.io/cran/terra/man/datatype.html)
   # Probably doesn't matter for ASCII filetype above anyway
