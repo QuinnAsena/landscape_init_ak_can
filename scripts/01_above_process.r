@@ -22,11 +22,7 @@ landscapes_files <- list.files(
   pattern = "\\.tif$", full.names = TRUE)
 
 landscapes_files <- landscapes_files[order(as.integer(sub(".*?(\\d+)\\.tif$", "\\1", landscapes_files)))]
-r1 <- rast(landscapes_files[1])
-r6 <- rast(landscapes_files[6])
-plot(r1)
-plot(r6)
-same.crs(r1, r6)
+
 # Create vrt once outside function
 above_lc_vrt <- vrt(above_lc_files, set_names = TRUE)
 # set_names uses names from first tile and so will be incorrect ref
@@ -57,12 +53,8 @@ vrt_lcp <- function(lcp_vrt, landscapes_file) {
 
   if (!same.crs(lcp_crop_area, lcp_vrt)) {
     stop("Check on crs")
-  } else {
-    cookie_cutter <- as.polygons(lcp_crop_area, crs = crs(lcp_crop_area), dissolve = TRUE)
-  }
-  # crop() output includes all cells rectangle, including cells not in study area
-  vrt_crop <- crop(lcp_vrt, cookie_cutter) |>
-    mask(cookie_cutter)
+  } 
+  vrt_crop <- crop(lcp_vrt, lcp_crop_area)
   
   writeRaster(vrt_crop, file.path(out, paste0(nm, ".tif")), overwrite = TRUE, datatype = "INT4S")
 }
@@ -72,6 +64,7 @@ lapply(landscapes_files, vrt_lcp, lcp_vrt = water_vrt)
 
 tst <- rast("D:/quinn/GitHub/landscape_init_ak_can/landscape_06/ABoVE_LandCover/ABoVE_LandCover.tif")
 plot(tst)
-
+tst1 <- ifel(is.na(tst), 1, NA)
+plot(tst1)
 tst2 <- rast("D:/quinn/GitHub/landscape_init_ak_can/landscape_01/ABoVE_Water/ABoVE_Water.tif")
 plot(tst2)

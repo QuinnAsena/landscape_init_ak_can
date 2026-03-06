@@ -1,101 +1,17 @@
 library(terra)
 library(sf)
 library(tidyr)
-library(lubridate)
 library(dplyr)
-library(purrr)
-library(DBI)
+library(lubridate)
 library(future.apply)
-library(RSQLite)
 
-# This script converts Winslow's "climate_processing_step2.Rmd"
-process_sqlite <- function(gcm, ssp, var, ak_landscape_dirs) {
-
-  out_dir <- file.path(ak_landscape_dirs, "databases")
-  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
-
-  all_vars <- lapply(var, \(v) {
-    # ak_var_files <- list.files(file.path(ak_processed_climate_dirs, gcm, ssp, v), recursive = TRUE, full.names = TRUE, pattern = "\\.txt$")
-    ak_var_files <- list.files(
-      file.path(ak_landscape_dirs, "climate", gcm, ssp, v),
-      recursive = TRUE,
-      full.names = TRUE,
-      pattern = "\\.txt$")
-    ak_climate_var_df <- do.call(rbind, lapply(ak_var_files, read.delim, sep = "\t", header = TRUE))
-    ak_climate_var_df$date <- as.Date(ak_climate_var_df$date)
-    ak_climate_var_df
-  }) |>
-    purrr::reduce(dplyr::left_join, by = join_by(climate.gridCell, date, gcm, ssp, landscape))
-
-  head(all_vars)
-  tail(all_vars)
-
-  all_vars <- all_vars |>
-    mutate(
-      vp = vp * 0.1,
-      tasmax = tasmax - 273.15,
-      tasmin  = tasmin - 273.15,
-      rsds = case_when(
-          rsds < 0 ~ 0, TRUE ~ rsds),
-      vp = case_when(
-          vp < 0 ~ 0, TRUE ~ vp),
-      es_min =
-        case_when(
-          tasmin < 0 ~ 0.61078 * exp((21.875 * tasmin) / (tasmin + 265.5)),
-           TRUE ~ 0.61078 * exp((17.269 * tasmin) / (tasmin + 237.3))),
-      es_max = 
-        case_when(
-          tasmax < 0 ~ 0.61078 * exp((21.875 * tasmax) / (tasmax + 265.5)),
-           TRUE ~ 0.61078 * exp((17.269 * tasmax) / (tasmax + 237.3))),
-      es = (es_min + es_max) / 2,
-      vpd_calc = es - vp,
-      vpd = 
-        case_when(
-          vpd_calc > 0 ~ vpd_calc,
-           TRUE ~ 0),
-      across(where(is.numeric), \(x) round(x, 2)), # Winslow's code only rounds rad and vpd
-      year = lubridate::year(date),
-      month = lubridate::month(date),
-      day = lubridate::day(date)
-    ) |>
-    tidyr::unite("model.climate.tableName", c(landscape, climate.gridCell), remove = TRUE) |>
-    rename(max_temp = tasmax,
-           min_temp = tasmin,
-           rad = rsds,
-           prec = pr) |>
-    select(model.climate.tableName, year, month, day, min_temp, max_temp, prec, rad, vpd)
-
-
-
-  db.conn <- dbConnect(RSQLite::SQLite(),
-                       dbname = file.path(out_dir, paste0(gcm, ssp, "V3.sqlite")))
-
-  split_data <- split(all_vars, all_vars$model.climate.tableName)
-
-  lapply(names(split_data), \(nm) {
-    dat <- split_data[[nm]]
-    dat <- dat |>
-      select(-model.climate.tableName)
-
-    dbWriteTable(
-      db.conn,
-      name = nm,
-      value = dat,
-      row.names = FALSE,
-      overwrite = TRUE
-    )
-  })
-
-  dbDisconnect(db.conn)
-}
-
-
-#--------------- Run the function ---------------#
-
-gcm <- "NorEsm2-MM"
-ssp <- "ssp126"
-var <- c("tasmax", "hurs", "pr", "rsds", "tasmin", "vp")
-
+# This script converts Winslow's "climate_processing_step1.Rmd"
+# Load one layer of the whole of Alaska as a template to crop landcapes
+ak_climate <- rast(
+  "//10.60.2.10/FF_Lab/project_data/downscaling/Alaska/Downscaled CMIP6 NorESM2-MM/ssp126/tasmax/CMIP6 NorESM2-MM-ssp126-tasmax-2015.nc",
+  lyrs = 4)
+# plot(ak_climate)
+# Load env.grid files (careful of crs here, they are in ESRI:102001)
 dirs <- normalizePath(list.dirs(full.names = TRUE))
 ak_landscape_dirs <- dirs[grepl(".*[\\\\/]landscape_[0-9]+$", dirs)]
 
@@ -105,36 +21,178 @@ landscape_id <- as.integer(
 )
 ord <- order(landscape_id)
 ak_landscape_dirs <- ak_landscape_dirs[ord]
+
+env_files <- list.files(path = ak_landscape_dirs, 
+                        pattern = "env.grid.tif$", full.names = TRUE, recursive = TRUE)
+
+
+landscape_names <- sub(".*(landscape_[0-9]+).*", "\\1", env_files)
+
+# Aggregate the env.grid to match 1000x1000 of climtae data
+env_grids_coarse <- lapply(env_files, \(ind) {
+  rast(ind) |> aggregate(fact = 10)
+})
+names(env_grids_coarse) <- landscape_names
+
+# Convert env.grid to points for extraction
+env_grids_sp <- Map(\(env_files, nm) {
+  out <- file.path(nm, "climate")
+  dir.create(out, recursive = TRUE)
+  r <- rast(env_files)
+  r <- as.points(r, values = TRUE)
+  # shape files have a 10 chr limit in field names. renamed from env.gridCell
+  names(r) <- "env.grid"
+  writeVector(r, file.path(out, "env_cells_extract.shp"),
+              overwrite = TRUE)
+  r
+}, env_files, landscape_names)
+names(env_grids_sp) <- landscape_names
+
+# reproject climate to env.grid (matches resolution and extent)
+ak_climate_proj <- Map(\(tmpl, nm) {
+  out <- file.path(nm, "climate")
+  dir.create(out, recursive = TRUE, showWarnings = FALSE)
+  r <- project(ak_climate, tmpl, method = "near")
+  values(r) <- seq_len(ncell(r))
+  # renamed "climate.gridCell" to climate.grid.
+  names(r)  <- "climate.grid"
+  writeRaster(r, file.path(out, "climate.grid.tif"),
+              overwrite = TRUE) # datatype = "INT4S"?
+  r
+}, env_grids_coarse, names(env_grids_coarse))
+
+
+# convert projected climate to points for later
+ak_climate_sp <- Map(\(idx, nm) {
+  out <- file.path(nm, "climate")
+  dir.create(out, recursive = TRUE, showWarnings = FALSE)
+  clim_vec <- as.points(idx, values = TRUE)
+  writeVector(clim_vec, file.path(out, "climate_cells_extract.shp"),
+              overwrite = TRUE)
+  clim_vec
+}, ak_climate_proj, names(ak_climate_proj))
+
+# Extract values from projected climate at env.grid points
+# env.grid RUs now align with climate gridcells
+rasValue <- Map(\(r, p, nm) {
+  out <- file.path(nm, "climate")
+  dir.create(out, recursive = TRUE, showWarnings = FALSE)
+  env_clim_link <- terra::extract(r, p, df = TRUE, bind = TRUE)
+  write.table(env_clim_link, file.path(out, "env.grid-climate.grid-link.txt"),
+              row.names = FALSE)
+  env_clim_link
+}, ak_climate_proj, env_grids_sp, names(ak_climate_proj))
+
+
+process_climate <- function(gcm, ssp, var, year, ak_climate_dirs) {
+  out_dir <- file.path(ak_climate_dirs, gcm, ssp, var)
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+  ak_clim_in <- file.path("//10.60.2.10/FF_Lab/project_data/downscaling/Alaska", paste0("Downscaled CMIP6 ", gcm), ssp, var, paste0("CMIP6 ", gcm, "-", ssp, "-", var, "-", year, ".nc"))
+
+  ak_climate_sp_files <- list.files(
+    ak_climate_dirs, full.names = TRUE, pattern = "\\climate_cells_extract.shp$"
+  )
+
+  ak_climate_tif_files <- list.files(
+    ak_climate_dirs, full.names = TRUE, pattern = "\\.tif$"
+  )
+
+  landscape_id <- sub(
+    ".*[\\\\/]landscape_([0-9]+)[\\\\/].*",
+    "landscape\\1",
+    ak_climate_sp_files
+  )
+
+  ak_climate_var <- rast(ak_clim_in)
+  ak_climate_sp <- vect(ak_climate_sp_files)
+  names(ak_climate_sp) <- "climate.grid"
+  ak_climate_proj <- rast(ak_climate_tif_files)
+
+  ak_climate_var_proj <- project(ak_climate_var, ak_climate_proj, method="bilinear")
+  rm(ak_climate_var); gc()
+
+  if (all(grepl("rsds", names(ak_climate_var_proj)))) {
+    ak_climate_var_proj <- (ak_climate_var_proj * 86400) / 1000000
+  }
+
+  if (all(grepl("vp", names(ak_climate_var_proj)))) {
+    vp_names <- paste0("vp_", seq_len(nlyr(ak_climate_var_proj)))
+    if (!identical(names(ak_climate_var_proj), vp_names)) {
+      names(ak_climate_var_proj) <- vp_names
+    }
+  }
+
+  ak_climate_var_df <- as.data.frame(terra::extract(ak_climate_var_proj, ak_climate_sp, bind = TRUE))
+
+  ak_climate_var_df <- ak_climate_var_df |>
+    tidyr::pivot_longer(
+      cols = -climate.grid,
+      names_to = "y_day",
+      values_to = "value") |>
+    dplyr::mutate(
+      y_day = as.numeric(sub(paste0(var, "_"), "", y_day)),
+      day_of_year = ifelse(lubridate::leap_year(year) & y_day >= 60, y_day + 1, y_day),
+      date = lubridate::make_date(year) + lubridate::days(day_of_year - 1),
+      value = round(value, 3),
+      gcm = gcm,
+      ssp = ssp,
+      landscape = landscape_id) |>
+    dplyr::select(climate.grid, value, date, gcm, ssp, landscape) |>
+    dplyr::rename(!!var := value)
+    # names(df)[names(df) == "value"] <- var # for base R rename. no tidy evaluation. 
+  write.table(ak_climate_var_df, file.path(out_dir, paste0(gcm, "-", ssp, "-", var, "-", year, ".txt")), row.names = FALSE, sep = "\t")
+}
+
+
+# --------- Parallel processing for multiple files --------
+gcm <- "NorEsm2-MM"
+# ssp <- "ssp126"
+ssp <- "historical"
+var <- c("tasmax", "hurs", "pr", "rsds", "tasmin", "vp")
+year <- 2015:2016
+
+dirs <- normalizePath(list.dirs(full.names = TRUE))
+ak_climate_dirs <- dirs[grepl(".*[\\\\/]landscape_[0-9]+[\\\\/]climate$", dirs)]
+ # make sure landscapes are ordered
+landscape_id <- as.integer(
+  sub(".*landscape_([0-9]+)[\\\\/]climate$", "\\1", ak_climate_dirs)
+)
+ord <- order(landscape_id)
+ak_climate_dirs <- ak_climate_dirs[ord]
 landscape_id    <- landscape_id[ord]
 
-ak_landscapes_df <- data.frame(
+ak_climate_df <- data.frame(
   landscape = landscape_id,
-  ak_landscape_dirs = ak_landscape_dirs
+  ak_climate_dirs = ak_climate_dirs
 )
 
 # stringsAsFactors = FALSE needed for "var" names
-param_grid <- base::merge(
+param_grid <- left_join(
   expand.grid(
     landscape = landscape_id,
     gcm  = gcm,
     ssp  = ssp,
+    var  = var,
+    year = year,
     stringsAsFactors = FALSE
   ),
-  ak_landscapes_df,
+  ak_climate_df,
   by = "landscape"
 )
 
+library(future.apply)
 
-plan(multisession, workers = 5)
+plan(multisession, workers = 6)
 
 res <- future_lapply(
   seq_len(nrow(param_grid)),
   function(i) {
-    process_sqlite(
+    process_climate(
       gcm  = param_grid$gcm[i],
       ssp  = param_grid$ssp[i],
-      var  = var,
-      ak_landscape_dirs = param_grid$ak_landscape_dirs[i]
+      var  = param_grid$var[i],
+      year = param_grid$year[i],
+      ak_climate_dirs = param_grid$ak_climate_dirs[i]
     )
   },
   future.seed = TRUE

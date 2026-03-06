@@ -130,3 +130,4 @@ ord <- order(landscape_ord)
 ak_landscape_dirs <- ak_landscape_dirs[ord]
 
 lapply(ak_landscape_dirs, process_species, above_lc_year = 31, water_decade_year = 3)
+lapply(ak_landscape_dirs, process_species, above_lc_year = 1, water_decade_year = )
