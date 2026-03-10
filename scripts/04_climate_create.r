@@ -7,17 +7,23 @@ library(purrr)
 library(DBI)
 library(future.apply)
 library(RSQLite)
+library(here)
+
+
+dirs <- list.dirs(here(), recursive = FALSE)
+landscape_dirs <- dirs[grepl("landscape_", basename(dirs))]
+landscape_names <- basename(landscape_dirs)
 
 # This script converts Winslow's "climate_processing_step2.Rmd"
 process_sqlite <- function(gcm, ssp, var, ak_landscape_dirs) {
 
-  out_dir <- file.path(ak_landscape_dirs, "databases")
+  out_dir <- file.path(here(), ak_landscape_dirs, "databases")
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
   all_vars <- lapply(var, \(v) {
     # ak_var_files <- list.files(file.path(ak_processed_climate_dirs, gcm, ssp, v), recursive = TRUE, full.names = TRUE, pattern = "\\.txt$")
     ak_var_files <- list.files(
-      file.path(ak_landscape_dirs, "climate", gcm, ssp, v),
+      file.path(here(), ak_landscape_dirs, "supporting_data", "climate", gcm, ssp, v),
       recursive = TRUE,
       full.names = TRUE,
       pattern = "\\.txt$")
@@ -25,7 +31,7 @@ process_sqlite <- function(gcm, ssp, var, ak_landscape_dirs) {
     ak_climate_var_df$date <- as.Date(ak_climate_var_df$date)
     ak_climate_var_df
   }) |>
-    purrr::reduce(dplyr::left_join, by = join_by(climate.gridCell, date, gcm, ssp, landscape))
+    purrr::reduce(dplyr::left_join, by = join_by(climate.grid, date, gcm, ssp, landscape))
 
   head(all_vars)
   tail(all_vars)
@@ -58,7 +64,7 @@ process_sqlite <- function(gcm, ssp, var, ak_landscape_dirs) {
       month = lubridate::month(date),
       day = lubridate::day(date)
     ) |>
-    tidyr::unite("model.climate.tableName", c(landscape, climate.gridCell), remove = TRUE) |>
+    tidyr::unite("model.climate.tableName", c(landscape, climate.grid), remove = TRUE) |>
     rename(max_temp = tasmax,
            min_temp = tasmin,
            rad = rsds,
@@ -91,6 +97,50 @@ process_sqlite <- function(gcm, ssp, var, ak_landscape_dirs) {
 
 
 #--------------- Run the function ---------------#
+
+
+gcm <- "NorEsm2-MM"
+ssp <- "ssp126"
+var <- c("tasmax", "hurs", "pr", "rsds", "tasmin", "vp")
+
+dirs <- list.dirs(here(), recursive = FALSE)
+landscape_dirs <- dirs[grepl("landscape_", basename(dirs))]
+landscape_names <- basename(landscape_dirs)
+landscape_out_dirs <- file.path(landscape_dirs, "supporting_data", "climate")
+
+param_grid <- expand.grid(
+  landscape_dir = landscape_names,
+  gcm  = gcm,
+  ssp  = ssp,
+  stringsAsFactors = FALSE
+)
+
+
+plan(multisession, workers = 21)
+
+res <- future_lapply(
+  seq_len(nrow(param_grid)),
+  function(i) {
+    process_sqlite(
+      gcm  = param_grid$gcm[i],
+      ssp  = param_grid$ssp[i],
+      var = var,
+      ak_landscape_dirs = param_grid$landscape_dir[i]
+    )
+  },
+  future.seed = TRUE
+)
+plan(sequential)
+
+
+
+
+
+
+
+
+
+
 
 gcm <- "NorEsm2-MM"
 ssp <- "ssp126"

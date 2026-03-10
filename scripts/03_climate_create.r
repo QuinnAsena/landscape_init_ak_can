@@ -31,50 +31,16 @@ env_grids_coarse <- lapply(env_files, \(ind) {
 })
 names(env_grids_coarse) <- landscape_names
 
-r0 <- (rast(env_files[1]))
+r0 <- rast(env_files[1])
 plot(r0)
-sum(is.na(values(r0)))
+ak_climate_proj <- project(ak_climate, r0)
+plot(ak_climate_proj)
+env_grids_coarse_poly <- as.polygons(env_grids_coarse[[1]], extend = TRUE)
+plot(env_grids_coarse_poly)
+
+ak_climate_proj_crop <- crop(ak_climate_proj, env_grids_coarse_poly, mask = TRUE)
+plot(ak_climate_proj_crop)
 plot(env_grids_coarse[[1]])
-sum(is.na(values(env_grids_coarse[[1]])))
-
-
-
-
-
-n <- 100
-m <- matrix(NA, n, n)
-center <- (n + 1) / 2
-radius <- n / 2
-id <- 1
-for (r in 1:n) {
-  w <- radius - abs(r - center)
-  if (w >= 0) {
-    left  <- ceiling(center - w)
-    right <- floor(center + w)
-    for (c in left:right) {
-      m[r, c] <- id
-      id <- id + 1
-    }
-  }
-}
-
-r <- rast(m)
-plot(r)
-rp <- as.points(r)
-plot(rp)
-
-r_agg <- aggregate(r, fact = 10)
-plot(r_agg)
-link <- terra::extract(r_agg, rp, df = TRUE, bind = TRUE)
-as.data.frame(link)
-
-
-
-
-
-
-
-
 
 
 # Convert env.grid to points for extraction
@@ -92,23 +58,35 @@ env_grids_sp <- Map(\(env_files, nm) {
 names(env_grids_sp) <- landscape_names
 
 
-length(which(is.na(values(env_grids_sp[[1]]))))
-length(which(!is.na(values(env_grids_sp[[1]]))))
-any(is.na(values(env_grids_sp[[1]])))
-length(env_grids_sp[[1]])
-
-tst <- rast(env_files[1])
-plot(tst)
-sum(is.na(values(tst)))
-length(values(tst))
-sum(!is.na(values(tst)))
-
-
-
 # reproject climate to env.grid (matches resolution and extent)
 ak_climate_proj <- Map(\(tmpl, nm) {
   out <- file.path(nm, "supporting_data", "climate")
   dir.create(out, recursive = TRUE, showWarnings = FALSE)
+
+
+  # tmpl <- rast(env_files[1])
+  # which(values(tmpl) == 1)
+  # plot(tmpl)
+  # plot(ifel(is.na(tmpl), 1, NA))
+
+  # r <- project(ak_climate, tmpl, method = "near")
+  # plot(r)
+  # sum(is.na(values(r)))
+  # r <- mask(r, tmpl)
+  # plot(r)
+
+  # r_agg <- aggregate(r, fact = 10)
+  # plot(r_agg)
+  # r_agg_msk <- mask(r_agg, tmpl)
+  # plot(r_agg_msk)
+
+  # non_na_idx <- which(!is.na(values(r)))
+  # values(r) <- NA
+  # values(r)[non_na_idx] <- seq_along(non_na_idx)
+  # units(r) <- NA
+  # plot(r)
+
+
   r <- project(ak_climate, tmpl, method = "near")
   plot(r)
   sum(is.na(values(r)))
@@ -248,7 +226,7 @@ param_grid <- expand.grid(
 )
 
 
-plan(multisession, workers = 6)
+plan(multisession, workers = 21)
 
 res <- future_lapply(
   seq_len(nrow(param_grid)),

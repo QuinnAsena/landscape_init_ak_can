@@ -5,29 +5,46 @@ library(here)
 
 # This is my script to pull DEM data from Arctic DEM
 # Load in env.grids as templates
-dirs <- normalizePath(list.dirs(full.names = TRUE))
-ak_landscape_dirs <- dirs[grepl(".*[\\\\/]landscape_[0-9]+$", dirs)]
+# dirs <- normalizePath(list.dirs(full.names = TRUE))
+# ak_landscape_dirs <- dirs[grepl(".*[\\\\/]landscape_[0-9]+$", dirs)]
 
-# make sure landscapes are ordered
-landscape_id <- as.integer(
-  sub(".*landscape_([0-9]+)$", "\\1", ak_landscape_dirs)
-)
-ord <- order(landscape_id)
-ak_landscape_dirs <- ak_landscape_dirs[ord]
+# # make sure landscapes are ordered
+# landscape_id <- as.integer(
+#   sub(".*landscape_([0-9]+)$", "\\1", ak_landscape_dirs)
+# )
+# ord <- order(landscape_id)
+# ak_landscape_dirs <- ak_landscape_dirs[ord]
 
-env_files <- list.files(path = ak_landscape_dirs, 
+# env_files <- list.files(path = ak_landscape_dirs, 
+#                         pattern = "env.grid.tif$", full.names = TRUE, recursive = TRUE)
+
+# landscape_names <- sub(".*(landscape_[0-9]+).*", "\\1", env_files)
+
+
+# ak_landcapes <- lapply(env_files, function(x) {
+#   rast(x)
+# })
+
+
+
+
+
+dirs <- list.dirs(here(), recursive = FALSE)
+landscape_dirs <- dirs[grepl("landscape_", basename(dirs))]
+landscape_names <- basename(landscape_dirs)
+
+env_files <- list.files(path = file.path(landscape_dirs, "gis"),
                         pattern = "env.grid.tif$", full.names = TRUE, recursive = TRUE)
-
-landscape_names <- sub(".*(landscape_[0-9]+).*", "\\1", env_files)
-
 
 ak_landcapes <- lapply(env_files, function(x) {
   rast(x)
 })
 
+
+
 download_dem <- function(landscape, landscape_name) {
 
-  outdir <- here(landscape_name, "gis", "dem", "arcticdem_10m")
+  outdir <- here(landscape_name, "supporting_data", "gis", "dem", "arcticdem_10m")
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
 
   stac_url <- "https://stac.pgc.umn.edu/api/v1/"
