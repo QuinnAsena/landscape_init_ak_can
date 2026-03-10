@@ -72,7 +72,7 @@ water_vrt <- Reduce(c, water_vrt_decade)
 
 # ---------- function to sort shit out ---------- #
 crop_lcp <- function(lcp_vrt, poly) {
-  lcp <- paste0("landscape_", poly$landscape_id)
+  lcp <- file.path(paste0("landscape_", poly$landscape_id), "supporting_data")
   nm <- sub("_\\d+$", "", names(lcp_vrt)[1])
   out <- file.path(here(), lcp, nm)
   dir.create(out, recursive = TRUE)

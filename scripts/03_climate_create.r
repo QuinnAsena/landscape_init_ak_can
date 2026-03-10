@@ -4,6 +4,11 @@ library(tidyr)
 library(dplyr)
 library(lubridate)
 library(future.apply)
+library(here)
+
+dirs <- list.dirs(here(), recursive = FALSE)
+landscape_dirs <- dirs[grepl("landscape_", basename(dirs))]
+landscape_names <- basename(landscape_dirs)
 
 # This script converts Winslow's "climate_processing_step1.Rmd"
 # Load one layer of the whole of Alaska as a template to crop landcapes
@@ -12,34 +17,72 @@ ak_climate <- rast(
   lyrs = 4)
 # plot(ak_climate)
 # Load env.grid files (careful of crs here, they are in ESRI:102001)
-dirs <- normalizePath(list.dirs(full.names = TRUE))
-ak_landscape_dirs <- dirs[grepl(".*[\\\\/]landscape_[0-9]+$", dirs)]
 
-# make sure landscapes are ordered
-landscape_id <- as.integer(
-  sub(".*landscape_([0-9]+)$", "\\1", ak_landscape_dirs)
-)
-ord <- order(landscape_id)
-ak_landscape_dirs <- ak_landscape_dirs[ord]
-
-env_files <- list.files(path = ak_landscape_dirs, 
+env_files <- list.files(path = file.path(landscape_dirs, "gis"),
                         pattern = "env.grid.tif$", full.names = TRUE, recursive = TRUE)
 
 
-landscape_names <- sub(".*(landscape_[0-9]+).*", "\\1", env_files)
 
 # Aggregate the env.grid to match 1000x1000 of climtae data
 env_grids_coarse <- lapply(env_files, \(ind) {
-  rast(ind) |> aggregate(fact = 10)
+  r <- rast(ind)
+  r_agg <- aggregate(r, fact = 10)
+
 })
 names(env_grids_coarse) <- landscape_names
 
+r0 <- (rast(env_files[1]))
+plot(r0)
+sum(is.na(values(r0)))
+plot(env_grids_coarse[[1]])
+sum(is.na(values(env_grids_coarse[[1]])))
+
+
+
+
+
+n <- 100
+m <- matrix(NA, n, n)
+center <- (n + 1) / 2
+radius <- n / 2
+id <- 1
+for (r in 1:n) {
+  w <- radius - abs(r - center)
+  if (w >= 0) {
+    left  <- ceiling(center - w)
+    right <- floor(center + w)
+    for (c in left:right) {
+      m[r, c] <- id
+      id <- id + 1
+    }
+  }
+}
+
+r <- rast(m)
+plot(r)
+rp <- as.points(r)
+plot(rp)
+
+r_agg <- aggregate(r, fact = 10)
+plot(r_agg)
+link <- terra::extract(r_agg, rp, df = TRUE, bind = TRUE)
+as.data.frame(link)
+
+
+
+
+
+
+
+
+
+
 # Convert env.grid to points for extraction
 env_grids_sp <- Map(\(env_files, nm) {
-  out <- file.path(nm, "climate")
+  out <- file.path(nm, "supporting_data", "climate")
   dir.create(out, recursive = TRUE)
   r <- rast(env_files)
-  r <- as.points(r, values = TRUE)
+  r <- as.points(r, values = TRUE, na.rm = TRUE)
   # shape files have a 10 chr limit in field names. renamed from env.gridCell
   names(r) <- "env.grid"
   writeVector(r, file.path(out, "env_cells_extract.shp"),
@@ -48,12 +91,35 @@ env_grids_sp <- Map(\(env_files, nm) {
 }, env_files, landscape_names)
 names(env_grids_sp) <- landscape_names
 
+
+length(which(is.na(values(env_grids_sp[[1]]))))
+length(which(!is.na(values(env_grids_sp[[1]]))))
+any(is.na(values(env_grids_sp[[1]])))
+length(env_grids_sp[[1]])
+
+tst <- rast(env_files[1])
+plot(tst)
+sum(is.na(values(tst)))
+length(values(tst))
+sum(!is.na(values(tst)))
+
+
+
 # reproject climate to env.grid (matches resolution and extent)
 ak_climate_proj <- Map(\(tmpl, nm) {
-  out <- file.path(nm, "climate")
+  out <- file.path(nm, "supporting_data", "climate")
   dir.create(out, recursive = TRUE, showWarnings = FALSE)
   r <- project(ak_climate, tmpl, method = "near")
-  values(r) <- seq_len(ncell(r))
+  plot(r)
+  sum(is.na(values(r)))
+
+  non_na_idx <- which(!is.na(values(tmpl)))
+  values(r) <- NA
+  values(r)[non_na_idx] <- seq_along(non_na_idx)
+  units(r) <- NA
+  plot(r)
+
+  # values(r) <- seq_len(ncell(r))
   # renamed "climate.gridCell" to climate.grid.
   names(r)  <- "climate.grid"
   writeRaster(r, file.path(out, "climate.grid.tif"),
@@ -61,12 +127,18 @@ ak_climate_proj <- Map(\(tmpl, nm) {
   r
 }, env_grids_coarse, names(env_grids_coarse))
 
+plot(ak_climate_proj[[1]])
+sum(is.na(values(ak_climate_proj[[1]])))
+
+
+
+
 
 # convert projected climate to points for later
 ak_climate_sp <- Map(\(idx, nm) {
-  out <- file.path(nm, "climate")
+  out <- file.path(nm, "supporting_data", "climate")
   dir.create(out, recursive = TRUE, showWarnings = FALSE)
-  clim_vec <- as.points(idx, values = TRUE)
+  clim_vec <- as.points(idx, values = TRUE, na.rm = TRUE)
   writeVector(clim_vec, file.path(out, "climate_cells_extract.shp"),
               overwrite = TRUE)
   clim_vec
@@ -75,7 +147,7 @@ ak_climate_sp <- Map(\(idx, nm) {
 # Extract values from projected climate at env.grid points
 # env.grid RUs now align with climate gridcells
 rasValue <- Map(\(r, p, nm) {
-  out <- file.path(nm, "climate")
+  out <- file.path(nm, "supporting_data", "climate")
   dir.create(out, recursive = TRUE, showWarnings = FALSE)
   env_clim_link <- terra::extract(r, p, df = TRUE, bind = TRUE)
   write.table(env_clim_link, file.path(out, "env.grid-climate.grid-link.txt"),
@@ -84,23 +156,33 @@ rasValue <- Map(\(r, p, nm) {
 }, ak_climate_proj, env_grids_sp, names(ak_climate_proj))
 
 
-process_climate <- function(gcm, ssp, var, year, ak_climate_dirs) {
-  out_dir <- file.path(ak_climate_dirs, gcm, ssp, var)
+plot(ifel(is.na(ak_climate_proj[[1]]), 1, NA))
+points(env_grids_sp[[1]][is.na(rasValue[[1]]$climate.grid)])
+
+
+table(is.na(values(ak_climate_proj[[1]])))
+table(is.na(rasValue[[1]]$climate.grid))
+table(rasValue[[1]]$climate.grid)
+compareGeom(env_grids_coarse[[1]], ak_climate_proj[[1]], stopOnError = FALSE)
+
+x <- as.data.frame(rasValue[[1]])
+x[which(x$env.grid == 1), ]
+x[which(x$climate.grid == 1), ]
+
+
+process_climate <- function(gcm, ssp, var, year, landscape_dir) {
+
+  in_dir <- file.path(landscape_dir, "supporting_data", "climate")
+  out_dir <- file.path(in_dir, gcm, ssp, var)
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   ak_clim_in <- file.path("//10.60.2.10/FF_Lab/project_data/downscaling/Alaska", paste0("Downscaled CMIP6 ", gcm), ssp, var, paste0("CMIP6 ", gcm, "-", ssp, "-", var, "-", year, ".nc"))
 
   ak_climate_sp_files <- list.files(
-    ak_climate_dirs, full.names = TRUE, pattern = "\\climate_cells_extract.shp$"
+    in_dir, full.names = TRUE, pattern = "\\climate_cells_extract.shp$"
   )
 
   ak_climate_tif_files <- list.files(
-    ak_climate_dirs, full.names = TRUE, pattern = "\\.tif$"
-  )
-
-  landscape_id <- sub(
-    ".*[\\\\/]landscape_([0-9]+)[\\\\/].*",
-    "landscape\\1",
-    ak_climate_sp_files
+    in_dir, full.names = TRUE, pattern = "\\.tif$"
   )
 
   ak_climate_var <- rast(ak_clim_in)
@@ -136,7 +218,7 @@ process_climate <- function(gcm, ssp, var, year, ak_climate_dirs) {
       value = round(value, 3),
       gcm = gcm,
       ssp = ssp,
-      landscape = landscape_id) |>
+      landscape = landscape_dir) |>
     dplyr::select(climate.grid, value, date, gcm, ssp, landscape) |>
     dplyr::rename(!!var := value)
     # names(df)[names(df) == "value"] <- var # for base R rename. no tidy evaluation. 
@@ -150,6 +232,51 @@ gcm <- "NorEsm2-MM"
 ssp <- "historical"
 var <- c("tasmax", "hurs", "pr", "rsds", "tasmin", "vp")
 year <- 2015:2016
+
+dirs <- list.dirs(here(), recursive = FALSE)
+landscape_dirs <- dirs[grepl("landscape_", basename(dirs))]
+landscape_names <- basename(landscape_dirs)
+landscape_out_dirs <- file.path(landscape_dirs, "supporting_data", "climate")
+
+param_grid <- expand.grid(
+  landscape_dir = landscape_names,
+  gcm  = gcm,
+  ssp  = ssp,
+  var  = var,
+  year = year,
+  stringsAsFactors = FALSE
+)
+
+
+plan(multisession, workers = 6)
+
+res <- future_lapply(
+  seq_len(nrow(param_grid)),
+  function(i) {
+    process_climate(
+      gcm  = param_grid$gcm[i],
+      ssp  = param_grid$ssp[i],
+      var  = param_grid$var[i],
+      year = param_grid$year[i],
+      landscape_dir = param_grid$landscape_dir[i]
+    )
+  },
+  future.seed = TRUE
+)
+plan(sequential)
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 dirs <- normalizePath(list.dirs(full.names = TRUE))
 ak_climate_dirs <- dirs[grepl(".*[\\\\/]landscape_[0-9]+[\\\\/]climate$", dirs)]
