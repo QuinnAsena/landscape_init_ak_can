@@ -1,23 +1,24 @@
 library(terra)
 library(purrr)
 library(dplyr)
+library(here)
 # This script converts Winslow's "forest_products_and_species" script and
 # Uses Arielle's approach of masking with a seperate water product.
 # Confirmed with Winslow that the water prodect is not identical to 
 # the water layer in the ABoVE data, and should be more accurate.
-dirs <- normalizePath(list.dirs(full.names = TRUE))
-ak_landscape_dirs <- dirs[grepl(".*[\\\\/]landscape_[0-9]+$", dirs)]
 
-landscape_ord <- as.integer(
-  sub(".*landscape_([0-9]+).*$", "\\1", ak_landscape_dirs)
-)
-ord <- order(landscape_ord)
-ak_landscape_dirs <- ak_landscape_dirs[ord]
+dirs <- list.dirs(here(), recursive = FALSE)
+landscape_dirs <- dirs[grepl("landscape_", basename(dirs))]
+
+# ABoVE landcover is 1984-2014, above_lc_year layer = select year
+# ABoVE surface water is decadal 1991-2011, water_decade_year layer = select decade
 
 
-process_species <- function(ak_landscape_dirs, above_lc_year = 1, water_decade_year = 3) {
+process_species <- function(ak_landscape_dirs, above_lc_year = 1, water_decade_year = 1) {
 
-  out_dir <- file.path(ak_landscape_dirs, "gis", "init")
+  cat("\n\nprocessing: ", basename(ak_landscape_dirs), "\n\n")
+
+  out_dir <- file.path(ak_landscape_dirs, "supporting_data", "gis", "init")
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
   layers <- c(
@@ -28,7 +29,7 @@ process_species <- function(ak_landscape_dirs, above_lc_year = 1, water_decade_y
     permafrost = "permafrost_lcp10.tif"
   )
 
-  rasters <- lapply(file.path(ak_landscape_dirs, "gis", layers), \(ind) {
+  rasters <- lapply(file.path(ak_landscape_dirs, "supporting_data", "gis", layers), \(ind) {
     if (basename(ind) == "env.grid_disagg_10.tif") {
       rast(ind, lyrs = above_lc_year)
     } else {
@@ -40,7 +41,7 @@ process_species <- function(ak_landscape_dirs, above_lc_year = 1, water_decade_y
   # Arielle uses the surface water dataset instead of the ABoVE dataset to
   # define water areas. Both look similar when plot but the surface water dataset
   # they found was more accurate and would not overlap forested area with water
-  water_files <- list.files(file.path(ak_landscape_dirs, "ABoVE_Water"), full.names = TRUE)
+  water_files <- list.files(file.path(ak_landscape_dirs, "supporting_data", "ABoVE_Water"), full.names = TRUE)
   water_rast <- rast(water_files, lyrs = water_decade_year)
 #   plot(rasters$dem)
 #   env_grid_water <- ifel(rasters$env_grid == 15, 1, 0)
@@ -50,7 +51,9 @@ process_species <- function(ak_landscape_dirs, above_lc_year = 1, water_decade_y
   water_rast <- ifel(water_rast == 1, 1, NA)
   dist <- distance(water_rast)
   water_mask <- ifel(dist <= 50, NA, 1)
+  plot(rasters[[1]])
   rasters <- lapply(rasters, mask, mask = water_mask)
+  plot(rasters[[1]])
 
   raster_df <- lapply(rasters, as.data.frame, xy = TRUE) |>
     purrr::reduce(dplyr::left_join, by = c("x", "y"))
@@ -120,14 +123,8 @@ process_species <- function(ak_landscape_dirs, above_lc_year = 1, water_decade_y
 
 #--------------- Run the function ---------------#
 
-dirs <- normalizePath(list.dirs(full.names = TRUE))
-ak_landscape_dirs <- dirs[grepl(".*[\\\\/]landscape_[0-9]+$", dirs)]
+dirs <- list.dirs(here(), recursive = FALSE)
+landscape_dirs <- dirs[grepl("landscape_", basename(dirs))]
 
-landscape_ord <- as.integer(
-  sub(".*landscape_([0-9]+).*$", "\\1", ak_landscape_dirs)
-)
-ord <- order(landscape_ord)
-ak_landscape_dirs <- ak_landscape_dirs[ord]
-
-lapply(ak_landscape_dirs, process_species, above_lc_year = 31, water_decade_year = 3)
-lapply(ak_landscape_dirs, process_species, above_lc_year = 1, water_decade_year = )
+lapply(landscape_dirs, process_species, above_lc_year = 1, water_decade_year = 1)
+lapply(landscape_dirs, process_species, above_lc_year = 31, water_decade_year = 3)

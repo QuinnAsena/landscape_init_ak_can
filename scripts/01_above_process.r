@@ -9,7 +9,7 @@ above_lc_files <- list.files(
 above_lc_files <- above_lc_files[!grepl(pattern = "Simplified", above_lc_files)]
 
 # Above surface water files have a tif per tile per decade so we deal with that later
-#https://www.earthdata.nasa.gov/data/catalog/ornl-cloud-decadal-water-maps-1324-1.1
+# https://www.earthdata.nasa.gov/data/catalog/ornl-cloud-decadal-water-maps-1324-1.1
 above_water_files <- list.files(
   "//10.60.2.10/FF_Lab/project_data/na_boreal/data_sets/Decadal_Water_Maps_1324/data",
   pattern = "\\.tif$", full.names = TRUE)

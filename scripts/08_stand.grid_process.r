@@ -3,11 +3,13 @@ library(tidyr)
 library(purrr)
 library(fitdistrplus)
 library(terra)
+library(here)
 
 # This is a re-write of Winslow's script "generating stands for tree init.Rmd"
-johnstone <- read.table("C:/Users/asenaq/Documents/GitHub/landscape_init_ak_can/data/empirical/Alaska-init-stands-johnstone.txt", header = TRUE, sep= ",")
-walker <- read.table("C:/Users/asenaq/Documents/GitHub/landscape_init_ak_can/data/empirical/Alaska-init-stands-walker.txt", header = TRUE, sep= "\t")
-heights <- read.table("C:/Users/asenaq/Documents/GitHub/landscape_init_ak_can/data/empirical/Johnstone_tree_heights.txt", header = TRUE, sep = "\t")
+in_dir <- here("data", "empirical")
+johnstone <- read.table(file.path(in_dir, "Alaska-init-stands-johnstone.txt"), header = TRUE, sep= ",")
+walker <- read.table(file.path(in_dir, "Alaska-init-stands-walker.txt"), header = TRUE, sep= "\t")
+heights <- read.table(file.path(in_dir, "Johnstone_tree_heights.txt"), header = TRUE, sep = "\t")
 
 # Species keys in the data
 # sp = key = num.stands = common name
@@ -37,19 +39,19 @@ johnstone_walker <- bind_rows(johnstone, walker) |>
 rownames(johnstone_walker) <- NULL
 
 # Create a classification based on relative proportions of sp
-johnstone_walker_classified <- johnstone_walker |>
-  mutate(
-    forest_type = case_when(
-      pima.prop >= 0.75 ~ "pima",
-      potr.prop >= 0.75 ~ "potr",
-      bene.prop >= 0.50 ~ "bene",
-      pima.prop >= 0.25 & pima.prop < 0.75 ~ "mixed",
-    #   pima.prop >= 0.25 & pima.prop < 0.75 &
-    #     (potr.prop + bene.prop) >= 0.25 &
-    #     (potr.prop + bene.prop) <= 0.75 ~ "mixed",
-      TRUE ~ NA_character_
-    )
-  )
+# johnstone_walker_classified <- johnstone_walker |>
+#   mutate(
+#     forest_type = case_when(
+#       pima.prop >= 0.75 ~ "pima",
+#       potr.prop >= 0.75 ~ "potr",
+#       bene.prop >= 0.50 ~ "bene",
+#       pima.prop >= 0.25 & pima.prop < 0.75 ~ "mixed",
+#     #   pima.prop >= 0.25 & pima.prop < 0.75 &
+#     #     (potr.prop + bene.prop) >= 0.25 &
+#     #     (potr.prop + bene.prop) <= 0.75 ~ "mixed",
+#       TRUE ~ NA_character_
+#     )
+#   )
 
 # How about: all else mixed?
 johnstone_walker_classified <- johnstone_walker |>
@@ -307,20 +309,27 @@ sapinit_pigl <- sapinit |>
 # Hats off to Winslow, that was real smart but fucking confusing when working through the code.
 sapinit_bind <- bind_rows(sapinit, sapinit_pigl) |>
   dplyr::select(stand_id, species, count, height_from, height_to, age, forest_type) |>
-  mutate(species = as.factor(species),
-         height_from = ifelse(height_from > 4, 3.8, height_from),
-         height_to = ifelse(height_to > 4, 4, height_to),
-         species = 
-          case_when(
-            species == "aspen" ~ "Potr",
-            species == "birch" ~ "Bene",
-            species == "white_spruce" ~ "Pigl",
-            species == "spruce" ~ "Pima",
-            species == "mixed.spruce" ~ "Pigl",
-            species == "mixed.aspen" ~ "Potr",
-            species == "mixed.birch" ~ "Bene",
-        )) |>
+  mutate(
+    species = as.factor(species),
+    height_from = ifelse(height_from > 4, 3.8, height_from),
+    height_to = ifelse(height_to > 4, 4, height_to),
+    species = 
+      case_when(
+        species == "aspen" ~ "Potr",
+        species == "birch" ~ "Bene",
+        species == "white_spruce" ~ "Pigl",
+        species == "spruce" ~ "Pima",
+        species == "mixed.spruce" ~ "Pigl",
+        species == "mixed.aspen" ~ "Potr",
+        species == "mixed.birch" ~ "Bene"
+      )
+  ) |>
   arrange(stand_id)
+
+write.table(
+  sapinit_bind,
+  file.path(in_dir, "sapinit_bind.txt"),
+  row.names = FALSE, col.names = TRUE, sep = ",")
 
 unique(sapinit_bind$forest_type)
 # Because of the additional stands in "mixed" we have a stand_id range
@@ -333,12 +342,11 @@ sapinit_final <- sapinit_bind |>
 
 write.table(
   sapinit_final,
-  "C:/Users/asenaq/Documents/GitHub/landscape_init_ak_can/data/empirical/landscape_model_init.txt",
+  file.path(in_dir, "landscape_model_init.txt"),
   row.names = FALSE, col.names = TRUE, sep = ",")
 
-#---------- Create stand grid rasters for each landscape ----------#
 
-# Now, those stand_ids need to be associated with forest class from step 6
+# Now, those stand_ids need to be associated with forest class from step 7
 # we are going to have slightly different orders to the original code
 
 # ORIGINAL CODE. NOTE forest class IS UNORDERED
@@ -356,7 +364,7 @@ write.table(
 # Pima = 87:152 =  forest class type 1
 # Potr = 153:177 = forest class type 3
 
-# To be safe, lets create dictionary matching indeces to forest class codes made in step 6
+# To be safe, lets create dictionary matching indeces to forest class codes made in step 7
 sapinit_dict <- sapinit_bind |>
   group_by(forest_type) |>
   summarise(
@@ -364,72 +372,17 @@ sapinit_dict <- sapinit_bind |>
     max_stand_id = max(stand_id),
     n = n()
   ) |>
-  mutate(forest_class = 
-    case_when(
-      forest_type == "bene" ~ 4,
-      forest_type == "mixed" ~ 5,
-      forest_type == "pigl" ~ 2,
-      forest_type == "pima" ~ 1,
-      forest_type == "potr" ~ 3
+  mutate(
+    forest_class = 
+      case_when(
+        forest_type == "bene" ~ 4,
+        forest_type == "mixed" ~ 5,
+        forest_type == "pigl" ~ 2,
+        forest_type == "pima" ~ 1,
+        forest_type == "potr" ~ 3
     ))
 
-
-# Read in the species init generated in step 6 where the Above data were
-# converted to forest_types of the modelled species.
-dirs <- normalizePath(list.dirs(full.names = TRUE))
-ak_landscape_dirs <- dirs[grepl(".*[\\\\/]landscape_[0-9]+$", dirs)]
-
-landscape_ord <- as.integer(
-  sub(".*landscape_([0-9]+).*$", "\\1", ak_landscape_dirs)
-)
-ord <- order(landscape_ord)
-ak_landscape_dirs <- ak_landscape_dirs[ord]
-
-
-# Loop over the landscapes to create their stand_grid files
-set.seed(1984)
-lapply(ak_landscape_dirs, \(dir) {
-  
-  forest_type_rast <- terra::rast(
-    file.path(dir, "gis", "init", "forest_species_init.tif")
-  )
-  
-  # Class 6 becomes "potential forest" using a value not in the stand ranges
-  forest_type_rast <- terra::ifel(
-    forest_type_rast == 6, max(sapinit_dict$max_stand_id) + 1,
-    forest_type_rast
-  )
-
-  # For each forest type, assign random stand IDs
-  vals <- terra::values(forest_type_rast)
-  # Now use the dictionary matching id to forest class to scatter the landscape
-  # with random stands from the correct class
-  for (i in seq_len(nrow(sapinit_dict))) {
-    idx <- which(vals == sapinit_dict$forest_class[i])
-      vals[idx] <- sample(
-        sapinit_dict$min_stand_id[i]:sapinit_dict$max_stand_id[i],
-        size = length(idx), replace = TRUE)
-  }
-  terra::values(forest_type_rast) <- vals
-
-  # NA becomes no-data -9999. iLand documentation says -1 for this but -9999 works I guess
-  forest_type_rast <- terra::ifel(
-    is.na(forest_type_rast), -9999, forest_type_rast)
-  
-  output_dir <- file.path(dir, "gis")
-  dir.create(output_dir)
-  
-  terra::writeRaster(
-    forest_type_rast,
-    file.path(output_dir, "stand_grid.tif"),
-    overwrite = TRUE
-  )
-  
-  stand_matrix <- terra::as.matrix(forest_type_rast, wide = TRUE)
-  write.table(
-    stand_matrix,
-    file.path(output_dir, "stand_grid.txt"),
-    col.names = FALSE,
-    row.names = FALSE
-  )  
-})
+write.table(
+  sapinit_dict,
+  file.path(in_dir, "sapinit_dict.txt"),
+  row.names = FALSE, col.names = TRUE, sep = ",")

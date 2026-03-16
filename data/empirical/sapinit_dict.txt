@@ -1,0 +1,6 @@
+"forest_type","min_stand_id","max_stand_id","n","forest_class"
+"bene",1,16,320,4
+"mixed",17,86,3840,5
+"pigl",264,329,1320,2
+"pima",87,152,1320,1
+"potr",153,177,500,3

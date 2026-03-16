@@ -1,59 +1,38 @@
 library(terra)
 library(dplyr)
 library(tidyr)
+library(here)
 # This script converts Winslow's "generating envieonmtnt file.Rmd"
-# Read all the outputs from step 02 and 06
-dirs <- normalizePath(list.dirs(full.names = TRUE))
-ak_landscape_dirs <- dirs[grepl(".*[\\\\/]landscape_[0-9]+$", dirs)]
+# Read all the outputs from step 02 and 03
 
-landscape_ord <- as.integer(
-  sub(".*landscape_([0-9]+).*$", "\\1", ak_landscape_dirs)
-)
-ord <- order(landscape_ord)
-ak_landscape_dirs <- ak_landscape_dirs[ord]
+build_env_file <- function(landscape_dir, soil_rast) {
 
-env_files <- list.files(
-  path = ak_landscape_dirs, 
-  pattern = "env.grid.tif$", full.names = TRUE, recursive = TRUE)
+  message("Processing: ", basename(landscape_dir))
 
-env_sp_files <- list.files(
-  path = ak_landscape_dirs, 
-  pattern = "env_cells_extract.shp$", full.names = TRUE, recursive = TRUE)
+  env_files <- list.files(
+    path = landscape_dir,
+    pattern = "env.grid.tif$", full.names = TRUE, recursive = TRUE)
 
-climate_link_files <- list.files(
-  path = ak_landscape_dirs, 
-  pattern = "env.grid-climate.grid-link.txt$", full.names = TRUE, recursive = TRUE)
+  env_sp_files <- list.files(
+    path = landscape_dir,
+    pattern = "env_cells_extract.shp$", full.names = TRUE, recursive = TRUE)
 
-sp_init_files <- list.files(
-  path = ak_landscape_dirs, 
-  pattern = "forest_species_init.tif$", full.names = TRUE, recursive = TRUE)
+  climate_link_files <- list.files(
+    path = landscape_dir,
+    pattern = "env.grid-climate.grid-link.txt$", full.names = TRUE, recursive = TRUE)
 
-# Read all the soils data (all ak). This has already been processed at some point
-soil_files <- list.files("//10.60.2.10/FF_Lab/project_data/na_boreal/data_sets/soils/ak", full.names = TRUE)
-soil_names <- sub("_ak\\.tif$", "", basename(soil_files))
-soil_rast <- lapply(soil_files, terra::rast)
-names(soil_rast) <- soil_names
+  sp_init_files <- list.files(
+    path = landscape_dir,
+    pattern = "forest_species_init_lc_yr1.tif$", full.names = TRUE, recursive = TRUE)
 
-soil_rast <- Map(\(r, nm) {
-  nnm <- paste0(nm, "_mean")
-  names(r) <- nnm
-  r
-}, soil_rast, soil_names)
+  landscape_names <- basename(landscape_dir)
 
+  env.grid <- rast(env_files)
+  env.grid.sp <- vect(env_sp_files)
+  sp_init <- rast(sp_init_files)
+  climate.link <- read.table(climate_link_files, header = TRUE) 
 
-build_env_file <- function(i) {
-
-  message("Processing: ", ak_landscape_dirs[i])
-  landscape_names <- sub(".*(landscape_[0-9]+).*", "\\1", ak_landscape_dirs)[i]
-
-  env.grid <- rast(env_files[i])
-  env.grid.sp <- vect(env_sp_files[i])
-  sp_init <- rast(sp_init_files[i])
-  climate.link <- read.table(climate_link_files[i], header = TRUE) 
-  climate.link <- climate.link |>
-    rename(env.grid = env.grid)
-
-  out_dir <- file.path(ak_landscape_dirs[i], "gis")
+  out_dir <- file.path(landscape_dir, "gis")
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
   # combine the climate link to the env.grid
@@ -80,8 +59,6 @@ build_env_file <- function(i) {
 
   colSums(is.na(total))
 
-
-  set.seed(1984 + i)
   total <- total |>
     mutate(
       across(ends_with("mean"), ~ replace_na(.x, 0)),
@@ -154,4 +131,22 @@ build_env_file <- function(i) {
   write.table(env.file, file.path(out_dir, "env.file.txt"), row.names = FALSE, sep = "\t")
 }
 
-lapply(seq_along(ak_landscape_dirs), build_env_file)
+
+dirs <- list.dirs(here(), recursive = FALSE)
+landscape_dirs <- dirs[grepl("landscape_", basename(dirs))]
+
+# Read all the soils data (all ak). This has already been processed at some point
+soil_files <- list.files("//10.60.2.10/FF_Lab/project_data/na_boreal/data_sets/soils/ak", full.names = TRUE)
+soil_names <- sub("_ak\\.tif$", "", basename(soil_files))
+soil_rast <- lapply(soil_files, terra::rast)
+names(soil_rast) <- soil_names
+
+soil_rast <- Map(\(r, nm) {
+  nnm <- paste0(nm, "_mean")
+  names(r) <- nnm
+  r
+}, soil_rast, soil_names)
+
+
+set.seed(1984)
+lapply(landscape_dirs, build_env_file, soil_rast = soil_rast)
