@@ -10,6 +10,14 @@ dirs <- list.dirs(here(), recursive = FALSE)
 landscape_dirs <- dirs[grepl("landscape_", basename(dirs))]
 landscape_names <- basename(landscape_dirs)
 
+above_study_domain_file <- list.files(
+  "//10.60.2.10/FF_Lab/project_data/na_boreal/data_sets/ABoVE_reference_grid_v2_1527/data",
+  pattern = "\\.tif$", full.names = TRUE)
+
+above_study_domain <- rast(above_study_domain_file)
+plot(above_study_domain)
+crs(above_study_domain)
+
 # This script converts Winslow's "climate_processing_step1.Rmd"
 # Load one layer of the whole of Alaska as a template to crop landcapes
 ak_climate <- rast(
@@ -17,6 +25,11 @@ ak_climate <- rast(
   lyrs = 4)
 # plot(ak_climate)
 # Load env.grid files (careful of crs here, they are in ESRI:102001)
+
+ak_climate_to_above <- project(ak_climate, crs(above_study_domain))
+writeRaster(ak_climate_to_above, file.path(here("data"), "ak_climate_to_above.tif"),
+            overwrite = TRUE)
+
 
 env_files <- list.files(path = file.path(landscape_dirs, "gis"),
                         pattern = "env.grid.tif$", full.names = TRUE, recursive = TRUE)
@@ -27,20 +40,9 @@ env_files <- list.files(path = file.path(landscape_dirs, "gis"),
 env_grids_coarse <- lapply(env_files, \(ind) {
   r <- rast(ind)
   r_agg <- aggregate(r, fact = 10)
-
 })
 names(env_grids_coarse) <- landscape_names
 
-r0 <- rast(env_files[1])
-plot(r0)
-ak_climate_proj <- project(ak_climate, r0)
-plot(ak_climate_proj)
-env_grids_coarse_poly <- as.polygons(env_grids_coarse[[1]], extend = TRUE)
-plot(env_grids_coarse_poly)
-
-ak_climate_proj_crop <- crop(ak_climate_proj, env_grids_coarse_poly, mask = TRUE)
-plot(ak_climate_proj_crop)
-plot(env_grids_coarse[[1]])
 
 
 # Convert env.grid to points for extraction
@@ -69,7 +71,7 @@ ak_climate_proj <- Map(\(tmpl, nm) {
   # plot(tmpl)
   # plot(ifel(is.na(tmpl), 1, NA))
 
-  # r <- project(ak_climate, tmpl, method = "near")
+  # r <- project(ak_climate, crs(tmpl))
   # plot(r)
   # sum(is.na(values(r)))
   # r <- mask(r, tmpl)
@@ -87,7 +89,7 @@ ak_climate_proj <- Map(\(tmpl, nm) {
   # plot(r)
 
 
-  r <- project(ak_climate, tmpl, method = "near")
+  r <- project(ak_climate_to_above, tmpl, method = "near")
   plot(r)
   sum(is.na(values(r)))
 

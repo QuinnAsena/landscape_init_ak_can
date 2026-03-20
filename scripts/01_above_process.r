@@ -1,5 +1,24 @@
 library(terra)
 library(here)
+
+r <- terra::rast("Z:/project_data/downscaling/Landscapes/Downscaled NorESM2-MM/ssp126/tasmax/NorESM2-MM-ssp126-tasmax-1950.nc", lyrs = 1)
+writeRaster(r, file.path(here("data"), paste0("NorESM2-MM-ssp126-tasmax-1950.tif")), overwrite = TRUE, datatype = "INT4S")
+
+
+
+# ---------- Read data ---------- #
+# ABoVE study domain
+# ABoVE landcover
+# ABoVE surface water
+
+above_study_domain_file <- list.files(
+  "//10.60.2.10/FF_Lab/project_data/na_boreal/data_sets/ABoVE_reference_grid_v2_1527/data",
+  pattern = "\\.tif$", full.names = TRUE)
+
+above_study_domain <- rast(above_study_domain_file)
+plot(above_study_domain)
+crs(above_study_domain)
+
 # Above landcover has 1 tif per tile with 31 lyrs (1 per yr)
 # https://www.earthdata.nasa.gov/data/catalog/ornl-cloud-annual-landcover-above-1691-1
 above_lc_files <- list.files(
@@ -19,6 +38,18 @@ above_water_files <- above_water_files[!grepl(pattern = "QA", above_water_files)
 # Load up Lora's selected landscapes
 landscapes_poly <- vect("//10.60.2.10/FF_Lab/project_data/na_boreal/Landscape building/Landscape selection/Selected plots/final_plots.shp")
 
+# ---------- check crs ---------- #
+
+r_lc <- rast(above_lc_files[1])
+r_sw <- rast(above_water_files[1])
+same.crs(r_lc, r_sw)
+same.crs(r_lc, landscapes_poly)
+same.crs(r_lc, above_study_domain)
+
+landscapes_poly_proj <- project(landscapes_poly, crs(r_lc))
+plot(landscapes_poly_proj)
+plot(landscapes_poly_proj[1, ])
+plot(landscapes_poly[1, ])
 
 # Awkwardly stich cpcrw on
 cpcrw <- rast("D:/quinn/GitHub/landscape_init_ak_can/data/cpcrw/env.grid.tif")

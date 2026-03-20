@@ -30,7 +30,7 @@ build_env_file <- function(landscape_dir, soil_rast) {
   env.grid <- rast(env_files)
   env.grid.sp <- vect(env_sp_files)
   sp_init <- rast(sp_init_files)
-  climate.link <- read.table(climate_link_files, header = TRUE) 
+  climate.link <- read.table(climate_link_files, header = TRUE)
 
   out_dir <- file.path(landscape_dir, "gis")
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
@@ -43,7 +43,7 @@ build_env_file <- function(landscape_dir, soil_rast) {
 
   species.table <- terra::extract(sp_init, env.grid.sp_join, df = TRUE)
   sum(is.na(species.table$forest_species_init))
-  plot(ifel(is.na(sp_init), 1, NA))
+  plot(ifel(is.na(sp_init), 1, NA), col = "black")
 
   soil_rast_proj <- lapply(soil_rast, project, y = env.grid, method = "bilinear")
   soil_tables <- lapply(soil_rast_proj, terra::extract, y = env.grid.sp_join, df = TRUE)
