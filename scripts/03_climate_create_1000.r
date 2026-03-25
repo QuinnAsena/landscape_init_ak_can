@@ -10,6 +10,27 @@ dirs <- list.dirs(here(), recursive = FALSE)
 landscape_dirs <- dirs[grepl("landscape_", basename(dirs))]
 landscape_names <- basename(landscape_dirs)
 
+# above_study_domain_file <- list.files(
+#   "//10.60.2.10/FF_Lab/project_data/na_boreal/data_sets/ABoVE_reference_grid_v2_1527/data",
+#   pattern = "\\.tif$", full.names = TRUE)
+
+# above_study_domain <- rast(above_study_domain_file)
+# plot(above_study_domain)
+# crs(above_study_domain)
+
+# This script converts Winslow's "climate_processing_step1.Rmd"
+# Load one layer of the whole of Alaska as a template to crop landcapes
+ak_climate <- rast(
+  "//10.60.2.10/FF_Lab/project_data/downscaling/Alaska/Downscaled CMIP6 NorESM2-MM/ssp126/tasmax/CMIP6 NorESM2-MM-ssp126-tasmax-2015.nc",
+  lyrs = 4)
+# plot(ak_climate)
+# Load env.grid files (careful of crs here, they are in ESRI:102001)
+
+# ak_climate_to_above <- project(ak_climate, crs(above_study_domain))
+# writeRaster(ak_climate_to_above, file.path(here("data"), "ak_climate_to_above.tif"),
+#             overwrite = TRUE)
+
+
 process_climate <- function(gcm, ssp, var, year, landscape_dir) {
 
   in_dir <- file.path(landscape_dir, "supporting_data", "climate")
@@ -18,31 +39,69 @@ process_climate <- function(gcm, ssp, var, year, landscape_dir) {
   ak_clim_in <- file.path("//10.60.2.10/FF_Lab/project_data/downscaling/Alaska", paste0("Downscaled CMIP6 ", gcm), ssp, var, paste0("CMIP6 ", gcm, "-", ssp, "-", var, "-", year, ".nc"))
 
   env_files <- list.files(path = file.path(landscape_dir, "gis"),
-                          pattern = "env.grid.tif$", full.names = TRUE, recursive = TRUE)
+                        pattern = "env.grid.tif$", full.names = TRUE, recursive = TRUE)
 
+  env_rast <- rast(env_files)
   ak_climate_var <- rast(ak_clim_in)
-  env_grid <- rast(env_files)
-  env_grid_sp <- as.points(env_grid, values = TRUE, na.rm = TRUE)
 
-  ak_climate_var_proj <- project(ak_climate_var, env_grid, method = "bilinear")
+  plot(env_rast)
+  # Polyfy landscape raster
+  pol <- as.polygons(env_rast, extent = TRUE)
+  pol_env <- as.polygons(env_rast)
+  env_points <- as.points(env_rast)
+  plot(pol_env)
+  # Buffer landscape area
+  pol_buffer <- terra::buffer(pol, width = 4000)
+  plot(pol_buffer)
+  # Project to climate crs instead of projecting all ak to plot crs
+  pol_buffer_daymetcrs <- project(pol_buffer, ak_climate_var)
+  plot(pol_buffer_daymetcrs)
+  # Crop buffered landscape area from climate data
+  pol_buffer_daymetcrs_crop <- crop(ak_climate_var, pol_buffer_daymetcrs) |>
+    mask(pol_buffer_daymetcrs)
+  plot(pol_buffer_daymetcrs_crop)
+  # Turn buffered area into a grid
 
-  if (all(grepl("rsds", names(ak_climate_var_proj)))) {
-    ak_climate_var_proj <- (ak_climate_var_proj * 86400) / 1000000
+  # pol_buffer_daymetcrs_crop_poly <- as.polygons(pol_buffer_daymetcrs_crop, dissolve = FALSE)
+  # plot(pol_buffer_daymetcrs_crop_poly)
+
+  # Project back to equal albers
+  var_buffer_albers <- project(pol_buffer_daymetcrs_crop, crs(env_rast))
+  plot(var_buffer_albers)
+
+  if (all(grepl("rsds", names(var_buffer_albers)))) {
+    var_buffer_albers <- (var_buffer_albers * 86400) / 1000000
   }
 
-  if (all(grepl("vp", names(ak_climate_var_proj)))) {
-    vp_names <- paste0("vp_", seq_len(nlyr(ak_climate_var_proj)))
-    if (!identical(names(ak_climate_var_proj), vp_names)) {
-      names(ak_climate_var_proj) <- vp_names
+  if (all(grepl("vp", names(var_buffer_albers)))) {
+    vp_names <- paste0("vp_", seq_len(nlyr(var_buffer_albers)))
+    if (!identical(names(var_buffer_albers), vp_names)) {
+      names(var_buffer_albers) <- vp_names
     }
   }
+  var_points_albers <- as.points(var_buffer_albers)
+  plot(var_points_albers)
+  pol_buffer_albers_crop_poly <- as.polygons(var_buffer_albers, dissolve = FALSE)
+  plot(pol_buffer_albers_crop_poly)
+  plot(env_rast, add = TRUE)
+  # Create link data: col1 = env_rast cell id,
+  # climate_link <- terra::cells(is.na(env_rast), pol_buffer_albers_crop_poly)
+  # climate_link <- na.omit(climate_link)
+  # climate_link <- terra::cells(var_buffer_albers, pol_env, touches = FALSE)
+  climate_link <- terra::cells(var_buffer_albers, env_points)
+  head(climate_link)
+  tail(climate_link)
+  dim(climate_link)
+  any(is.na(climate_link))
 
-  ak_climate_var_df <- as.data.frame(terra::extract(ak_climate_var_proj, env_grid_sp, bind = TRUE)) |>
-    rename("climate.grid" = ru)
+  climate_extract <- terra::extract(var_buffer_albers, env_points) |>
+    as.data.frame() |>
+    dplyr::rename(env.grid = "ID")
 
-  ak_climate_var_df <- ak_climate_var_df |>
+
+  ak_climate_var_df <- climate_extract |>
     tidyr::pivot_longer(
-      cols = -climate.grid,
+      cols = -env.grid,
       names_to = "y_day",
       values_to = "value") |>
     dplyr::mutate(
@@ -52,7 +111,7 @@ process_climate <- function(gcm, ssp, var, year, landscape_dir) {
       value = round(value, 3),
       gcm = gcm,
       ssp = ssp,
-      landscape = landscape_dir) |>
+      landscape = basename(landscape_dir)) |>
     dplyr::select(climate.grid, value, date, gcm, ssp, landscape) |>
     dplyr::rename(!!var := value)
     # names(df)[names(df) == "value"] <- var # for base R rename. no tidy evaluation. 
@@ -62,7 +121,7 @@ process_climate <- function(gcm, ssp, var, year, landscape_dir) {
 
 # --------- Parallel processing for multiple files --------
 gcm <- "NorEsm2-MM"
-ssp <- "ssp126"
+# ssp <- "ssp126"
 ssp <- "historical"
 var <- c("tasmax", "hurs", "pr", "rsds", "tasmin", "vp")
 year <- 2015:2016
@@ -82,7 +141,7 @@ param_grid <- expand.grid(
 )
 
 
-plan(multisession, workers = 6)
+plan(multisession, workers = 21)
 
 res <- future_lapply(
   seq_len(nrow(param_grid)),

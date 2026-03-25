@@ -36,17 +36,30 @@ build_env_file <- function(landscape_dir, soil_rast) {
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
   # combine the climate link to the env.grid
-  env.grid.sp_join <- terra::merge(env.grid.sp, climate.link, by = "env.grid", all.x = TRUE)
-  env.grid.df <- as.data.frame(env.grid.sp_join) |>
-    mutate(add = landscape_names) |>
-    tidyr::unite("model.climate.tableName", c(add, climate.grid), remove = T)
+  # env.grid.sp_join <- terra::merge(env.grid.sp, climate.link, by = "env.grid", all.x = TRUE)
+  # env.grid.df <- as.data.frame(env.grid.sp_join) |>
+  #   mutate(add = landscape_names) |>
+  #   tidyr::unite("model.climate.tableName", c(add, climate.grid), remove = T)
 
-  species.table <- terra::extract(sp_init, env.grid.sp_join, df = TRUE)
-  sum(is.na(species.table$forest_species_init))
+
+  env.grid.df <- as.data.frame(env.grid.sp) |>
+    mutate(add = landscape_names) |>
+    tidyr::unite("model.climate.tableName", c(add, env.grid), remove = FALSE) |>
+    select(env.grid, model.climate.tableName)
+
+
+  species.table <- terra::extract(sp_init, env.grid.sp, df = TRUE)
+  
   plot(ifel(is.na(sp_init), 1, NA), col = "black")
+  sum(is.na(values(sp_init)))
+  sum(values(sp_init), na.rm = TRUE)
+  ncell(sp_init)
+
+  sum(is.na(species.table$forest_species_init))
+  dim(species.table)
 
   soil_rast_proj <- lapply(soil_rast, project, y = env.grid, method = "bilinear")
-  soil_tables <- lapply(soil_rast_proj, terra::extract, y = env.grid.sp_join, df = TRUE)
+  soil_tables <- lapply(soil_rast_proj, terra::extract, y = env.grid.sp, df = TRUE)
   lapply(soil_tables, head)
 
   x <- lapply(soil_rast_proj, \(r) {

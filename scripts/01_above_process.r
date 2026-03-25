@@ -52,7 +52,7 @@ plot(landscapes_poly_proj[1, ])
 plot(landscapes_poly[1, ])
 
 # Awkwardly stich cpcrw on
-cpcrw <- rast("D:/quinn/GitHub/landscape_init_ak_can/data/cpcrw/env.grid.tif")
+cpcrw <- rast(here("data", "cpcrw", "env.grid.tif"))
 cpcrw_poly <- as.polygons(cpcrw, extent = TRUE) |>
   project(crs(landscapes_poly))
 plot(cpcrw_poly)
