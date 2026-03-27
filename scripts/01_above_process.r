@@ -1,11 +1,6 @@
 library(terra)
 library(here)
 
-r <- terra::rast("Z:/project_data/downscaling/Landscapes/Downscaled NorESM2-MM/ssp126/tasmax/NorESM2-MM-ssp126-tasmax-1950.nc", lyrs = 1)
-writeRaster(r, file.path(here("data"), paste0("NorESM2-MM-ssp126-tasmax-1950.tif")), overwrite = TRUE, datatype = "INT4S")
-
-
-
 # ---------- Read data ---------- #
 # ABoVE study domain
 # ABoVE landcover

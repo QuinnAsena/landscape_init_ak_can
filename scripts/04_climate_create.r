@@ -23,7 +23,7 @@ process_sqlite <- function(gcm, ssp, var, ak_landscape_dirs) {
   all_vars <- lapply(var, \(v) {
     # ak_var_files <- list.files(file.path(ak_processed_climate_dirs, gcm, ssp, v), recursive = TRUE, full.names = TRUE, pattern = "\\.txt$")
     ak_var_files <- list.files(
-      file.path(here(), ak_landscape_dirs, "supporting_data", "climate", gcm, ssp, v),
+      file.path(here(), ak_landscape_dirs, "supporting_data", "climate_link", gcm, ssp, v),
       recursive = TRUE,
       full.names = TRUE,
       pattern = "\\.txt$")
