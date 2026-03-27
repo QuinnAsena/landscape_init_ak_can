@@ -33,7 +33,7 @@ build_env_file <- function(landscape_dir, soil_rast) {
     select(env.grid, model.climate.tableName)
 
   species.table <- terra::extract(sp_init, env.grid.sp, df = TRUE)
-  
+
   plot(ifel(is.na(sp_init), 1, NA), col = "black")
   sum(is.na(values(sp_init)))
   sum(values(sp_init), na.rm = TRUE)
@@ -283,6 +283,6 @@ build_env_file_link <- function(landscape_dir, soil_rast) {
       model.site.somN,
       model.settings.permafrost.moss.biomass
     )
-  
+
   write.table(env.file, file.path(out_dir, "env.file_link.txt"), row.names = FALSE, sep = "\t")
 }

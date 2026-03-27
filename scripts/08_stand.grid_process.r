@@ -280,7 +280,6 @@ max(sapinit$height_from)
 min(sapinit$height_to)
 max(sapinit$height_to)
 
-
 sapinit |>
   count(species)
 

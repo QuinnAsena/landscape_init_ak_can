@@ -21,7 +21,9 @@ process_climate <- function(gcm, ssp, var, year, landscape_dir) {
   in_dir <- file.path(landscape_dir, "supporting_data", "climate")
   out_dir <- file.path(in_dir, gcm, ssp, var)
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
-  clim_in <- file.path("//10.60.2.10/FF_Lab/project_data/downscaling/Landscapes", paste0("Downscaled ", gcm), ssp, var, paste0(gcm, "-", ssp, "-", var, "-", year, ".nc"))
+  clim_in <- file.path("//10.60.2.10/FF_Lab/project_data/downscaling/Landscapes",
+    paste0("Downscaled ", gcm), ssp, var,
+    paste0(gcm, "-", ssp, "-", var, "-", year, ".nc"))
 
   env_files <- list.files(path = file.path(landscape_dir, "gis"),
                           pattern = "env.grid.tif$", full.names = TRUE, recursive = TRUE)
