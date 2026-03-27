@@ -1,11 +1,6 @@
 library(terra)
 library(here)
 
-r <- terra::rast("Z:/project_data/downscaling/Landscapes/Downscaled NorESM2-MM/ssp126/tasmax/NorESM2-MM-ssp126-tasmax-1950.nc", lyrs = 1)
-writeRaster(r, file.path(here("data"), paste0("NorESM2-MM-ssp126-tasmax-1950.tif")), overwrite = TRUE, datatype = "INT4S")
-
-
-
 # ---------- Read data ---------- #
 # ABoVE study domain
 # ABoVE landcover
@@ -52,7 +47,7 @@ plot(landscapes_poly_proj[1, ])
 plot(landscapes_poly[1, ])
 
 # Awkwardly stich cpcrw on
-cpcrw <- rast("D:/quinn/GitHub/landscape_init_ak_can/data/cpcrw/env.grid.tif")
+cpcrw <- rast(here("data", "cpcrw", "env.grid.tif"))
 cpcrw_poly <- as.polygons(cpcrw, extent = TRUE) |>
   project(crs(landscapes_poly))
 plot(cpcrw_poly)

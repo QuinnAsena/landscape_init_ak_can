@@ -23,7 +23,7 @@ process_sqlite <- function(gcm, ssp, var, ak_landscape_dirs) {
   all_vars <- lapply(var, \(v) {
     # ak_var_files <- list.files(file.path(ak_processed_climate_dirs, gcm, ssp, v), recursive = TRUE, full.names = TRUE, pattern = "\\.txt$")
     ak_var_files <- list.files(
-      file.path(here(), ak_landscape_dirs, "supporting_data", "climate", gcm, ssp, v),
+      file.path(here(), ak_landscape_dirs, "supporting_data", "climate_link", gcm, ssp, v),
       recursive = TRUE,
       full.names = TRUE,
       pattern = "\\.txt$")
@@ -49,13 +49,13 @@ process_sqlite <- function(gcm, ssp, var, ak_landscape_dirs) {
         case_when(
           tasmin < 0 ~ 0.61078 * exp((21.875 * tasmin) / (tasmin + 265.5)),
            TRUE ~ 0.61078 * exp((17.269 * tasmin) / (tasmin + 237.3))),
-      es_max = 
+      es_max =
         case_when(
           tasmax < 0 ~ 0.61078 * exp((21.875 * tasmax) / (tasmax + 265.5)),
            TRUE ~ 0.61078 * exp((17.269 * tasmax) / (tasmax + 237.3))),
       es = (es_min + es_max) / 2,
       vpd_calc = es - vp,
-      vpd = 
+      vpd =
         case_when(
           vpd_calc > 0 ~ vpd_calc,
            TRUE ~ 0),
