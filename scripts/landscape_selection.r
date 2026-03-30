@@ -49,8 +49,8 @@ prov <- project(prov, crs(plots))
 
 p1 <- st_as_sf(plots)
 e1 <- st_as_sf(prov)
-int <- st_intersects(p1,e1)
-prov_name <- sapply(int, 
+int <- st_intersects(p1, e1)
+prov_name <- sapply(int,
                     function(x){
                       if (length(x) > 0) {
                         prov$PREABBR[x[1]]
@@ -88,19 +88,20 @@ plot(buf, add = TRUE, col = "red")
 plot(plots, add = TRUE)
 
 
-
 buffer_size <- 20 # in km
 done_already <- FALSE
 
-#==============================================================================#
-# VERSION 1: chunked loop (original approach)
-#==============================================================================#
-t0 <- Sys.time()
+
+#----------------------------------------------------------#
+#-------------------- Canada landcover --------------------#
+
+#----- Canada: extract urban locations from 30m landcover --------------------#
+# as.points() must allocate all output points at once in C++, so we process
+# in 500 km chunks and accumulate incrementally to stay within memory.
+lc_path <- paste0("//10.60.2.10/FF_Lab//project_data/na_boreal/",
+                  "Landscape building/Landscape selection/GIS Inputs/",
+                  "Canada landcover/landcover-2020-classification.tif")
 if (!done_already) {
-  #----- Load Canada landcover (30m, massive — processed in chunks) -----------#
-  lc_path <- paste0("//10.60.2.10/FF_Lab//project_data/na_boreal/",
-                    "Landscape building/Landscape selection/GIS Inputs/",
-                    "Canada landcover/landcover-2020-classification.tif")
   lc <- rast(lc_path)
 
   #----- Build 500 km processing chunks in landcover CRS ----------------------#
@@ -139,30 +140,81 @@ if (!done_already) {
                    function(x) length(x) == 0)
   plots <- plots[in_buf, ]
 }
-plots_0 <- plots
-t1 <- Sys.time()
-t1 - t0 # Time difference of 7.962248 mins
-#==============================================================================#
-# VERSION 2: lazy evaluation — no manual chunking loop
-# terra's crop(), subst() are lazy; as.points() reads the raster in blocks
-# internally, so manual chunking is unnecessary.
-# Use a VRT instead of rast() if the landcover spans multiple tile files.
-#==============================================================================#
 
-lc_path <- paste0("//10.60.2.10/FF_Lab//project_data/na_boreal/",
-                  "Landscape building/Landscape selection/GIS Inputs/",
-                  "Canada landcover/landcover-2020-classification.tif")
-lc <- rast(lc_path)
-t2 <- Sys.time()
-terraOptions(memfrac = 0.8)
+#----------------------------------------------------------#
+#---------------------- Canada roads ----------------------#
+
+if (!done_already) {
+
+  nrn_ns <- vect("Z:/personal_storage/quinn_storage/nrn_rrn_ns_SHAPE/NRN_RRN_NS_SHAPE/NRN_NS_18_0_SHAPE_en/NRN_NS_18_0_ROADSEG.shp")
+
+  roads_gdb <- paste0("//10.60.2.10/FF_Lab//project_data/na_boreal/",
+                      "Landscape building/Landscape selection/GIS inputs/",
+                      "Canada roads/lrnf000r21f_e/lrnf000r21f_e.gdb")
+  sf::st_layers("//10.60.2.10/FF_Lab//project_data/na_boreal/Landscape building/Landscape selection/GIS inputs/Canada roads/lrnf000r21f_e/lrnf000r21f_e.gdb")
+
+  roads <- vect(roads_gdb, layer = "lrnf000r21f_e")
+  roads <- project(roads, crs(eco))
+# Clip to our region
+roads <- terra::intersect(roads, eco)
+
+# Buffer them to 20 km
+roads_ex <- buffer(roads, width = (buffer_size * 1000))
+
+p1 <- st_as_sf(plots)
+b1 <- st_as_sf(roads_ex)
+
+int <- st_intersects(p1,b1)
+# "intersects" returns a list, for each plot, of the ecoregions it intersects
+# with. Get all where length is 0 (no intersection)
+in_buf <- sapply(int, function(x){length(x) == 0})
+plots <- plots[in_buf, ]
+}
+
+
+#----------------------------------------------------------#
+#-------------------- Alaska landcover --------------------#
+
+#----- Alaska: extract urban locations from 30m NLCD -------------------------#
+lc_path <- normalizePath(
+  paste0("//10.60.2.10/FF_Lab//project_data/na_boreal/",
+         "Landscape building/Landscape selection/GIS Inputs/",
+         "Alaska landcover/NLCD_2016_Land_Cover_AK_20200724/NLCD_2016_Land_Cover_AK_20200724.img"),
+  winslash = "/"
+)
 if (!done_already) {
   lc <- rast(lc_path)
-  temp_eco <- buffer(project(eco, crs(lc)), width = 10000)
-  urban_pts <- as.points(
-    subst(crop(lc, temp_eco), from = 17, to = 1, others = NA),
-    na.rm = TRUE
+
+  #----- Build 500 km processing chunks in NLCD CRS ---------------------------#
+  chunks <- as.polygons(
+    terra::rast(ext = ext(lc),
+                res = c(500000, 500000),
+                crs = crs(lc)),
+    dissolve = FALSE
   )
-  rm(lc, temp_eco)
+
+  #----- Extract urban cells (developed classes) as points, chunk by chunk ----#
+  urban_classes <- c("Developed, Open Space",
+                     "Developed, Low Intensity",
+                     "Developed, Medium Intensity",
+                     "Developed, High Intensity")
+  urban_pts <- NULL
+  for (i in seq_len(length(chunks))) {
+    eco_lc <- crop(lc, chunks[i])
+    if (any(!is.na(values(eco_lc)))) {
+      lc_pts <- as.points(
+        subst(eco_lc, from = urban_classes, to = rep(1, 4), others = NA),
+        na.rm = TRUE
+      )
+      if (length(lc_pts) > 0) {
+        if (is.null(urban_pts)) urban_pts <- lc_pts
+        else urban_pts <- rbind(urban_pts, lc_pts)
+      }
+    }
+    rm(eco_lc)
+    gc()
+  }
+  rm(lc, chunks, temp_eco)
   gc()
   urban_pts <- project(urban_pts, crs(eco))
 
@@ -173,51 +225,38 @@ if (!done_already) {
                    function(x) length(x) == 0)
   plots <- plots[in_buf, ]
 }
-t3 <- Sys.time()
-t3 - t2
 
 
+#----------------------------------------------------------#
+#---------------------- Alaska Roads ----------------------#
 
-
-
-
-
-
-
-
-
-
-
-
-#==============================================================================#
-# Alaska
-#==============================================================================#
-lc_path <- paste0("//10.60.2.10/FF_Lab//project_data/na_boreal/",
-                  "Landscape building/Landscape selection/GIS Inputs/",
-                  "Alaska landcover/NLCD_2016_Land_Cover_AK_20200724.img")
-lc <- rast(lc_path)
-t2 <- Sys.time()
 if (!done_already) {
-  lc <- rast(lc_path)
-  temp_eco <- buffer(project(eco, crs(lc)), width = 10000)
-  urban_pts <- as.points(
-    subst(crop(lc, temp_eco),
-      from = c("Developed, Open Space",
-               "Developed, Low Intensity",
-               "Developed, Medium Intensity",
-               "Developed, High Intensity"),
-      to=rep(1, 4), others = NA),
-    na.rm = TRUE
-  )
-  rm(lc, temp_eco)
-  gc()
-  urban_pts <- project(urban_pts, crs(eco))
+roads <- vect("//10.60.2.10/FF_Lab//project_data/na_boreal/Landscape building/Landscape selection/GIS Inputs/Alaska roads/routes.shp")
+roads <- project(roads, crs(eco))
 
-  #----- Remove plots within buffer_size km of an urban point -----------------#
-  # Buffer is 20 km, plus 22 m for half the diagonal of a 30m grid cell
-  urban_ex <- buffer(urban_pts, width = (buffer_size * 1000 + 22))
-  in_buf <- sapply(st_intersects(st_as_sf(plots), st_as_sf(urban_ex)),
-                   function(x) length(x) == 0)
-  plots <- plots[in_buf, ]
+# Clip to our region
+roads <- terra::intersect(roads, eco)
+
+# Buffer them to 5 km
+roads_ex <- buffer(roads, width = (buffer_size * 1000))
+
+p1 <- st_as_sf(plots)
+b1 <- st_as_sf(roads_ex)
+
+int <- st_intersects(p1,b1)
+# "intersects" returns a list, for each plot, of the ecoregions it intersects
+# with. Get all where length is 0 (no intersection)
+in_buf <- sapply(int, function(x){length(x) == 0})
+plots <- plots[in_buf,]
+  writeVector(plots, "Plots after urban.shp", overwrite=T)
+  #wgs_plots <- project(plots, crs("+proj=longlat +datum=WGS84 +no_defs"))
+  #writeVector(wgs_plots, "Plots_lat_lon.shp", overwrite=T)
+  
+} else {
+  plots <- vect("Plots after urban.shp")
 }
-t3 <- Sys.time()
+
+plot(eco, main="After urban filtering", axes=F)
+plot(buf, add=T, col="red")
+#plot(roads, add=T)
+plot(plots, add=T)
