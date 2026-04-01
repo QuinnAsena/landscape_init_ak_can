@@ -217,7 +217,7 @@ if (!done_already) {
 
 plot(mosaic_forest)
 plot(eco, add = TRUE)
-plot(plots, add = TRUE)
+plot(plots, add = TRUE, col = "red")
 
 
 #----- Forest cover: keep plots with >= 75% forested ------------------------#
@@ -268,7 +268,8 @@ if (!done_already) {
 }
 
 
-
+# Check out the new eligible plots against those selected using ecoregion
+# as the base crs
 landscapes_poly <- vect(paste0("//10.60.2.10/FF_Lab/project_data/na_boreal/",
                                "Landscape building/Landscape selection/",
                                "Selected plots/final_plots.shp"))
@@ -281,20 +282,26 @@ plot(landscapes_poly, add = TRUE, col = "black")
 plot(plots2)
 plot(landscapes_poly, add = TRUE, col = "black")
 
+elig_orig <- vect("//10.60.2.10/FF_Lab/project_data/na_boreal/Landscape building/Landscape selection//Selected Plots/Eligible plots.shp")
+plot(eco, "NA_L2NAME", col = rainbow(4), main = "Eligible plots", axes = FALSE)
+plot(plots2, col = "blue", add = TRUE)
+plot(elig_orig, add = TRUE, col = "black")
 
-same.crs(plots2, landscapes_poly)
-crs(landscapes_poly) <- crs(plots2)
 
 
+# Using nearest matches multiple polygons to a single polygon by distance
+# listed arguments currently throw error. terra::nearest not working (atm)
+# same.crs(plots2, landscapes_poly)
+# crs(landscapes_poly) <- crs(plots2)
 
-nearest_plots <- terra::nearest(landscapes_poly, plots2)
-nearest_plots <- terra::nearest(landscapes_poly, plots2, k = 5)
-nearest_plots_lines <- nearest(landscapes_poly, plots2, lines = TRUE)
+# nearest_plots <- terra::nearest(landscapes_poly, plots2)
+# nearest_plots <- terra::nearest(landscapes_poly, plots2, k = 5)
+# nearest_plots_lines <- nearest(landscapes_poly, plots2, lines = TRUE)
 
-plot(plots2)
-plot(landscapes_poly, add = TRUE, col = "black")
-plot(nearest_plots, add = TRUE, col = "blue")
-plot(nearest_plots_lines, add = TRUE, col = "pink")
+# plot(plots2)
+# plot(landscapes_poly, add = TRUE, col = "black")
+# plot(nearest_plots, add = TRUE, col = "blue")
+# plot(nearest_plots_lines, add = TRUE, col = "pink")
 
 
 # Full pairwise distance matrix: rows = landscapes_poly, cols = plots2
@@ -330,16 +337,17 @@ plot(plots2)
 plot(landscapes_poly, add = TRUE, col = "black")
 plot(matched, add = TRUE, col = "blue")
 
+plot(eco, "NA_L2NAME", col = rainbow(4), main = "Eligible plots", axes = FALSE)
+plot(matched, add = TRUE, col = "black")
+
+
+writeVector(matched, here("data", "final_plots_above_proj.shp"), overwrite = TRUE)
 
 
 
 
-landscapes_poly$ID
-plots2$ID
 
-setdiff(landscapes_poly$ID, plots2$ID)
 
-landscapes_poly$ID %in% plots2$ID
 
 
 if (!done_already) {
