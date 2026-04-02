@@ -5,7 +5,12 @@ library(fitdistrplus)
 library(terra)
 library(here)
 
-# This is a re-write of Winslow's script "generating stands for tree init.Rmd"
+# Generates the sapling initialisation dataset and stand dictionary for iLand.
+# Combines empirical post-fire regeneration data (Johnstone and Walker datasets)
+# to produce stand-level species composition, density, and height distributions.
+# Outputs: landscape_model_init.txt (sapling init file) and sapinit_dict.txt
+# (lookup table mapping stand IDs to forest class codes used in step 09).
+# Re-write of Winslow's "generating stands for tree init.Rmd".
 in_dir <- here("data", "empirical")
 johnstone <- read.table(file.path(in_dir, "Alaska-init-stands-johnstone.txt"), header = TRUE, sep= ",")
 walker <- read.table(file.path(in_dir, "Alaska-init-stands-walker.txt"), header = TRUE, sep= "\t")
@@ -17,10 +22,10 @@ heights <- read.table(file.path(in_dir, "Johnstone_tree_heights.txt"), header = 
 # potr = ta = 25 = aspen
 # pima = bs = 66 = black spruce
 
-# I fount the abbreviateions confusing and have converted to species short names
+# I found the abbreviations confusing and have converted to species short names
 
 #---------- Proportions and densities ----------#
-# Some name matching between datasets
+# Standardise column names across the two datasets before combining
 johnstone <- johnstone |>
   dplyr::mutate(dataset = "johnstone") |>
   tidyr::unite("Site_name", c("dataset", "site"), sep = "_") |>
@@ -38,7 +43,9 @@ johnstone_walker <- bind_rows(johnstone, walker) |>
   drop_na(pima.prop)
 rownames(johnstone_walker) <- NULL
 
-# Create a classification based on relative proportions of sp
+# Classify each stand by dominant species based on relative proportions.
+# The original sequential ifelse approach allowed duplicate classification;
+# case_when enforces mutual exclusivity.
 # johnstone_walker_classified <- johnstone_walker |>
 #   mutate(
 #     forest_type = case_when(
@@ -68,7 +75,7 @@ johnstone_walker_classified <- johnstone_walker |>
 
 
 # ***NOTE*** The above code is slightly different from Winslow's original code (below).
-# case_when forces exclusivity of the caregories avoiding duplicate classification.
+# case_when forces exclusivity of the categories avoiding duplicate classification.
 # i.e., when a stand satisfies both conditions for the individual species and mixed class
 # Additionally, unclassified species (satisfying no conditions) were silently dropped in the original code.
 # I am classifying as mixed for now, resulting in a few (7) more stands in mixed category
@@ -78,7 +85,7 @@ johnstone_walker_classified <- johnstone_walker |>
 # mixed = total %>% filter(BS.prop<=0.75&BS.prop>=0.25&TA.prop+PB.prop<=0.75&TA.prop+PB.prop>=0.25)
 
 #---------- Heights ----------#
-# Species naming gets confusing as the use of abbeviated latin name
+# Species naming gets confusing as the use of abbreviated latin name
 # is not always consistent with common name (e.g., bene vs birch)
 # create a dictionary to link species to their distribution
 dist_dict <- tibble(
@@ -87,11 +94,11 @@ dist_dict <- tibble(
   distr   = c("gamma",  "gamma", "weibull"),
   dfunc = c("dgamma", "dgamma", "dweibull")
 )
-# join the dictionary to the heights data
+# Join distribution family to height observations for fitting
 heights_join <- dist_dict |>
   full_join(heights, by = "species")
 
-# Fit distributions for each species based on the empirical data
+# Fit the appropriate parametric distribution to each species' height data
 params <- heights_join |>
   split(heights_join$species) |>
   purrr::map(\(df) {
@@ -127,14 +134,14 @@ heights_join |>
 # }
 # tail(bad_filter("spruce"))
 
-# Take the parameters from the fit distributions and add them to our dictionary
+# Extract fitted parameters and add to the dictionary for sampling later
 dist_dict2 <- dist_dict |>
   full_join(
     imap_dfr(params, \(fit, sp) {
       tibble(species = sp,
              shape = fit$estimate[1],
              param = fit$estimate[2],
-             param_name = if(fit$distname == "gamma") "rate" else "scale")
+             param_name = if (fit$distname == "gamma") "rate" else "scale")
     }), by = "species") |>
   mutate(rfunc = case_when(
     dfunc == "dgamma" ~ "rgamma",
@@ -142,16 +149,17 @@ dist_dict2 <- dist_dict |>
     TRUE ~ NA_character_
   ))
 
-# Winslow creates "mixed.sp" with the parameters from the individual species
-# remember that species naming is going to get confusing!
-# We are going to keep track of short latin name as well as mixed as a grouping variable
+# Create "mixed.*" entries by duplicating the per-species rows with species_short = "mixed".
+# This lets mixed stands draw heights from each constituent species distribution.
+# Naming is tracked via both full species name and short latin abbreviation.
 dist_dict2 <- dist_dict2 |>
   mutate(species = paste0("mixed.", species),
          species_short = "mixed") |>
   bind_rows(dist_dict2)
 
-# Join the number of stands to the dictionary by forest_type
-# This multiplies the mixed category by 3 and assigns each species to a mixed group
+# Join stand counts to the distribution dictionary by forest type.
+# Mixed stands appear 3 times (once per constituent species), so the mixed
+# category is multiplied by 3 relative to the single-species categories.
 dist_dict3 <- johnstone_walker_classified |>
   group_by(forest_type) |> # could be count for shorthand
   summarise(num.stands = n()) |>
@@ -164,9 +172,10 @@ dist_dict3 <- johnstone_walker_classified |>
 # pima = bs = 66 = spruce
 # mixed = mixed = 63 = mixed.Pima, mixed.Potr, mixed.Bene
 
-# Loop over the dictionary of functions and parameters to create a list
-# of all (now 6) categories and generate 20 x number of stands
-# This follows the original code by including age 11 and a catch for birch height
+# Sample heights from each species distribution: 20 draws per stand, for all
+# 6 categories (pima, potr, bene, mixed.spruce, mixed.aspen, mixed.birch).
+# Age is fixed at 11 years following the original. Birch height is capped at
+# 380cm based on observed field data.
 set.seed(1984) # set.seed for random draw
 sp_heights_dist <- split(dist_dict3, dist_dict3$species) |>
   imap(\(df, nm) {
@@ -192,8 +201,8 @@ sp_heights_dist <- split(dist_dict3, dist_dict3$species) |>
       ))
 })
 
-# This is a different way of achieving the original aim of duplicating
-# the empirical data 20 times to match the 2 * number of stands above
+# Replicate the empirical stand data 20 times per forest type so that each
+# of the 20 height draws per stand can be matched to a unique stand record
 johnstone_walker_classified_20x <- johnstone_walker_classified |>
   split(johnstone_walker_classified$forest_type) |>
   lapply(\(x) {
@@ -219,11 +228,13 @@ dim(johnstone_walker_classified_20x)
 # johnstone_walker_classified_20x |>
 #   count(forest_type)
 
-# Now that we can join the distribution by _category_ to create the cross-combinations
-# between mixed and species using forest_type and id (resulting in mixed.spruce, mixed.aspen...)
+# Join height samples to stand records by forest_type and id.
+# For mixed stands this creates 3 rows per stand (one per species),
+# yielding mixed.spruce, mixed.aspen, and mixed.birch combinations.
 stands_final <- sp_heights_dist_bind |>
   full_join(johnstone_walker_classified_20x, by = c("forest_type", "id"))
-# Always check dimensions after joining. Running code out-of-order can create a mismatch
+# Dimension check: row count must match sp_heights_dist_bind — a mismatch
+# indicates the join introduced duplicates or dropped rows
 nrow(stands_final) == nrow(sp_heights_dist_bind) 
 
 stands_final |>
@@ -242,9 +253,10 @@ head(stands_final)
 
 #---------- Create sapinit dataset ----------#
 
-# this is a little confusing since we still have three density columns per sp
-# so we use the stand classification to mpull the correct value
-# The we follow Winslow's code for generating count height and age.
+# Each row still has three density columns (pima.dens, potr.dens, bene.dens).
+# Pivot to long format then filter to keep only the density column that matches
+# the species for that row. Then derive count, height range, and age following
+# Winslow's original approach.
 sapinit <- stands_final |>
   dplyr::select(-c(ends_with("prop"))) |>
   pivot_longer(
@@ -286,8 +298,9 @@ sapinit |>
 sapinit |>
   count(forest_type)
 
-# Add white spruce (Pigl) and give it a stand_id continuation
-# The 7800 and 16000 are not from the data but other sources (ask W)
+# Add white spruce (Pigl) as a separate forest type by duplicating the black
+# spruce (pima) stands and adjusting density, height, and age.
+# Density range (7800-16000 stems/ha) is from external sources (see Winslow).
 sapinit_pigl <- sapinit |>
   filter(species == "spruce") |>
   mutate(
@@ -300,16 +313,14 @@ sapinit_pigl <- sapinit |>
     stand_id = stand_id + max(sapinit$stand_id)
   )
 
-# Combine all species and do some janky renaming for iLand.
-# iLand is going to reference the stand_id and needs a species to put in the pixel
-# mixed.pigl is not a species, by duplicating the stand_id across the 4 mixed categires
-# and removing the "mixed." prefix, when that id is called in iLand it may put
-# any of the four species in the pixel, and should build a mixed RU.
-# Hats off to Winslow, that was real smart but fucking confusing when working through the code.
+# Combine all species and rename to iLand species codes.
+# iLand looks up stand_id to determine which species to place in a pixel.
+# For mixed stands, the same stand_id appears 4 times (Pima, Potr, Bene, Pigl)
+# with the "mixed." prefix removed — iLand may assign any of the four species
+# to a pixel with that ID, producing a mixed-species RU.
 sapinit_bind <- bind_rows(sapinit, sapinit_pigl) |>
   dplyr::select(stand_id, species, count, height_from, height_to, age, forest_type) |>
   mutate(
-    species = as.factor(species),
     height_from = ifelse(height_from > 4, 3.8, height_from),
     height_to = ifelse(height_to > 4, 4, height_to),
     species = 
@@ -335,18 +346,15 @@ unique(sapinit_bind$forest_type)
 # up to 329 rather that 199 (7 more stands * 20)
 range(sapinit_bind$stand_id)
 
-# Save onle the necessary columns and in the right order:
-sapinit_final <- sapinit_bind |>
-  dplyr::select(stand_id, species, count, height_from, height_to, age, forest_type)
-
 write.table(
-  sapinit_final,
+  sapinit_bind,
   file.path(in_dir, "landscape_model_init.txt"),
   row.names = FALSE, col.names = TRUE, sep = ",")
 
 
-# Now, those stand_ids need to be associated with forest class from step 7
-# we are going to have slightly different orders to the original code
+# Map stand_id ranges to the forest class codes assigned in step 07.
+# Stand ordering differs from the original code (see NEW CODE comment below)
+# because case_when classification produces a different sort order.
 
 # ORIGINAL CODE. NOTE forest class IS UNORDERED
 # Pima = 1:66 =  forest class 1
@@ -363,7 +371,9 @@ write.table(
 # Pima = 87:152 =  forest class type 1
 # Potr = 153:177 = forest class type 3
 
-# To be safe, lets create dictionary matching indeces to forest class codes made in step 7
+# Build the stand dictionary: min/max stand_id range per forest type, plus the
+# integer forest class code assigned by step 07. Used by step 09 to map each
+# RU pixel to a randomly drawn stand_id from the correct species pool.
 sapinit_dict <- sapinit_bind |>
   group_by(forest_type) |>
   summarise(

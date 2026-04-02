@@ -1,42 +1,46 @@
 #---------- Create stand grid rasters for each landscape ----------#
 
-# Read in the species init generated in step 6 where the Above data were
-# converted to forest_types of the modelled species.
+# Assigns a random stand_id to every forested RU cell based on the forest species
+# class from step 07 and the stand dictionary from step 08.
+# "Potential forest" cells (class 6) are assigned an out-of-range value so iLand
+# can identify them as unforested but potentially recruitable pixels.
+# Outputs stand_grid.tif and stand_grid.txt (ASCII) for iLand.
 library(terra)
 library(here)
+library(future.apply)
 
-process_stand_grid <- function(ak_landscape_dir, year_lyr, sapinit_dict) {
-  in_dir <- here(ak_landscape_dir, "supporting_data", "gis", "init")
-  output_dir <- file.path(ak_landscape_dir, "gis")
-  dir.create(output_dir)
+process_stand_grid <- function(landscape_name, year_lyr, sapinit_dict) {
+  in_dir <- here(landscape_name, "supporting_data", "gis", "init")
+  output_dir <- here(landscape_name, "gis")
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
-  forest_type_rast <- terra::rast(
+  forest_type_rast <- rast(
     file.path(in_dir, paste0("forest_species_init_lc_yr", year_lyr, ".tif"))
   )
 
-  # Class 6 becomes "potential forest" using a value not in the stand ranges
-  forest_type_rast <- terra::ifel(
+  # Recode class 6 (potential forest) to one above the maximum stand_id so it
+  # falls outside the range of any real stand and can be identified by iLand
+  forest_type_rast <- ifel(
     forest_type_rast == 6, max(sapinit_dict$max_stand_id) + 1,
     forest_type_rast
   )
 
-  # For each forest type, assign random stand IDs
-  vals <- terra::values(forest_type_rast)
-  # Now use the dictionary matching id to forest class to scatter the landscape
-  # with random stands from the correct class
+  # Randomly scatter stand IDs across the landscape. Each cell is assigned a
+  # stand_id drawn from the range defined in the dictionary for its forest class,
+  # ensuring species composition is drawn from the correct empirical distribution.
   for (i in seq_len(nrow(sapinit_dict))) {
     idx <- which(vals == sapinit_dict$forest_class[i])
       vals[idx] <- sample(
         sapinit_dict$min_stand_id[i]:sapinit_dict$max_stand_id[i],
         size = length(idx), replace = TRUE)
   }
-  terra::values(forest_type_rast) <- vals
+  values(forest_type_rast) <- vals
 
-  # NA becomes no-data -9999. iLand documentation says -1 for this but -9999 works I guess
-  forest_type_rast <- terra::ifel(
-    is.na(forest_type_rast), -9999, forest_type_rast)
+  # NA cells (non-forest/water) are set to -9999 as the iLand no-data value.
+  # The documentation specifies -1 but -9999 is also accepted.
+  forest_type_rast <- ifel(is.na(forest_type_rast), -9999, forest_type_rast)
 
-  terra::writeRaster(
+  writeRaster(
     forest_type_rast,
     file.path(output_dir, "stand_grid.tif"),
     overwrite = TRUE
@@ -51,11 +55,19 @@ process_stand_grid <- function(ak_landscape_dir, year_lyr, sapinit_dict) {
   )
 }
 
-# load up the dictionary from step 8
-sapling_dictionary <- read.table(here("data", "empirical", "sapinit_dict.txt"), header = TRUE, sep = ",")
+# Load the stand dictionary produced in step 08: maps forest class codes to
+# min/max stand_id ranges used for random assignment
+sapling_dictionary <- read.table(
+  here("data", "empirical", "sapinit_dict.txt"),
+  header = TRUE, sep = ",")
 set.seed(1984)
 
 dirs <- list.dirs(here(), recursive = FALSE)
-landscape_dirs <- dirs[grepl("landscape_", basename(dirs))]
-# Loop over the landscapes to create their stand_grid files
-lapply(landscape_dirs, process_stand_grid, year_lyr = 1, sapinit_dict = sapling_dictionary)
+landscape_names <- basename(dirs[grepl("landscape_", basename(dirs))])
+
+# Run for land cover year 1 (1984) — re-run with different year_lyr as needed
+plan(multisession)
+future_lapply(landscape_names, process_stand_grid,
+              year_lyr = 1, sapinit_dict = sapling_dictionary,
+              future.seed = TRUE)
+plan(sequential)

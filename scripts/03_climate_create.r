@@ -1,5 +1,4 @@
 library(terra)
-library(sf)
 library(tidyr)
 library(dplyr)
 library(lubridate)
@@ -10,22 +9,36 @@ dirs <- list.dirs(here(), recursive = FALSE)
 landscape_dirs <- dirs[grepl("landscape_", basename(dirs))]
 landscape_names <- basename(landscape_dirs)
 
-# Both of the functions in this script deal with irregular landscape shapes
-# where climate data and RUs are in different resolutions causing partial cells
+gcm <- "NorEsm2-MM"
+ssp <- "ssp126"
+var <- c("tasmax", "hurs", "pr", "rsds", "tasmin", "vp")
+year <- 2015:2016
 
-# This function interpolates the climate data to 100x100 to match RU resolution
-# The output sqlite tables equals to the number of RUs as opposed to RUs / 100
+param_grid <- expand.grid(
+  landscape_dir = landscape_names,
+  gcm  = gcm,
+  ssp  = ssp,
+  var  = var,
+  year = year,
+  stringsAsFactors = FALSE
+)
+
+# Both functions handle the mismatch between the ~1000x1000m climate grid and
+# the 100x100m RU grid, which causes partial-cell overlaps at landscape edges.
+
+# process_climate: reprojects and interpolates climate data to 100x100m to
+# match the RU resolution exactly. Output row count equals the number of RUs.
 
 process_climate <- function(gcm, ssp, var, year, landscape_dir) {
 
-  in_dir <- file.path(landscape_dir, "supporting_data", "climate")
+  in_dir <- here(landscape_dir, "supporting_data", "climate")
   out_dir <- file.path(in_dir, gcm, ssp, var)
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   clim_in <- file.path("//10.60.2.10/FF_Lab/project_data/downscaling/Landscapes",
     paste0("Downscaled ", gcm), ssp, var,
     paste0(gcm, "-", ssp, "-", var, "-", year, ".nc"))
 
-  env_files <- list.files(path = file.path(landscape_dir, "gis"),
+  env_files <- list.files(path = here(landscape_dir, "gis"),
                           pattern = "env.grid.tif$", full.names = TRUE, recursive = TRUE)
 
   ak_climate_var <- rast(clim_in)
@@ -69,25 +82,6 @@ process_climate <- function(gcm, ssp, var, year, landscape_dir) {
 
 
 # --------- Parallel processing for multiple files --------
-gcm <- "NorEsm2-MM"
-ssp <- "ssp126"
-var <- c("tasmax", "hurs", "pr", "rsds", "tasmin", "vp")
-year <- 2015:2016
-
-dirs <- list.dirs(here(), recursive = FALSE)
-landscape_dirs <- dirs[grepl("landscape_", basename(dirs))]
-landscape_names <- basename(landscape_dirs)
-
-param_grid <- expand.grid(
-  landscape_dir = landscape_names,
-  gcm  = gcm,
-  ssp  = ssp,
-  var  = var,
-  year = year,
-  stringsAsFactors = FALSE
-)
-
-
 plan(multisession, workers = 6)
 
 res <- future_lapply(
@@ -112,12 +106,14 @@ plan(sequential)
 # ---------  Process climate with buffer and link  -------- #
 # --------------------------------------------------------- #
 
-# This version buffers the climate and extracts each RU against the 1000x1000
-# climate data from the 100x100 RUs, and creates a linked indexing
+# process_climate_link: buffers the landscape, crops the raw 1000x1000m climate
+# data to that buffered area, then creates a lookup table linking each RU cell
+# to its corresponding climate grid cell. This avoids reprojecting the full
+# climate dataset and preserves the native climate resolution.
 
 process_climate_link <- function(gcm, ssp, var, year, landscape_dir) {
 
-  in_dir <- file.path(landscape_dir, "supporting_data", "climate_link")
+  in_dir <- here(landscape_dir, "supporting_data", "climate_link")
   out_dir <- file.path(in_dir, gcm, ssp, var)
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   clim_in <- file.path("//10.60.2.10/FF_Lab/project_data/downscaling/Landscapes",
@@ -125,22 +121,22 @@ process_climate_link <- function(gcm, ssp, var, year, landscape_dir) {
     paste0(gcm, "-", ssp, "-", var, "-", year, ".nc"))
 
 
-  env_files <- list.files(path = file.path(landscape_dir, "gis"),
+  env_files <- list.files(path = here(landscape_dir, "gis"),
                         pattern = "env.grid.tif$", full.names = TRUE, recursive = TRUE)
 
   env_rast <- rast(env_files)
   ak_climate_var <- rast(clim_in)
-  # Polyfy landscape raster
+  # Convert landscape raster to polygon (extent) and point geometries
   env_poly <- as.polygons(env_rast, extent = TRUE)
   env_points <- as.points(env_rast)
-  # Buffer landscape area
+  # Buffer the landscape extent to ensure full coverage of bordering climate cells
   env_poly_buffer <- terra::buffer(env_poly, width = 4000)
-  # Project to climate crs instead of projecting all ak to plot crs
+  # Project buffer to the climate CRS to avoid reprojecting the full climate dataset
   pol_buffer_daymetcrs <- project(env_poly_buffer, ak_climate_var)
-  # Crop buffered landscape area from climate data
+  # Crop and mask climate data to the buffered landscape area
   pol_buffer_daymetcrs_crop <- crop(ak_climate_var, pol_buffer_daymetcrs) |>
     mask(pol_buffer_daymetcrs)
-  # Project back to equal albers
+  # Reproject cropped climate data back to the landscape CRS (equal-area Albers)
   var_buffer_albers <- project(pol_buffer_daymetcrs_crop, crs(env_rast))
 
   if (all(grepl("rsds", names(var_buffer_albers)))) {
@@ -154,9 +150,7 @@ process_climate_link <- function(gcm, ssp, var, year, landscape_dir) {
     }
   }
 
-  pol_buffer_albers_crop_poly <- as.polygons(var_buffer_albers, dissolve = FALSE)
-
-  # Create link data: col1 = env_rast cell id. nrow = RU
+  # Create the RU-to-climate-cell lookup: one row per RU, mapped to its climate cell
   climate_link <- terra::cells(var_buffer_albers, env_points) |>
     as.data.frame() |>
     rename(env.grid = "ID", climate.grid = "cell")
@@ -182,7 +176,7 @@ process_climate_link <- function(gcm, ssp, var, year, landscape_dir) {
       value = round(value, 3),
       gcm = gcm,
       ssp = ssp,
-      landscape = basename(landscape_dir)) |>
+      landscape = landscape_dir) |>
     dplyr::select(climate.grid, value, date, gcm, ssp, landscape) |>
     dplyr::rename(!!var := value)
     # names(df)[names(df) == "value"] <- var # for base R rename. no tidy evaluation. 
@@ -191,26 +185,7 @@ process_climate_link <- function(gcm, ssp, var, year, landscape_dir) {
 
 
 # --------- Parallel processing for multiple files -------- #
-gcm <- "NorEsm2-MM"
-ssp <- "ssp126"
-var <- c("tasmax", "hurs", "pr", "rsds", "tasmin", "vp")
-year <- 2015:2016
-
-dirs <- list.dirs(here(), recursive = FALSE)
-landscape_dirs <- dirs[grepl("landscape_", basename(dirs))]
-landscape_names <- basename(landscape_dirs)
-
-param_grid <- expand.grid(
-  landscape_dir = landscape_names,
-  gcm  = gcm,
-  ssp  = ssp,
-  var  = var,
-  year = year,
-  stringsAsFactors = FALSE
-)
-
-
-plan(multisession, workers = 21)
+plan(multisession, workers = 24)
 
 res <- future_lapply(
   seq_len(nrow(param_grid)),
@@ -235,7 +210,7 @@ plan(sequential)
 # ---------------------------------------------------------- #
 
 start_process_climate_link <- Sys.time()
-plan(multisession, workers = 21)
+plan(multisession, workers = 18)
 
 res <- future_lapply(
   seq_len(nrow(param_grid)),
@@ -261,7 +236,7 @@ end_process_climate_link - start_process_climate_link
 
 start_process_climate <- Sys.time()
 
-plan(multisession, workers = 21)
+plan(multisession, workers = 18)
 
 res <- future_lapply(
   seq_len(nrow(param_grid)),

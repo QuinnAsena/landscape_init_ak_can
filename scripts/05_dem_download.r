@@ -3,65 +3,35 @@ library(sf)
 library(rstac)
 library(here)
 
-# This is my script to pull DEM data from Arctic DEM
-# Load in env.grids as templates
-# dirs <- normalizePath(list.dirs(full.names = TRUE))
-# ak_landscape_dirs <- dirs[grepl(".*[\\\\/]landscape_[0-9]+$", dirs)]
-
-# # make sure landscapes are ordered
-# landscape_id <- as.integer(
-#   sub(".*landscape_([0-9]+)$", "\\1", ak_landscape_dirs)
-# )
-# ord <- order(landscape_id)
-# ak_landscape_dirs <- ak_landscape_dirs[ord]
-
-# env_files <- list.files(path = ak_landscape_dirs, 
-#                         pattern = "env.grid.tif$", full.names = TRUE, recursive = TRUE)
-
-# landscape_names <- sub(".*(landscape_[0-9]+).*", "\\1", env_files)
-
-
-# ak_landcapes <- lapply(env_files, function(x) {
-#   rast(x)
-# })
-
-
-
-
-
+# Downloads ArcticDEM mosaic tiles (v4.1, 10m resolution) for each landscape
+# using the STAC API. A 1000m buffer is applied to the landscape extent before
+# querying to ensure full tile coverage at the landscape boundary — this
+# supports aspect calculation in step 06 without NA border values.
 dirs <- list.dirs(here(), recursive = FALSE)
-landscape_dirs <- dirs[grepl("landscape_", basename(dirs))]
-landscape_names <- basename(landscape_dirs)
+landscape_names <- basename(dirs[grepl("landscape_", basename(dirs))])
 
-env_files <- list.files(path = file.path(landscape_dirs, "gis"),
-                        pattern = "env.grid.tif$", full.names = TRUE, recursive = TRUE)
-
-ak_landcapes <- lapply(env_files, function(x) {
-  rast(x)
-})
-
-
-
-download_dem <- function(landscape, landscape_name) {
+download_dem <- function(landscape_name) {
 
   outdir <- here(landscape_name, "supporting_data", "gis", "dem", "arcticdem_10m")
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
 
+  env_file <- list.files(here(landscape_name, "gis"),
+                         pattern = "env.grid.tif$", full.names = TRUE)
+  landscape <- rast(env_file)
+  landscape <- terra::buffer(landscape, width = 1000)
+
   stac_url <- "https://stac.pgc.umn.edu/api/v1/"
   stac_api <- stac(stac_url)
   # Find available collections
-  collections_query <- stac_api |>
-    rstac::collections()
-  # Print available collections
-  rstac::get_request(collections_query)
-  # Get a bounding box per landscape in the correct crs for stac query (4326)
+  # collections_query <- stac_api |> rstac::collections()
+  # rstac::get_request(collections_query)
+  # STAC requires a WGS84 bounding box — transform from the landscape CRS
   bbox_4326 <- as.polygons(ext(landscape), crs = crs(landscape)) |>
     st_as_sf() |>
     sf::st_transform(4326) |>
     sf::st_bbox() |>
     as.numeric()
-  bbox_4326
-  # Define a STAC query to find items in the "arcticdem-mosaics-v4.1-10m"
+  # Query the ArcticDEM STAC catalogue for 10m mosaic tiles intersecting the bbox
   stac_query <- stac_search(
     stac_api,
     collections = "arcticdem-mosaics-v4.1-10m",
@@ -70,16 +40,8 @@ download_dem <- function(landscape, landscape_name) {
     post_request() |>
     items_fetch()
 
-  # signed_stac_query <- rstac::items_sign(
-  #   executed_stac_query,
-  #   rstac::sign_planetary_computer()
-  # )
-  # signed_stac_query
-  # urls <- assets_url(stac_query, asset_names = "dem")
-
   tile_ids <- vapply(stac_query$features, function(x) x$id, character(1))
   tile_base <- file.path(outdir, "arcticdem", "mosaics", "v4.1", "10m")
-  #tile_dirs <- sub("_10m_v4\\.1$", "", tile_ids)
 
   if (dir.exists(tile_base) &&
     length(list.files(tile_base, recursive = TRUE)) > 0) {
@@ -94,4 +56,4 @@ download_dem <- function(landscape, landscape_name) {
 
 #--------------- Run the function ---------------#
 
-Map(download_dem, ak_landcapes, landscape_names)
+lapply(landscape_names, download_dem)

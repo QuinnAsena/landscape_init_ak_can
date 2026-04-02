@@ -2,23 +2,26 @@ library(terra)
 library(purrr)
 library(dplyr)
 library(here)
-# This script converts Winslow's "forest_products_and_species" script and
-# Uses Arielle's approach of masking with a seperate water product.
-# Confirmed with Winslow that the water prodect is not identical to 
-# the water layer in the ABoVE data, and should be more accurate.
-
-dirs <- list.dirs(here(), recursive = FALSE)
-landscape_dirs <- dirs[grepl("landscape_", basename(dirs))]
+library(future.apply)
+# Assigns initial forest species to each RU cell based on ABoVE land cover class,
+# aspect direction, and permafrost presence. Outputs a raster of integer species
+# codes used in step 09 to build the stand grid and in step 10 for the env file.
+# Uses Arielle's approach of masking with the ABoVE surface water product rather
+# than the land cover water class — confirmed with Winslow to be more accurate
+# and avoids overlap between forested and water-covered cells.
+# Based on Winslow's "forest_products_and_species" script.
 
 # ABoVE landcover is 1984-2014, above_lc_year layer = select year
 # ABoVE surface water is decadal 1991-2011, water_decade_year layer = select decade
 
 
-process_species <- function(ak_landscape_dirs, above_lc_year = 1, water_decade_year = 1) {
+process_species <- function(landscape_name,
+                            above_lc_year = 1,
+                            water_decade_year = 1) {
 
-  cat("\n\nprocessing: ", basename(ak_landscape_dirs), "\n\n")
+  cat("\n\nprocessing: ", landscape_name, "\n\n")
 
-  out_dir <- file.path(ak_landscape_dirs, "supporting_data", "gis", "init")
+  out_dir <- here(landscape_name, "supporting_data", "gis", "init")
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
   layers <- c(
@@ -28,37 +31,35 @@ process_species <- function(ak_landscape_dirs, above_lc_year = 1, water_decade_y
     env_grid   = "env.grid_disagg_10.tif",
     permafrost = "permafrost_lcp10.tif"
   )
-
-  rasters <- lapply(file.path(ak_landscape_dirs, "supporting_data", "gis", layers), \(ind) {
-    if (basename(ind) == "env.grid_disagg_10.tif") {
-      rast(ind, lyrs = above_lc_year)
-    } else {
-      rast(ind)
-    }
-  })
+  rasters <- lapply(
+    here(landscape_name, "supporting_data", "gis", layers),
+    \(ind) {
+      if (ind == "env.grid_disagg_10.tif") {
+        rast(ind, lyrs = above_lc_year)
+      } else {
+        rast(ind)
+      }
+    })
   names(rasters) <- names(layers)
-
   # Arielle uses the surface water dataset instead of the ABoVE dataset to
-  # define water areas. Both look similar when plot but the surface water dataset
-  # they found was more accurate and would not overlap forested area with water
-  water_files <- list.files(file.path(ak_landscape_dirs, "supporting_data", "ABoVE_Water"), full.names = TRUE)
+  # define water areas. Both look similar when plotted but the surface water
+  # dataset was more accurate and would not overlap forested area with water.
+  water_files <- list.files(
+    here(landscape_name, "supporting_data", "ABoVE_Water"),
+    full.names = TRUE)
   water_rast <- rast(water_files, lyrs = water_decade_year)
-#   plot(rasters$dem)
-#   env_grid_water <- ifel(rasters$env_grid == 15, 1, 0)
-#   plot(env_grid_water)
   water_rast <- disagg(water_rast, fact = 3, method = "near")
   compareGeom(water_rast, rasters$env_grid, stopOnError = TRUE)
   water_rast <- ifel(water_rast == 1, 1, NA)
   dist <- distance(water_rast)
   water_mask <- ifel(dist <= 50, NA, 1)
-  plot(rasters[[1]])
   rasters <- lapply(rasters, mask, mask = water_mask)
-  plot(rasters[[1]])
 
   raster_df <- lapply(rasters, as.data.frame, xy = TRUE) |>
     purrr::reduce(dplyr::left_join, by = c("x", "y"))
-  # NA in aspect is from the raster border, aspect is calculated in 05_dem_process.r
-  # from the DEM. Border cells become NA
+  # Aspect border NAs arise because terrain() requires neighbours on all sides —
+  # edge cells of the DEM have no outer neighbour. These are handled in the
+  # species rules below by falling through to the Above-class-only conditions.
   raster_df <- raster_df |>
     rename(Above = starts_with("ABoVE_LandCover"),
            elevation = ends_with("v4.1_dem"),
@@ -85,8 +86,9 @@ process_species <- function(ak_landscape_dirs, above_lc_year = 1, water_decade_y
       permafrost = coalesce(permafrost, 0)
     )
 
-  # This is very slightly different to Winslow's code in that NA values in aspect
-  # will default to the value in the Above category rather than remaining NA.
+  # Species rules follow Winslow's original logic with one difference: cells
+  # with NA aspect fall through to the class-only conditions (e.g. Above == 1
+  # assigns White.spruce) rather than remaining unclassified as in the original.
   raster_df <- raster_df |>
     mutate(
       species = case_when(
@@ -98,17 +100,17 @@ process_species <- function(ak_landscape_dirs, above_lc_year = 1, water_decade_y
         Above == 2 & aspect.dir == "S"                      ~ "Aspen",
         Above == 2                                          ~ "Birch",
         Above == 3                                          ~ "Mixed",
-        Above %in% 5:9                                      ~ "Potential-forest",
-        TRUE                                                ~ NA_character_,
+        Above %in% 5:9                                     ~ "Potential-forest",
+        TRUE                                               ~ NA_character_,
       ),
       forest_species_init = case_when(
-        species == "Black.spruce" ~ 1, 
-        species == "White.spruce" ~ 2,
-        species == "Aspen"       ~ 3,
-        species == "Birch"        ~ 4,
-        species == "Mixed"        ~ 5,
+        species == "Black.spruce"     ~ 1,
+        species == "White.spruce"     ~ 2,
+        species == "Aspen"            ~ 3,
+        species == "Birch"            ~ 4,
+        species == "Mixed"            ~ 5,
         species == "Potential-forest" ~ 6,
-        TRUE ~ 7
+        TRUE                          ~ 7
       ),
     ) |>
     filter(forest.type != "Non-forest")
@@ -116,15 +118,28 @@ process_species <- function(ak_landscape_dirs, above_lc_year = 1, water_decade_y
   raster_df_small <- raster_df |>
     select(x, y, forest_species_init)
 
-  forest.species <- rast(raster_df_small, type = "xyz", crs = crs(rasters[[1]]))
-  writeRaster(forest.species, filename = file.path(out_dir, paste0("forest_species_init_lc_yr", above_lc_year, ".tif")), overwrite = TRUE)
+  forest_species <- rast(raster_df_small, type = "xyz", crs = crs(rasters[[1]]))
+  writeRaster(forest_species,
+              filename = file.path(
+                out_dir,
+                paste0("forest_species_init_lc_yr", above_lc_year, ".tif")),
+              overwrite = TRUE)
 }
 
 
 #--------------- Run the function ---------------#
 
 dirs <- list.dirs(here(), recursive = FALSE)
-landscape_dirs <- dirs[grepl("landscape_", basename(dirs))]
+landscape_names <- basename(dirs[grepl("landscape_", basename(dirs))])
 
-lapply(landscape_dirs, process_species, above_lc_year = 1, water_decade_year = 1)
-lapply(landscape_dirs, process_species, above_lc_year = 31, water_decade_year = 3)
+plan(multisession)
+future_lapply(landscape_names, process_species,
+              above_lc_year = 1, water_decade_year = 1,
+              future.seed = TRUE)
+plan(sequential)
+
+plan(multisession)
+future_lapply(landscape_names, process_species,
+              above_lc_year = 31, water_decade_year = 3,
+              future.seed = TRUE)
+plan(sequential)
