@@ -18,7 +18,7 @@ download_dem <- function(landscape_name) {
   env_file <- list.files(here(landscape_name, "gis"),
                          pattern = "env.grid.tif$", full.names = TRUE)
   landscape <- rast(env_file)
-  landscape <- terra::buffer(landscape, width = 1000)
+  landscape <- terra::buffer(as.polygons(landscape, extent = TRUE), width = 1000)
 
   stac_url <- "https://stac.pgc.umn.edu/api/v1/"
   stac_api <- stac(stac_url)
