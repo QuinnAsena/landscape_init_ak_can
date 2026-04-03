@@ -1,5 +1,4 @@
 library(terra)
-library(sf)
 library(here)
 library(future.apply)
 # Creates the env.grid raster for each landscape — a 100x100m equal-area grid

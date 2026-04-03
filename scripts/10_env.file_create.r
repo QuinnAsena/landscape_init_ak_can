@@ -114,7 +114,7 @@ build_env_file <- function(landscape_name, soil_rast, lc_yr = 1) {
     )
 
   write.table(env.file,
-              file.path(out_dir, "env.file.txt"),
+              file.path(out_dir, paste0("env.file_yr_", lc_yr, ".txt")),
               row.names = FALSE, sep = "\t")
 }
 
@@ -257,7 +257,7 @@ build_env_file_link <- function(landscape_name, soil_rast, lc_yr = 1) {
     )
 
   write.table(env.file,
-              file.path(out_dir, "env.file_link.txt"),
+              file.path(out_dir, paste0("env.file_link_yr_", lc_yr, ".txt")),
               row.names = FALSE, sep = "\t")
 }
 
@@ -280,4 +280,5 @@ soil_rast <- Map(\(r, nm) {
 }, soil_rast, soil_names)
 
 
-lapply(landscape_names, build_env_file_link, soil_rast = soil_rast)
+set.seed(1984)
+lapply(landscape_names, build_env_file_link, soil_rast = soil_rast, lc_yr = 1)

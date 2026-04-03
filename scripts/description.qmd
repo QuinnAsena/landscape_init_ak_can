@@ -51,13 +51,14 @@ pipeline:
 ```
 landscape_name/
 ├── gis/
-│   ├── env.grid.txt          # RU grid in ASCII format for iLand
-│   ├── env.grid.tif          # RU grid as GeoTIFF
-│   ├── env.file.txt          # RU grid as GeoTIFF
-│   ├── stand_grid.txt        # Stand ID grid in ASCII format for iLand
-│   ├── stand_grid.tif        # Stand ID grid as GeoTIFF
-│   ├── DEM_processed.txt     # DEM in ASCII format for iLand
-│   └── DEM_processed.tif     # DEM as GeoTIFF
+│   ├── env.grid.txt                  # RU grid in ASCII format for iLand
+│   ├── env.grid.tif                  # RU grid as GeoTIFF
+│   ├── env.file_yr<n>.txt            # Environment file (interpolated climate)
+│   ├── env.file_link_yr<n>.txt       # Environment file (linked climate)
+│   ├── stand_grid_yr<n>.txt          # Stand ID grid in ASCII format for iLand
+│   ├── stand_grid_yr<n>.tif          # Stand ID grid as GeoTIFF
+│   ├── DEM_processed.txt             # DEM in ASCII format for iLand
+│   └── DEM_processed.tif             # DEM as GeoTIFF
 ├── databases/
 │   └── <gcm><ssp>V3.sqlite   # Climate database for iLand
 └── supporting_data/
@@ -311,8 +312,9 @@ avoids initialising forest on pixels that sit within or immediately adjacent
 to water bodies.
 
 Species are encoded as integers (1–6) and written as a GeoTIFF for use in
-steps 09 and 10. The script is run twice: once for land cover year 1 (1984)
-and once for year 31 (2014).
+steps 09 and 10. Chose the land voer year in this script, e.g., land
+cover year 1 = 1984 and 31 = 2014. This can be aligned with surface water
+decade where 1,2,3 = 1991, 2001, 2011.
 
 ## Step 08 — Generate stand initialisation data
 
@@ -396,13 +398,8 @@ The following files are the direct inputs consumed by iLand for each landscape:
 | File | Location | Description |
 |---|---|---|
 | `env.grid.txt` | `gis/` | RU grid (ASCII) |
-| `stand_grid.txt` | `gis/` | Stand ID grid (ASCII) |
+| `stand_grid_yr<n>.txt` | `gis/` | Stand ID grid (ASCII) |
 | `DEM_processed.txt` | `gis/` | Digital elevation model (ASCII) |
 | `<gcm><ssp>V3.sqlite` | `databases/` | Climate database |
-| `env.file_link.txt` | `gis/` | Environment file |
+| `env.file_link_yr<n>.txt` | `gis/` | Environment file (linked climate) |
 | `landscape_model_init.txt` | `data/empirical/` | Sapling initialisation table |
- origins
-
-## Data out
-
-## Data out

@@ -34,7 +34,7 @@ process_species <- function(landscape_name,
   rasters <- lapply(
     here(landscape_name, "supporting_data", "gis", layers),
     \(ind) {
-      if (ind == "env.grid_disagg_10.tif") {
+      if (basename(ind) == "env.grid_disagg_10.tif") {
         rast(ind, lyrs = above_lc_year)
       } else {
         rast(ind)

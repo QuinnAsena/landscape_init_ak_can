@@ -80,7 +80,6 @@ process_sqlite <- function(gcm, ssp, var, ak_landscape_dirs,
     )
   })
 
-  dbDisconnect(db.conn)
 }
 
 
