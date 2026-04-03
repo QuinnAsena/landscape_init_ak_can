@@ -1,3 +1,11 @@
+# This script is based on Lora Murphy's selection process located at:
+# Z:\project_data\na_boreal\Landscape building\Landscape selection
+# The difference is that I project to the ABoVE study domain in step 1
+# instead of using ecoregion as the base crs. This is so that selected
+# plots are square and consistent with other ABoVE datasets usedin iLand
+# I have adjusted the code for efficiency, the two scripts are conparable
+# See Lora's scripts for the full description and evaluation process.
+
 library(terra)
 library(sf)
 library(tidyverse)

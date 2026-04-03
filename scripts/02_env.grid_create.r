@@ -46,6 +46,6 @@ process_env_grid <- function(landscape_name) {
 dirs <- list.dirs(here(), recursive = FALSE)
 landscape_names <- basename(dirs[grepl("landscape_", basename(dirs))])
 
-plan(multisession)
+plan(multisession, workers = 2)
 future_lapply(landscape_names, process_env_grid, future.seed = TRUE)
 plan(sequential)

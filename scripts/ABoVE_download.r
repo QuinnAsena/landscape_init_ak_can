@@ -1,3 +1,7 @@
+# Downloading data from ORNL CLOUD specifically gave issues.
+# Other DACs seems accessible programatically more easily
+# Downloaded the whole dataset to Z, it is not that large
+
 # Authentication:
 # from Bash (on windows) nano ~/.netrc
 # write:

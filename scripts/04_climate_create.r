@@ -103,7 +103,7 @@ param_grid <- expand.grid(
 )
 
 
-plan(multisession, workers = 21)
+plan(multisession, workers = 2)
 
 future_lapply(
   seq_len(nrow(param_grid)),

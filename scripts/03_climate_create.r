@@ -12,7 +12,7 @@ landscape_names <- basename(landscape_dirs)
 gcm <- "NorEsm2-MM"
 ssp <- "ssp126"
 var <- c("tasmax", "hurs", "pr", "rsds", "tasmin", "vp")
-year <- 2015:2016
+year <- 1950:2100
 
 param_grid <- expand.grid(
   landscape_dir = landscape_names,
@@ -37,12 +37,23 @@ process_climate <- function(gcm, ssp, var, year, landscape_dir) {
   clim_in <- file.path("//10.60.2.10/FF_Lab/project_data/downscaling/Landscapes",
     paste0("Downscaled ", gcm), ssp, var,
     paste0(gcm, "-", ssp, "-", var, "-", year, ".nc"))
+  cpcrw_clim_in <- file.path("//10.60.2.10/FF_Lab/project_data/downscaling/CPCRW",
+    paste0("Downscaled ", gcm), ssp, var,
+    paste0(gcm, "-", ssp, "-", var, "-", year, ".nc"))
 
   env_files <- list.files(path = here(landscape_dir, "gis"),
                           pattern = "env.grid.tif$", full.names = TRUE, recursive = TRUE)
 
   ak_climate_var <- rast(clim_in)
   env_grid <- rast(env_files)
+
+  # Fall back to the CPCRW climate dataset if the landscape lies outside the
+  # standard regional domain (e.g. CPCRW is not covered by the Landscapes files)
+  env_ext_clim_crs <- project(ext(env_grid), from = crs(env_grid), to = crs(ak_climate_var))
+  if (all(is.na(values(crop(ak_climate_var[[1]], env_ext_clim_crs))))) {
+    ak_climate_var <- rast(cpcrw_clim_in)
+  }
+
   env_grid_sp <- as.points(env_grid, values = TRUE, na.rm = TRUE)
 
   ak_climate_var_proj <- project(ak_climate_var, env_grid, method = "bilinear")
@@ -119,13 +130,21 @@ process_climate_link <- function(gcm, ssp, var, year, landscape_dir) {
   clim_in <- file.path("//10.60.2.10/FF_Lab/project_data/downscaling/Landscapes",
     paste0("Downscaled ", gcm), ssp, var,
     paste0(gcm, "-", ssp, "-", var, "-", year, ".nc"))
-
+  cpcrw_clim_in <- file.path("//10.60.2.10/FF_Lab/project_data/downscaling/CPCRW",
+    paste0("Downscaled ", gcm), ssp, var,
+    paste0(gcm, "-", ssp, "-", var, "-", year, ".nc"))
 
   env_files <- list.files(path = here(landscape_dir, "gis"),
                         pattern = "env.grid.tif$", full.names = TRUE, recursive = TRUE)
 
   env_rast <- rast(env_files)
   ak_climate_var <- rast(clim_in)
+  # Fall back to the CPCRW climate dataset if the landscape lies outside the
+  # standard regional domain (e.g. CPCRW is not covered by the Landscapes files)
+  env_ext_clim_crs <- project(ext(env_rast), from = crs(env_rast), to = crs(ak_climate_var))
+  if (all(is.na(values(crop(ak_climate_var[[1]], env_ext_clim_crs))))) {
+    ak_climate_var <- rast(cpcrw_clim_in)
+  }
   # Convert landscape raster to polygon (extent) and point geometries
   env_poly <- as.polygons(env_rast, extent = TRUE)
   env_points <- as.points(env_rast)
