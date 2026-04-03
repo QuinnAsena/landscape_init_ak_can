@@ -8,9 +8,13 @@ library(future.apply)
 # Outputs are saved to supporting_data/gis/ for use in step 07.
 # Based on Winslow's "forest_products_and_species.Rmd" and Arielle's "landscapes_Alaska5."
 
-perma_rast <- rast("//10.60.2.10/FF_Lab/project_data/na_boreal/data_sets/permafrost/permafrost_repr.tif")
 
 process_dem <- function(landscape_name, perma_rast) {
+  # perma_rast is too large to wrap, commenting-out
+  # if (inherits(perma_rast, "PackedSpatRaster")) {
+  #   perma_rast <- unwrap(perma_rast)
+  # }
+
   env_files_10m <- list.files(
     path = here(landscape_name, "supporting_data", "gis"),
     pattern = "env.grid_disagg_10.tif$",
@@ -83,8 +87,18 @@ process_dem <- function(landscape_name, perma_rast) {
 
 dirs <- list.dirs(here(), recursive = FALSE)
 landscape_names <- basename(dirs[grepl("landscape_", basename(dirs))])
+perma_rast <- rast("//10.60.2.10/FF_Lab/project_data/na_boreal/data_sets/permafrost/permafrost_repr.tif")
 
-plan(multisession, workers = 3)
-future_lapply(landscape_names, process_dem, perma_rast = perma_rast,
-              future.seed = TRUE)
-plan(sequential)
+# If sequential, use regular raster
+lapply(landscape_names, process_dem, perma_rast = perma_rast,
+       future.seed = TRUE)
+
+# perma_rast too big to wrap, go sequential
+# Wrapping the raster will take a while!
+# Only necessary if running in parallel is worthwhile
+# perma_rast_wrapped <- terra::wrap(perma_rast)
+# Use wrapped raster in parallel
+# plan(multisession, workers = 2)
+# future_lapply(landscape_names, process_dem, perma_rast = perma_rast_wrapped,
+              # future.seed = TRUE)
+# plan(sequential)

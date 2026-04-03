@@ -28,30 +28,33 @@ process_stand_grid <- function(landscape_name, year_lyr, sapinit_dict) {
   # Randomly scatter stand IDs across the landscape. Each cell is assigned a
   # stand_id drawn from the range defined in the dictionary for its forest class,
   # ensuring species composition is drawn from the correct empirical distribution.
+  # orig_vals holds the original forest class codes throughout — without this,
+  # bene stand_ids (1–16) overlap with other forest class codes (1, 2, 3) and
+  # those pixels would be incorrectly overwritten in later iterations.
+  orig_vals <- terra::values(forest_type_rast)
+  new_vals  <- orig_vals
   for (i in seq_len(nrow(sapinit_dict))) {
-    idx <- which(vals == sapinit_dict$forest_class[i])
-      vals[idx] <- sample(
-        sapinit_dict$min_stand_id[i]:sapinit_dict$max_stand_id[i],
-        size = length(idx), replace = TRUE)
+    idx <- which(orig_vals == sapinit_dict$forest_class[i])
+    new_vals[idx] <- sample(
+      sapinit_dict$min_stand_id[i]:sapinit_dict$max_stand_id[i],
+      size = length(idx), replace = TRUE)
   }
-  values(forest_type_rast) <- vals
+  values(forest_type_rast) <- new_vals
 
   # NA cells (non-forest/water) are set to -9999 as the iLand no-data value.
   # The documentation specifies -1 but -9999 is also accepted.
-  forest_type_rast <- ifel(is.na(forest_type_rast), -9999, forest_type_rast)
+  forest_type_rast <- ifel(is.na(forest_type_rast), -1, forest_type_rast)
 
   writeRaster(
     forest_type_rast,
-    file.path(output_dir, "stand_grid.tif"),
-    overwrite = TRUE
+    file.path(output_dir, paste0("stand_grid_yr", year_lyr, ".tif")),
+    overwrite = TRUE, datatype = "INT4S", NAflag = -1
   )
 
-  stand_matrix <- terra::as.matrix(forest_type_rast, wide = TRUE)
-  write.table(
-    stand_matrix,
-    file.path(output_dir, "stand_grid.txt"),
-    col.names = FALSE,
-    row.names = FALSE
+  writeRaster(
+    forest_type_rast,
+    file.path(output_dir, paste0("stand_grid_yr", year_lyr, ".txt")),
+    overwrite = TRUE, filetype = "AAIGrid", datatype = "INT4S", NAflag = -1
   )
 }
 
@@ -66,7 +69,7 @@ dirs <- list.dirs(here(), recursive = FALSE)
 landscape_names <- basename(dirs[grepl("landscape_", basename(dirs))])
 
 # Run for land cover year 1 (1984) — re-run with different year_lyr as needed
-plan(multisession)
+plan(multisession, workers = 2)
 future_lapply(landscape_names, process_stand_grid,
               year_lyr = 1, sapinit_dict = sapling_dictionary,
               future.seed = TRUE)

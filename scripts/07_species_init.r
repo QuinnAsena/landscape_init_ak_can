@@ -132,13 +132,13 @@ process_species <- function(landscape_name,
 dirs <- list.dirs(here(), recursive = FALSE)
 landscape_names <- basename(dirs[grepl("landscape_", basename(dirs))])
 
-plan(multisession)
+plan(multisession, workers = 2)
 future_lapply(landscape_names, process_species,
               above_lc_year = 1, water_decade_year = 1,
               future.seed = TRUE)
 plan(sequential)
 
-plan(multisession)
+plan(multisession, workers = 2)
 future_lapply(landscape_names, process_species,
               above_lc_year = 31, water_decade_year = 3,
               future.seed = TRUE)

@@ -11,7 +11,7 @@ library(future.apply)
 # (step 03 process_climate_link) and reads the RU-to-climate-cell lookup.
 # Based on Winslow's "generating environment file.Rmd".
 
-build_env_file <- function(landscape_name, soil_rast) {
+build_env_file <- function(landscape_name, soil_rast, lc_yr = 1) {
 
   message("Processing: ", landscape_name)
 
@@ -21,7 +21,7 @@ build_env_file <- function(landscape_name, soil_rast) {
 
   sp_init_files <- list.files(
     path = here(landscape_name),
-    pattern = "forest_species_init_lc_yr1.tif$", full.names = TRUE, recursive = TRUE)
+    pattern = paste0("forest_species_init_lc_yr", lc_yr, ".tif$"), full.names = TRUE, recursive = TRUE)
 
   env.grid <- rast(env_files)
   env.grid.sp <- as.points(env.grid, values = TRUE)
@@ -34,7 +34,7 @@ build_env_file <- function(landscape_name, soil_rast) {
     rename(env.grid = ru) |>
     mutate(add = landscape_name) |>
     tidyr::unite("model.climate.tableName", c(add, env.grid), remove = FALSE) |>
-    select(env.grid, model.climate.tableName)
+    dplyr::select(env.grid, model.climate.tableName)
 
   species.table <- terra::extract(sp_init, env.grid.sp, df = TRUE)
 
@@ -96,7 +96,7 @@ build_env_file <- function(landscape_name, soil_rast) {
       model.settings.permafrost.moss.biomass = round(
         model.settings.permafrost.moss.biomass, 4),
       model.site.availableNitrogen = 45) |>
-    select(
+    dplyr::select(
       env.grid,
       model.climate.tableName,
       model.site.availableNitrogen,
@@ -119,36 +119,36 @@ build_env_file <- function(landscape_name, soil_rast) {
 }
 
 
-dirs <- list.dirs(here(), recursive = FALSE)
-landscape_names <- basename(dirs[grepl("landscape_", basename(dirs))])
+# dirs <- list.dirs(here(), recursive = FALSE)
+# landscape_names <- basename(dirs[grepl("landscape_", basename(dirs))])
 
-# Soil rasters (depth, sand, silt, clay) pre-processed to AK extent.
-# Layer names are standardised to the "_mean" suffix used in the mutate block.
-soil_files <- list.files(
-  "//10.60.2.10/FF_Lab/project_data/na_boreal/data_sets/soils/ak",
-  full.names = TRUE)
-soil_names <- sub("_ak\\.tif$", "", basename(soil_files))
-soil_rast <- lapply(soil_files, terra::rast)
-names(soil_rast) <- soil_names
+# # Soil rasters (depth, sand, silt, clay) pre-processed to AK extent.
+# # Layer names are standardised to the "_mean" suffix used in the mutate block.
+# soil_files <- list.files(
+#   "//10.60.2.10/FF_Lab/project_data/na_boreal/data_sets/soils/ak",
+#   full.names = TRUE)
+# soil_names <- sub("_ak\\.tif$", "", basename(soil_files))
+# soil_rast <- lapply(soil_files, terra::rast)
+# names(soil_rast) <- soil_names
 
-soil_rast <- Map(\(r, nm) {
-  nnm <- paste0(nm, "_mean")
-  names(r) <- nnm
-  r
-}, soil_rast, soil_names)
+# soil_rast <- Map(\(r, nm) {
+#   nnm <- paste0(nm, "_mean")
+#   names(r) <- nnm
+#   r
+# }, soil_rast, soil_names)
 
-set.seed(1984)
-plan(multisession)
-future_lapply(landscape_names, build_env_file, soil_rast = soil_rast,
-              future.seed = TRUE)
-plan(sequential)
+# set.seed(1984)
+# plan(multisession)
+# future_lapply(landscape_names, build_env_file, soil_rast = soil_rast,
+#               future.seed = TRUE)
+# plan(sequential)
 
 
 # --------------------------------------------------------- #
 # --------------  Process env file with link  ------------- #
 # --------------------------------------------------------- #
 
-build_env_file_link <- function(landscape_name, soil_rast) {
+build_env_file_link <- function(landscape_name, soil_rast, lc_yr = 1) {
 
   message("Processing: ", landscape_name)
 
@@ -163,7 +163,7 @@ build_env_file_link <- function(landscape_name, soil_rast) {
 
   sp_init_files <- list.files(
     path = here(landscape_name, "supporting_data"),
-    pattern = "forest_species_init_lc_yr1.tif$", full.names = TRUE,
+    pattern = paste0("forest_species_init_lc_yr", lc_yr, ".tif$"), full.names = TRUE,
     recursive = TRUE)
 
   env.grid <- rast(env_files)
@@ -177,7 +177,7 @@ build_env_file_link <- function(landscape_name, soil_rast) {
   env.grid.df <- climate.link |>
     mutate(add = landscape_name) |>
     tidyr::unite("model.climate.tableName", c(add, climate.grid), remove = FALSE) |>
-    select(env.grid, model.climate.tableName)
+    dplyr::select(env.grid, model.climate.tableName)
 
   species.table <- terra::extract(sp_init, env.grid.sp, df = TRUE)
 
@@ -239,7 +239,7 @@ build_env_file_link <- function(landscape_name, soil_rast) {
       model.settings.permafrost.moss.biomass = round(
         model.settings.permafrost.moss.biomass, 4),
       model.site.availableNitrogen = 45) |>
-    select(
+    dplyr::select(
       env.grid,
       model.climate.tableName,
       model.site.availableNitrogen,
@@ -261,8 +261,23 @@ build_env_file_link <- function(landscape_name, soil_rast) {
               row.names = FALSE, sep = "\t")
 }
 
-set.seed(1984)
-plan(multisession)
-future_lapply(landscape_names, build_env_file_link, soil_rast = soil_rast,
-              future.seed = TRUE)
-plan(sequential)
+# Run in sequential to avoid wrapping/unwapping soil raster
+# Code runs fast enough not to worry about it.
+dirs <- list.dirs(here(), recursive = FALSE)
+landscape_names <- basename(dirs[grepl("landscape_", basename(dirs))])
+
+soil_files <- list.files(
+  "//10.60.2.10/FF_Lab/project_data/na_boreal/data_sets/soils/ak",
+  full.names = TRUE)
+soil_names <- sub("_ak\\.tif$", "", basename(soil_files))
+soil_rast <- lapply(soil_files, terra::rast)
+names(soil_rast) <- soil_names
+
+soil_rast <- Map(\(r, nm) {
+  nnm <- paste0(nm, "_mean")
+  names(r) <- nnm
+  r
+}, soil_rast, soil_names)
+
+
+lapply(landscape_names, build_env_file_link, soil_rast = soil_rast)
