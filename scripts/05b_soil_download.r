@@ -19,11 +19,15 @@ library(here)
 # dataset into memory per crop. The WCS approach used here subsets server-side
 # and transfers only the data needed, making it significantly more efficient.
 
-# sand/silt/clay data
-# https://data.isric.org/geonetwork/srv/eng/catalog.search#/metadata/f9a3a4e0-27a8-4acc-861f-26c112699c3e
-# Depth data
-# https://data.isric.org/geonetwork/srv/api/records/f36117ea-9be5-4afd-bb7d-7a3e77bf392a
-# https://data.isric.org/geonetwork/srv/eng/catalog.search#/metadata/f36117ea-9be5-4afd-bb7d-7a3e77bf392a
+# Sand/silt/clay — SoilGrids 2.0 (Poggio et al. 2021)
+# DOI: https://doi.org/10.5194/soil-7-217-2021
+# Sand: https://data.isric.org/geonetwork/srv/api/records/713396fa-1687-11ea-a7c0-a0481ca9e724
+# Silt: https://data.isric.org/geonetwork/srv/api/records/713396fb-1687-11ea-a7c0-a0481ca9e724
+# Clay: https://data.isric.org/geonetwork/srv/api/records/713396f7-1687-11ea-a7c0-a0481ca9e724
+#
+# Depth to bedrock (BDTICM) — SoilGrids 1.0 (Hengl et al. 2017)
+# DOI: https://doi.org/10.1371/journal.pone.0169748
+#   https://data.isric.org/geonetwork/srv/api/records/f36117ea-9be5-4afd-bb7d-7a3e77bf392a
 
 dirs <- list.dirs(here(), recursive = FALSE)
 landscape_names <- basename(dirs[grepl("landscape_", basename(dirs))])
@@ -33,6 +37,7 @@ depth_layers <- c("0-5cm_mean", "5-15cm_mean", "15-30cm_mean",
                   "30-60cm_mean", "60-100cm_mean", "100-200cm_mean")
 
 # Build a SoilGrids V2.0 WCS URL for a given variable, depth layer, and bbox
+# Poggio et al. (2020) DOI: https://doi.org/10.5194/soil-7-217-2021
 # Hengl et al. (2017) DOI: 10.1371/journal.pone.0169748
 wcs_url <- function(var, layer, bbox) {
   # bbox: named numeric vector with elements xmin, xmax, ymin, ymax (WGS84)
