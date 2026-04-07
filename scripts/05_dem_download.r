@@ -50,7 +50,8 @@ download_dem <- function(landscape_name) {
   }
 
   assets_download(stac_query,
-                  asset_names = c("dem", "hillshade", "maxdate", "mindate", "metadata"),
+                  asset_names = c("dem", "hillshade", "maxdate",
+                                  "mindate", "metadata"),
                   output_dir = outdir)
 }
 
