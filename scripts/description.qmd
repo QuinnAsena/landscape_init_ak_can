@@ -34,7 +34,7 @@ A single additional landscape at the Caribou-Poker
 Creeks Research Watershed (CPCRW) in interior Alaska is appended to support
 direct comparison with earlier single-site modelling work.
 
-The pipeline is structured as ten sequential R scripts. Each script is
+The pipeline is structured as twelve sequential R scripts. Each script is
 self-contained and operates on a consistent directory structure rooted at the
 project working directory. Processing is parallelised across landscapes using
 `future.apply` where independent per-landscape operations permit.
@@ -67,15 +67,25 @@ landscape_name/
     ├── climate_link/         # Per-variable climate text files (linked version)
     │   ├── <gcm>/<ssp>/<var>/
     │   └── env.grid-climate.grid-link.txt
-    └── gis/
-        ├── env.grid.png              # Diagnostic plot of the RU grid
-        ├── env.grid_disagg_10.tif    # 10m land cover grid
-        ├── dem_lcp10.tif             # DEM projected to landscape grid
-        ├── aspect_lcp10.tif          # Aspect (degrees)
-        ├── hillshade_lcp10.tif       # Hillshade
-        ├── permafrost_lcp10.tif      # Permafrost presence/absence
-        └── init/
-            └── forest_species_init_lc_yr<n>.tif  # Species codes per RU
+    ├── gis/
+    │   ├── env.grid.png              # Diagnostic plot of the RU grid
+    │   ├── env.grid_disagg_10.tif    # 10m land cover grid
+    │   ├── dem_lcp10.tif             # DEM projected to landscape grid
+    │   ├── aspect_lcp10.tif          # Aspect (degrees)
+    │   ├── hillshade_lcp10.tif       # Hillshade
+    │   ├── permafrost_lcp10.tif      # Permafrost presence/absence
+    │   └── init/
+    │       └── forest_species_init_lc_yr<n>.tif  # Species codes per RU
+    ├── soils/
+    │   ├── sand/  sand_0-5cm_mean.tif ... sand_100-200cm_mean.tif
+    │   ├── silt/  silt_0-5cm_mean.tif ... silt_100-200cm_mean.tif
+    │   ├── clay/  clay_0-5cm_mean.tif ... clay_100-200cm_mean.tif
+    │   └── depth/ bdticm.tif
+    └── soils_processed/
+        ├── sand.tif    # Depth-weighted mean %, reprojected to env.grid
+        ├── silt.tif    # Depth-weighted mean %, reprojected to env.grid
+        ├── clay.tif    # Depth-weighted mean %, reprojected to env.grid
+        └── depth.tif   # Depth to bedrock (cm), capped at 200cm
 ```
 
 Shared input data lives outside the landscape directories. Empirical stand
@@ -136,9 +146,14 @@ black and white spruce on flat aspects.
 
 ## Soils
 
-Rasters of soil depth, sand, silt, and clay fraction for the Alaska domain,
-accessed from network storage. Projected to each landscape grid in step 10
-and used to populate soil property fields in the iLand environment file.
+Sand, silt, and clay content (% by weight) from SoilGrids 2.0 (Poggio et al.
+2021) at all six standard depth layers (0–5, 5–15, 15–30, 30–60, 60–100,
+100–200 cm). Depth to bedrock (BDTICM, cm) from SoilGrids 1.0 (Hengl et al.
+2017). Both datasets are at 250m resolution in WGS84.
+
+Data are downloaded per-landscape via the ISRIC WCS API (sand/silt/clay) and
+as a streamed global GeoTIFF (depth) in step 05b, then processed to
+depth-weighted means and reprojected to each landscape grid in step 05c.
 
 ## Empirical stand data
 
@@ -155,8 +170,9 @@ sapling initialisation table.
 
 # Workflow
 
-The pipeline proceeds in ten steps. Steps 01–03 handle spatial and climate
-data preparation; steps 04–10 build the iLand input files.
+The pipeline proceeds in twelve steps. Steps 01–03 handle spatial and climate
+data preparation; steps 04–10 build the iLand input files. Steps 05b and 05c
+handle soil data acquisition and processing.
 
 ## Step 01 — Crop ABoVE data to landscape polygons
 
@@ -263,6 +279,43 @@ A skip condition checks whether tiles have already been downloaded before
 initiating a new request, making it safe to re-run without duplication.
 Downloaded assets include the DEM, hillshade, and date metadata tiles.
 
+## Step 05b — Download soil data
+
+**Script:** `05b_soil_download.r`
+
+Downloads raw soil property tiles from ISRIC SoilGrids for each landscape.
+Requests are scoped to the landscape extent buffered by 4000m, so only the
+relevant area is transferred.
+
+Sand, silt, and clay content are downloaded at all six standard depth layers
+(0–5 through 100–200 cm) via the ISRIC WCS API (SoilGrids 2.0, Poggio et al.
+2021). Depth to bedrock (BDTICM) is streamed from a global GeoTIFF hosted on
+the ISRIC file server via `/vsicurl/` (SoilGrids 1.0, Hengl et al. 2017) —
+this avoids downloading the full ~1GB file.
+
+Raw tiles are saved to `supporting_data/soils/<var>/` for subsequent
+processing in step 05c. A skip condition prevents re-downloading tiles that
+already exist.
+
+## Step 05c — Process soil data
+
+**Script:** `05c_soil_process.r`
+
+Processes the raw SoilGrids tiles downloaded in step 05b into single-layer
+rasters aligned to each landscape's 100m `env.grid`.
+
+For sand, silt, and clay: the six depth layers are stacked and aggregated to a
+thickness-weighted mean (weights proportional to layer depth interval), then
+converted from g/kg to %, reprojected to the landscape CRS and resolution, and
+rounded to integers. Silt is adjusted by ±1 where needed so that
+sand + silt + clay = 100 exactly.
+
+For depth to bedrock: reprojected to the landscape grid and capped at 200 cm
+to match the iLand permafrost module's maximum effective soil depth.
+
+Outputs are written to `supporting_data/soils_processed/` and consumed
+directly by step 10.
+
 ## Step 06 — Process DEM and terrain derivatives
 
 **Script:** `06_dem_process.r`
@@ -271,12 +324,15 @@ Projects the downloaded DEM tiles to the 10m landscape grid and derives
 terrain variables. The key processing order is:
 
 1. Merge or VRT the downloaded tiles
-2. Project to the buffered 10m landscape grid (`env_grid_10_buff`)
-3. Compute aspect from the buffered, unmasked DEM — this ensures edge cells
-   have valid neighbours on all sides
-4. Mask both the DEM and aspect to the true landscape boundary
-5. Project and mask hillshade (no buffer needed — it is a pre-computed product)
-6. Project and mask permafrost
+2. Extend the landscape grid by 10 cells (1000m) to create a buffered
+   projection template sharing the same grid origin
+3. Crop the DEM source to the buffered extent, then project to the template —
+   this retains data beyond the landscape boundary while preserving cell alignment
+4. Compute aspect from the buffered, projected DEM — edge cells have valid
+   neighbours from the 1000m buffer downloaded in step 05
+5. Crop and mask both DEM and aspect to the true landscape boundary
+6. Project and mask hillshade (no buffer needed — it is a pre-computed product)
+7. Project and mask permafrost
 
 Outputs are the DEM, aspect, hillshade, and permafrost rasters in the
 `supporting_data/gis/` directory. The DEM is additionally written in ASCII
@@ -375,8 +431,9 @@ two climate approaches in step 03:
   is formed from the landscape name and the corresponding climate grid cell ID
   from the lookup table.
 
-Soil properties (depth, sand, silt, clay fraction) are projected from the AK
-soil rasters to the RU grid. Carbon and nitrogen pools are initialised from
+Soil properties (depth, sand, silt, clay fraction) are loaded from each
+landscape's `supporting_data/soils_processed/` directory (produced in step
+05c) and extracted at each RU cell location. Carbon and nitrogen pools are initialised from
 species-specific empirical ranges:
 
 - Young labile carbon drawn from uniform distributions stratified by forest
