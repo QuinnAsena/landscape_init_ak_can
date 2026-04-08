@@ -24,6 +24,10 @@ library(here)
 # Sand: https://data.isric.org/geonetwork/srv/api/records/713396fa-1687-11ea-a7c0-a0481ca9e724
 # Silt: https://data.isric.org/geonetwork/srv/api/records/713396fb-1687-11ea-a7c0-a0481ca9e724
 # Clay: https://data.isric.org/geonetwork/srv/api/records/713396f7-1687-11ea-a7c0-a0481ca9e724
+# https://files.isric.org/soilgrids/latest/data/
+# Hengl 2017 data for sand/silt/clay not used here but available at:
+# https://data.isric.org/geonetwork/srv/eng/catalog.search#/metadata/f9a3a4e0-27a8-4acc-861f-26c112699c3e
+# https://files.isric.org/soilgrids/former/2017-03-10/data/
 #
 # Depth to bedrock (BDTICM) — SoilGrids 1.0 (Hengl et al. 2017)
 # DOI: https://doi.org/10.1371/journal.pone.0169748
@@ -122,52 +126,56 @@ download_soil <- function(landscape_name) {
 
 lapply(landscape_names, download_soil)
 
+# cpcrw_sand1 <- rast("D:/quinn/GitHub/landscape_init_ak_can/landscape_alaska_landscape_01/supporting_data/soils/sand/sand_0-5cm_mean.tif")
+# plot(cpcrw_sand1)
+
+# # Check buffer
+# cpcrw_sand1_proj_check <- project(cpcrw_sand1, crs(env_grid))
+# plot(cpcrw_sand1_proj_check)
+# plot(env_grid, add = TRUE)
+
+# # check crop
+# cpcrw_sand1_proj <- project(cpcrw_sand1, env_grid) |>
+#   mask(env_grid)
+# plot(cpcrw_sand1_proj)
+
+# # check against files in Z
+# soil_files <- list.files(
+#   "//10.60.2.10/FF_Lab/project_data/na_boreal/data_sets/soils/ak",
+#   full.names = TRUE)
+# soil_names <- sub("_ak\\.tif$", "", basename(soil_files))
+# soil_rast <- lapply(soil_files, terra::rast)
+# names(soil_rast) <- soil_names
+
+# soil_rast <- Map(\(r, nm) {
+#   nnm <- paste0(nm, "_mean")
+#   names(r) <- nnm
+#   r
+# }, soil_rast, soil_names)
+
+# # Looks good so far but need to check conversions and values
+# soil_rast_proj <- lapply(soil_rast, project, y = env_grid, method = "bilinear")
+# sand_mean_mask <- soil_rast_proj$sand |> mask(env_grid)
+# plot(sand_mean_mask)
+# plot(cpcrw_sand1_proj)
+# plot(soil_rast_proj$sand)
+# plot(cpcrw_sand1_proj, add = TRUE)
+
+# # Depth looks good but has been clipped to 200cm in the file on Z
+# cpcrw_depth <- rast("D:/quinn/GitHub/landscape_init_ak_can/landscape_alaska_landscape_01/supporting_data/soils/depth/bdticm.tif")
+# plot(cpcrw_depth)
+# cpcrw_depth_proj <- project(cpcrw_depth, env_grid) |>
+#   mask(env_grid)
+# plot(cpcrw_depth_proj)
+# plot(ifel(is.na(cpcrw_depth_proj), 1, NA), col = "black")
+
+# cpcrw_depth2 <- cpcrw_depth_proj
+# cpcrw_depth2 <- ifel(cpcrw_depth2 > 200, 200, cpcrw_depth2)
+# plot(cpcrw_depth2)
+
+# ak_soil_depth <- rast("Z:/project_data/na_boreal/data_sets/soils/ak/depth_ak.tif")
+# glob_soil_depth <- rast("Z:/project_data/na_boreal/data_sets/soils/depth_soil_grids_1.tif")
 
 
-
-cpcrw_sand1 <- rast("D:/quinn/GitHub/landscape_init_ak_can/landscape_alaska_landscape_01/supporting_data/soils/sand/sand_0-5cm_mean.tif")
-plot(cpcrw_sand1)
-
-# Check buffer
-cpcrw_sand1_proj_check <- project(cpcrw_sand1, crs(env_grid))
-plot(cpcrw_sand1_proj_check)
-plot(env_grid, add = TRUE)
-
-# check crop
-cpcrw_sand1_proj <- project(cpcrw_sand1, env_grid) |>
-  mask(env_grid)
-plot(cpcrw_sand1_proj)
-
-# check against files in Z
-soil_files <- list.files(
-  "//10.60.2.10/FF_Lab/project_data/na_boreal/data_sets/soils/ak",
-  full.names = TRUE)
-soil_names <- sub("_ak\\.tif$", "", basename(soil_files))
-soil_rast <- lapply(soil_files, terra::rast)
-names(soil_rast) <- soil_names
-
-soil_rast <- Map(\(r, nm) {
-  nnm <- paste0(nm, "_mean")
-  names(r) <- nnm
-  r
-}, soil_rast, soil_names)
-
-# Looks good so far but need to check conversions and values
-soil_rast_proj <- lapply(soil_rast, project, y = env_grid, method = "bilinear")
-sand_mean_mask <- soil_rast_proj$sand |> mask(env_grid)
-plot(sand_mean_mask)
-plot(cpcrw_sand1_proj)
-plot(soil_rast_proj$sand)
-plot(cpcrw_sand1_proj, add = TRUE)
-
-
-# Depth looks good but has been clipped to 200cm in the file on Z
-cpcrw_depth <- rast("D:/quinn/GitHub/landscape_init_ak_can/landscape_alaska_landscape_01/supporting_data/soils/depth/bdticm.tif")
-plot(cpcrw_depth)
-cpcrw_depth_proj <- project(cpcrw_depth, env_grid) |>
-  mask(env_grid)
-plot(cpcrw_depth_proj)
-
-sand_depth_mask <- soil_rast_proj$depth |> mask(env_grid)
-plot(sand_depth_mask)
-
+# sand_depth_mask <- soil_rast_proj$depth |> mask(env_grid)
+# plot(sand_depth_mask)

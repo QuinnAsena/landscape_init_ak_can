@@ -93,22 +93,22 @@ process_climate <- function(gcm, ssp, var, year, landscape_dir) {
 
 
 # --------- Parallel processing for multiple files --------
-plan(multisession, workers = 6)
+# plan(multisession, workers = 6)
 
-res <- future_lapply(
-  seq_len(nrow(param_grid)),
-  function(i) {
-    process_climate(
-      gcm  = param_grid$gcm[i],
-      ssp  = param_grid$ssp[i],
-      var  = param_grid$var[i],
-      year = param_grid$year[i],
-      landscape_dir = param_grid$landscape_dir[i]
-    )
-  },
-  future.seed = TRUE
-)
-plan(sequential)
+# res <- future_lapply(
+#   seq_len(nrow(param_grid)),
+#   function(i) {
+#     process_climate(
+#       gcm  = param_grid$gcm[i],
+#       ssp  = param_grid$ssp[i],
+#       var  = param_grid$var[i],
+#       year = param_grid$year[i],
+#       landscape_dir = param_grid$landscape_dir[i]
+#     )
+#   },
+#   future.seed = TRUE
+# )
+# plan(sequential)
 
 
 
@@ -206,7 +206,7 @@ process_climate_link <- function(gcm, ssp, var, year, landscape_dir) {
 # --------- Parallel processing for multiple files -------- #
 plan(multisession, workers = 24)
 
-res <- future_lapply(
+future_lapply(
   seq_len(nrow(param_grid)),
   function(i) {
     process_climate_link(

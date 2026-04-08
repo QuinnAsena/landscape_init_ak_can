@@ -11,7 +11,7 @@ library(future.apply)
 # (step 03 process_climate_link) and reads the RU-to-climate-cell lookup.
 # Based on Winslow's "generating environment file.Rmd".
 
-build_env_file <- function(landscape_name, soil_rast, lc_yr = 1) {
+build_env_file <- function(landscape_name, lc_yr = 1) {
 
   message("Processing: ", landscape_name)
 
@@ -27,6 +27,16 @@ build_env_file <- function(landscape_name, soil_rast, lc_yr = 1) {
   env.grid.sp <- as.points(env.grid, values = TRUE)
   sp_init <- rast(sp_init_files)
 
+  # Load per-landscape soil rasters from step 05c — already projected to env.grid
+  soil_dir <- here(landscape_name, "supporting_data", "soils_processed")
+  soil_files <- list.files(soil_dir, pattern = "\\.tif$", full.names = TRUE)
+  soil_names <- sub("\\.tif$", "", basename(soil_files))
+  soil_rast <- Map(\(f, nm) {
+    r <- rast(f)
+    names(r) <- paste0(nm, "_mean")
+    r
+  }, soil_files, soil_names)
+
   out_dir <- here(landscape_name, "gis")
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -38,8 +48,7 @@ build_env_file <- function(landscape_name, soil_rast, lc_yr = 1) {
 
   species.table <- terra::extract(sp_init, env.grid.sp, df = TRUE)
 
-  soil_rast_proj <- lapply(soil_rast, project, y = env.grid, method = "bilinear")
-  soil_tables <- lapply(soil_rast_proj, terra::extract, y = env.grid.sp, df = TRUE)
+  soil_tables <- lapply(soil_rast, terra::extract, y = env.grid.sp, df = TRUE)
 
   total <- purrr::reduce(c(soil_tables, list(species.table)), left_join, by = "ID")
 
@@ -148,7 +157,7 @@ build_env_file <- function(landscape_name, soil_rast, lc_yr = 1) {
 # --------------  Process env file with link  ------------- #
 # --------------------------------------------------------- #
 
-build_env_file_link <- function(landscape_name, soil_rast, lc_yr = 1) {
+build_env_file_link <- function(landscape_name, lc_yr = 1) {
 
   message("Processing: ", landscape_name)
 
@@ -171,6 +180,16 @@ build_env_file_link <- function(landscape_name, soil_rast, lc_yr = 1) {
   sp_init <- rast(sp_init_files)
   climate.link <- read.table(climate_link_files, header = TRUE)
 
+  # Load per-landscape soil rasters from step 05c — already projected to env.grid
+  soil_dir <- here(landscape_name, "supporting_data", "soils_processed")
+  soil_files <- list.files(soil_dir, pattern = "\\.tif$", full.names = TRUE)
+  soil_names <- sub("\\.tif$", "", basename(soil_files))
+  soil_rast <- Map(\(f, nm) {
+    r <- rast(f)
+    names(r) <- paste0(nm, "_mean")
+    r
+  }, soil_files, soil_names)
+
   out_dir <- here(landscape_name, "gis")
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -181,8 +200,7 @@ build_env_file_link <- function(landscape_name, soil_rast, lc_yr = 1) {
 
   species.table <- terra::extract(sp_init, env.grid.sp, df = TRUE)
 
-  soil_rast_proj <- lapply(soil_rast, project, y = env.grid, method = "bilinear")
-  soil_tables <- lapply(soil_rast_proj, terra::extract, y = env.grid.sp, df = TRUE)
+  soil_tables <- lapply(soil_rast, terra::extract, y = env.grid.sp, df = TRUE)
 
   total <- purrr::reduce(c(soil_tables, list(species.table)), left_join, by = "ID")
 
@@ -266,19 +284,5 @@ build_env_file_link <- function(landscape_name, soil_rast, lc_yr = 1) {
 dirs <- list.dirs(here(), recursive = FALSE)
 landscape_names <- basename(dirs[grepl("landscape_", basename(dirs))])
 
-soil_files <- list.files(
-  "//10.60.2.10/FF_Lab/project_data/na_boreal/data_sets/soils/ak",
-  full.names = TRUE)
-soil_names <- sub("_ak\\.tif$", "", basename(soil_files))
-soil_rast <- lapply(soil_files, terra::rast)
-names(soil_rast) <- soil_names
-
-soil_rast <- Map(\(r, nm) {
-  nnm <- paste0(nm, "_mean")
-  names(r) <- nnm
-  r
-}, soil_rast, soil_names)
-
-
 set.seed(1984)
-lapply(landscape_names, build_env_file_link, soil_rast = soil_rast, lc_yr = 1)
+lapply(landscape_names, build_env_file_link, lc_yr = 1)

@@ -32,32 +32,41 @@ process_dem <- function(landscape_name, perma_rast) {
     recursive = TRUE)
 
   env_grid_10 <- rast(env_files_10m, lyrs = 1)
-  env_grid_10_buff <- buffer(env_grid_10, width = 1000)
 
   perma_lcp <- project(perma_rast, env_grid_10, method = "near") |>
     mask(env_grid_10)
   writeRaster(perma_lcp,
-              filename = here(landscape_name, "supporting_data", "gis", "permafrost_lcp10.tif"),
+              filename = here(landscape_name, "supporting_data", "gis",
+                              "permafrost_lcp10.tif"),
               overwrite = TRUE)
 
-  if (length(dem_files) > 1) {
-    dem_rasts_merge <- project(vrt(dem_files),
-                               env_grid_10_buff, method = "bilinear") |>
-      mask(env_grid_10_buff)
-  } else {
-    dem_rasts_merge <- project(rast(dem_files), env_grid_10_buff, method = "bilinear") |>
-      mask(env_grid_10_buff)
-  }
+  # Project DEM to the landscape CRS and resolution without restricting to the
+  # landscape extent — the downloaded tiles cover a 1000m buffer (step 05) so
+  # the projected raster extends beyond the landscape boundary. Aspect is then
+  # computed on this full extent so border cells have valid neighbours, before
+  # masking back to env_grid_10 removes the fringe.
+  dem_src <- if (length(dem_files) > 1) vrt(dem_files) else rast(dem_files)
 
-  # Compute aspect on the buffered, unmasked DEM so that border cells have
-  # valid neighbours — masking afterwards removes the buffer fringe
+  # Extend env_grid_10 by 10 cells (1000m) to create a buffered template that
+  # shares the same grid origin — projecting to this ensures cell alignment so
+  # crop() and mask() back to env_grid_10 work without extent mismatch errors.
+  # Project the buffered extent to the DEM's native CRS for cropping.
+  env_grid_10_ext <- extend(env_grid_10, 10)
+  dem_ext_dem_crs <- project(ext(env_grid_10_ext),
+                             from = crs(env_grid_10), to = crs(dem_src))
+  dem_rasts_merge <- crop(dem_src, dem_ext_dem_crs) |>
+    project(env_grid_10_ext, method = "bilinear")
+
+  # Compute aspect on the buffered DEM so border cells have valid neighbours
   aspect <- terrain(dem_rasts_merge, v = "aspect", unit = "degrees")
-  aspect <- mask(aspect, env_grid_10)
+  aspect <- crop(aspect, env_grid_10) |> mask(env_grid_10)
+
   writeRaster(aspect,
               filename = here(landscape_name, "supporting_data", "gis", "aspect_lcp10.tif"),
               overwrite = TRUE)
 
-  dem_rasts_merge <- mask(dem_rasts_merge, env_grid_10)
+  dem_rasts_merge <- crop(dem_rasts_merge, env_grid_10) |> mask(env_grid_10)
+
   writeRaster(dem_rasts_merge,
               filename = here(landscape_name, "supporting_data", "gis", "dem_lcp10.tif"),
               overwrite = TRUE)
@@ -90,8 +99,7 @@ landscape_names <- basename(dirs[grepl("landscape_", basename(dirs))])
 perma_rast <- rast("//10.60.2.10/FF_Lab/project_data/na_boreal/data_sets/permafrost/permafrost_repr.tif")
 
 # If sequential, use regular raster
-lapply(landscape_names, process_dem, perma_rast = perma_rast,
-       future.seed = TRUE)
+lapply(landscape_names, process_dem, perma_rast = perma_rast)
 
 # perma_rast too big to wrap, go sequential
 # Wrapping the raster will take a while!

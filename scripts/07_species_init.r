@@ -121,9 +121,9 @@ process_species <- function(landscape_name,
   forest_species <- rast(raster_df_small, type = "xyz", crs = crs(rasters[[1]]))
   writeRaster(forest_species,
               filename = file.path(
-                out_dir,
-                paste0("forest_species_init_lc_yr", above_lc_year, ".tif")),
-              overwrite = TRUE)
+              out_dir, 
+              paste0("forest_species_init_lc_yr", above_lc_year, ".tif")),
+              NAflag = -1, overwrite = TRUE)
 }
 
 
