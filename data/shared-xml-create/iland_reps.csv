@@ -1,2 +1,2 @@
-﻿fecund,gcm,fri,epsilon,dbh,id
-species_param_pa01pl035be05pr07,NorEsm2-MMssp126V3,120,2.7,2.5,filt_1980
+﻿sp_param,gcm,fri,epsilon,dbh,sp_init,stand_grid,env_file,id
+species_param_pa01pl035be05pr07,NorEsm2-MMssp126V3,120,2.7,2.5,,gis/,gis/,filt_1980
