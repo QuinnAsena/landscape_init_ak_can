@@ -50,4 +50,5 @@ rsconnect/
 
 # Ignore all the directories containing large files
 /landscape_*/
-/data
+/data/landscape_selection/
+/data/lora_proj_temp/

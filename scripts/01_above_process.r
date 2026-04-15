@@ -31,7 +31,7 @@ above_water_files <- list.files(
 above_water_files <- above_water_files[!grepl(pattern = "QA", above_water_files)]
 
 # Load up Lora's selected landscapes
-landscapes_poly <- vect(here("data", "final_plots_above_proj.shp"))
+landscapes_poly <- vect(here("data", "landscape_selection", "final_plots_above_proj.shp"))
 plot(above_study_domain)
 plot(landscapes_poly, add = TRUE, col = "red")
 # ---------- check crs ---------- #

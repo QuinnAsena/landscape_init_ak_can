@@ -11,6 +11,8 @@ library(sf)
 library(tidyverse)
 library(here)
 
+dir.create(here("data", "landscape_selection"), showWarnings = FALSE, recursive = TRUE)
+
 # Load the level 3 ecoregions
 eco <- vect("//10.60.2.10/FF_Lab//project_data/na_boreal/Landscape building/Landscape selection/GIS inputs/NA_CEC_Eco_Level3")
 # Load above study domain as master grid
@@ -198,9 +200,9 @@ if (!done_already) {
                    function(x) length(x) == 0)
   plots <- plots[in_buf, ]
 
-  writeVector(plots, here("data", "plots_after_urban.shp"), overwrite = TRUE)
+  writeVector(plots, here("data", "landscape_selection", "plots_after_urban.shp"), overwrite = TRUE)
 } else {
-  plots <- vect(here("data", "plots_after_urban.shp"))
+  plots <- vect(here("data", "landscape_selection", "plots_after_urban.shp"))
 }
 
 plot(eco, main = "After urban filtering", axes = FALSE)
@@ -218,9 +220,9 @@ if (!done_already) {
   above_lc_files <- above_lc_files[!grepl("Simplified", above_lc_files)]
   above_lc_vrt <- vrt(above_lc_files, set_names = TRUE)
   mosaic_forest <- crop(above_lc_vrt[[31]], eco)
-  writeRaster(mosaic_forest, here("data", "mosaic.tif"), overwrite = TRUE)
+  writeRaster(mosaic_forest, here("data", "landscape_selection", "mosaic.tif"), overwrite = TRUE)
 } else {
-  mosaic_forest <- rast(here("data", "mosaic.tif"))
+  mosaic_forest <- rast(here("data", "landscape_selection", "mosaic.tif"))
 }
 
 plot(mosaic_forest)
@@ -241,9 +243,9 @@ if (!done_already) {
   }
   plots2 <- plots[plots$Propforested >= 0.75 |
                     plots$ecoregion == "TAIGA SHIELD"]
-  writeVector(plots2, here("data", "Plots with forest.shp"), overwrite = TRUE)
+  writeVector(plots2, here("data", "landscape_selection", "Plots with forest.shp"), overwrite = TRUE)
 } else {
-  plots2 <- vect(here("data", "Plots with forest.shp"))
+  plots2 <- vect(here("data", "landscape_selection", "Plots with forest.shp"))
 }
 
 
@@ -270,9 +272,9 @@ if (!done_already) {
   x <- which(is.na(plots2$Suppression) |
                plots2$Suppression %in% c("U", "L", "NA"))
   plots2 <- plots2[x, ]
-  writeVector(plots2, here("data", "Eligible plots.shp"), overwrite = TRUE)
+  writeVector(plots2, here("data", "landscape_selection", "Eligible plots.shp"), overwrite = TRUE)
 } else {
-  plots2 <- vect(here("data", "Eligible plots.shp"))
+  plots2 <- vect(here("data", "landscape_selection", "Eligible plots.shp"))
 }
 
 
@@ -349,7 +351,7 @@ plot(eco, "NA_L2NAME", col = rainbow(4), main = "Eligible plots", axes = FALSE)
 plot(matched, add = TRUE, col = "black")
 
 
-writeVector(matched, here("data", "final_plots_above_proj.shp"), overwrite = TRUE)
+writeVector(matched, here("data", "landscape_selection", "final_plots_above_proj.shp"), overwrite = TRUE)
 
 
 
