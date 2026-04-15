@@ -60,7 +60,7 @@ landscape_name/
 │   ├── DEM_processed.txt             # DEM in ASCII format for iLand
 │   └── DEM_processed.tif             # DEM as GeoTIFF
 ├── databases/
-│   └── <gcm><ssp>V3.sqlite   # Climate database for iLand
+│   └── <gcm><ssp>.sqlite     # Climate database for iLand
 └── supporting_data/
     ├── ABoVE_LandCover/      # Cropped annual land cover tiles
     ├── ABoVE_Water/          # Cropped decadal surface water tiles
@@ -445,6 +445,19 @@ species-specific empirical ranges:
 
 All numeric fields are rounded before output. The final file is written as
 a tab-delimited text file in the landscape `gis/` directory.
+
+## Step 11 — generate project file
+
+This workflow does not create:
+
+- lip (light influence patterns)
+- species parameter databases
+- javascript files
+- scenario csv
+- bash run files
+
+I have included these files from the original CPCRW project, and this script (11_project_file_create.r) moves the files to each landscape from the central `data/shared-xml-create` directory. Moving files from te central location ensures consistency across landscapes. The duplication is necessary so that each landscape is self-contained for running iLand.
+
 
 ---
 
