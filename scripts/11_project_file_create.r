@@ -1,11 +1,5 @@
-# Copy lip directory to all landscapes
+# move lip directories to each landscape
 
-move(lip)
+# move spp database to each landscape's database directory
 
-# Create scripts directory and move .js files there
-
-dir.create(scripts)
-
-# Move spp. database.sqlite to databases
-
-create xml per landscape
+# create scripts directory per landsacpe and copy javascripts there
