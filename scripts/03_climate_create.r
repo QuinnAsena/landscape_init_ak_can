@@ -9,6 +9,9 @@ dirs <- list.dirs(here(), recursive = FALSE)
 landscape_dirs <- dirs[grepl("landscape_", basename(dirs))]
 landscape_names <- basename(landscape_dirs)
 
+# gcm <- c("NorEsm2-MM", "TaiESM1", "UKESM1-0-LL", "EC-Earth3-Veg", "GFDL-ESM4")
+# ssp <- c("ssp126", "ssp245", "ssp370", "ssp585")
+
 gcm <- "NorEsm2-MM"
 ssp <- "ssp126"
 var <- c("tasmax", "hurs", "pr", "rsds", "tasmin", "vp")
