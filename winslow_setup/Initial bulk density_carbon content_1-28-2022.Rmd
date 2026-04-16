@@ -1,0 +1,123 @@
+---
+title: "SOL exploration Walker ABOVE"
+author: "Winslow"
+date: "1/21/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+library(tidyverse)
+```
+```{r}
+d.1=read.table("Z:/project_data/na_boreal/data_sets/Organic layer and tree regen/ABoVE_Plot_Data_Burned_Sites_1744/data/AK_CA_Burned_Plot_Data_1983_2016.csv", sep=",", header=T)
+d.1.Burned = d.1 %>% filter(treatment=="burn")
+d.1.burned.subset = d.1.Burned %>% filter(prefire_sol!=-9999 &mean_residual_org_layer_depth!= -9999 & burn_depth!=-9999& stand_age!=-9999 &bg_c_prefire!=-9999)
+d.1.burned.subset = d.1.burned.subset %>% select(site,ecoregion_name_l2,stand_age,prefire_sol,mean_residual_org_layer_depth,burn_depth,bg_c_prefire)
+summary.burned = d.1.burned.subset %>% group_by(ecoregion_name_l2) %>% summarise_at(vars(prefire_sol:bg_c_prefire), mean, na.rm = TRUE)  
+summary.burned
+levels(as.factor(d.1.burned.subset$ecoregion_name_l2))
+ggplot(d.1.burned.subset, aes(x=ecoregion_name_l2, y=prefire_sol))+
+  geom_boxplot(outlier.shape = NA)+
+  scale_y_continuous(limits = c(0,100),breaks=seq(0,100,20))
+
+ggplot(d.1.burned.subset, aes(x=ecoregion_name_l2, y=bg_c_prefire))+
+  geom_boxplot(outlier.shape = NA)+
+  scale_y_continuous(limits = c(0,50000),breaks=seq(0,50000,5000))
+
+ggplot(d.1.burned.subset, aes(x=ecoregion_name_l2, y=bg_c_prefire/prefire_sol))+
+  geom_boxplot(outlier.shape = NA)
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+REad in the data and produce a postfire and prefire dataset
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Figure out why my carbon is high
+
+```{r}
+d.1=read.table("Z:/project_data/na_boreal/data_sets/Organic layer and tree regen/ABoVE_Plot_Data_Burned_Sites_1744/data/AK_CA_Soil_Profile_Synthesis.csv", sep=",", header=T)
+d.1[d.1 == -9999] <- NA
+summary(d.1)
+d.1.driver=d.1 %>% filter(min_org=="org" & project_name != "NWT_MackWalker"&treatment=="Control")
+d.1.driver = d.1.driver %>% mutate(horizon.clean = ifelse(horizon=="GM"|horizon=="moss"|horizon=="live moss","live.moss","dead.moss"))
+summary(as.factor(d.1.driver$horizon.clean))
+summary(d.1.driver)
+d.1.driver.summary = d.1.driver %>% group_by(site,profile, horizon.clean) %>% summarize(total.depth = sum(raw_depth),totaladjusted_depth = sum(adjusted_depth), mean.fine_bulk_density = mean(fine_bulk_density/1000*1000000),mean.total_bulk_density = mean(total_bulk_density/1000*1000000), mean.fine_carbon = mean(fine_carbon), sum.dry_matter=sum(dry_matter), sum.carbon.pool=sum(carbon))
+summary(as.factor(d.1.driver.summary$horizon.clean))
+summary(d.1.driver.summary)
+
+
+plots <- list()
+for(i in levels(as.factor(c("live.moss","dead.moss")))){
+  data=d.1.driver.summary %>%filter(horizon.clean==i)
+  f=mean(data$total.depth,na.rm=T)
+ plots[[i]]=ggplot(data, aes(x=total.depth))+
+   geom_histogram()+
+   geom_vline(aes(xintercept=mean(total.depth)))+
+   labs(title=paste0("variable ",i," median = ",f))
+}
+total.depth =cowplot::plot_grid(plots[[1]],plots[[2]])
+
+
+plots <- list()
+for(i in levels(as.factor(c("live.moss","dead.moss")))){
+  data=d.1.driver.summary %>%filter(horizon.clean==i)
+  f=mean(data$mean.fine_bulk_density,na.rm=T)
+ plots[[i]]=ggplot(data, aes(x=mean.fine_bulk_density))+
+   geom_histogram()+
+   geom_vline(aes(xintercept=mean(mean.fine_bulk_density)))+
+   labs(title=paste0("variable ",i," median = ",f))
+}
+fine_bulk_density =cowplot::plot_grid(plots[[1]],plots[[2]])
+
+plots <- list()
+for(i in levels(as.factor(c("live.moss","dead.moss")))){
+  data=d.1.driver.summary %>%filter(horizon.clean==i)
+    f=median(data$sum.carbon.pool,na.rm=T)
+ plots[[i]]=ggplot(data, aes(x=sum.carbon.pool))+
+   geom_histogram()+
+   geom_vline(aes(xintercept=median(sum.carbon.pool,na.rm=T)))+
+   labs(title=paste0("variable ",i," median = ",f))
+}
+fine_carbon =cowplot::plot_grid(plots[[1]],plots[[2]])
+
+#To confirm the proportion of carbon in live and dead moss. Also see the carbon output script for where these values are applied in the benchmarking.
+d.1.driver.summary=d.1.driver.summary %>% mutate(perc.c=sum.carbon.pool/sum.dry_matter)
+d.1.driver.summary %>%filter(horizon.clean=="live.moss") %>%summary()
+```

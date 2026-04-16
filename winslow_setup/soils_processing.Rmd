@@ -1,0 +1,110 @@
+---
+title: "iLand landscape building"
+author: "Winslow Hansen"
+date: "May 26, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+libraries
+```{r}
+library(tidyverse)
+library(raster)
+library(sf)
+```
+Read in the beginning of the stand grid and then resample
+```{r}
+clip = raster("raw data/master_gridf.tif")
+clip 
+
+raster::rasterOptions(maxmemory = 1e+10)
+clip2=aggregate(clip,fact=10)
+clip
+clip2
+```
+generate an env grid
+```{r}
+env.grid=clip2
+values(env.grid) <- 1:ncell(env.grid)
+plot(env.grid)
+write.table(as.matrix(env.grid),"E:/post doc 2018-2020/Alaska fire modeling/the model/iLand landscapes/landscape building/cpcrw/materials/env/env.grid.txt",col.names = F,row.names = F )
+writeRaster(env.grid,"E:/post doc 2018-2020/Alaska fire modeling/the model/iLand landscapes/landscape building/cpcrw/materials/env/env.grid.tif" )
+```
+
+Readin the product, reproject it, calculate the mean across depth layers
+```{r}
+texture.processor=function(texture.var){
+texture = stack()
+for (i in 1:6){
+  raster=raster(paste0("E:/post doc 2018-2020/Alaska fire modeling/the model/iLand landscapes/landscape building/raw data/sand-silt-clay-depth/",texture.var,i,".tif"))
+  names(raster) = paste0(texture.var,".depth_",i) 
+  texture=stack(texture,raster)
+}
+
+f1 <- function(x) calc(x, mean)
+beginCluster()
+texture_mean <- clusterR(texture, f1)  # This is computing the mean of the raster stack while using parallel computing.
+texture_mean=texture_mean/1000*100 #converting from grams per kg to a proportion and converting to percent
+
+values(texture_mean)[values(texture_mean) == 0] = NA
+
+beginCluster()
+texture_mean_repr <- projectRaster(texture_mean, crs=crs(env.grid), res=res(env.grid),method = "bilinear")
+endCluster()
+texture_mean_repr=round(texture_mean_repr,digits = 0)
+
+texture_mean_repr2=crop(texture_mean_repr,env.grid)
+texture_mean_repr2=setExtent(texture_mean_repr2,env.grid)
+return(texture_mean_repr2)
+}
+
+sand.mean=texture.processor("sand")
+silt.mean=texture.processor("silt")
+clay.mean=texture.processor("clay")
+sand.mean
+silt.mean
+clay.mean
+
+stack(env.grid,sand.mean,silt.mean,clay.mean)
+
+
+```
+See if they add to 100
+```{r}
+total=sum(sand.mean,silt.mean,clay.mean)
+silt.mean <- overlay(x=silt.mean, y=total, fun=function(x, y) ifelse(y>100, x-1, x)) 
+silt.mean <- overlay(x=silt.mean, y=total, fun=function(x, y) ifelse(y<100, x+1, x)) 
+
+
+
+
+plot(sand.mean)
+plot(silt.mean)
+plot(clay.mean)
+plot(total)
+hist(total)
+writeRaster(silt.mean,"E:/post doc 2018-2020/Alaska fire modeling/the model/iLand landscapes/landscape building/cpcrw/materials/env/silt.processed.tif",overwrite=T)
+writeRaster(sand.mean,"E:/post doc 2018-2020/Alaska fire modeling/the model/iLand landscapes/landscape building/cpcrw/materials/env/sand.processed.tif",overwrite=T)
+writeRaster(clay.mean,"E:/post doc 2018-2020/Alaska fire modeling/the model/iLand landscapes/landscape building/cpcrw/materials/env/clay.processed.tif",overwrite=T)
+
+```
+Now doing effective soil depth
+```{r}
+depth = raster("E:/post doc 2018-2020/Alaska fire modeling/the model/iLand landscapes/landscape building/raw data/sand-silt-clay-depth/AK_soil_depth_200cm_2.tif")
+depth
+beginCluster()
+depth_repr <- projectRaster(depth, crs=crs(env.grid), res=res(env.grid),method = "bilinear")
+endCluster()
+depth
+depth_repr
+plot(depth_repr)
+depth_repr_crop=crop(depth_repr,clip)
+plot(depth_repr_crop)
+depth_repr_crop=setExtent(depth_repr_crop,env.grid)
+depth_repr_crop
+env.grid
+writeRaster(depth_repr_crop,"E:/post doc 2018-2020/Alaska fire modeling/the model/iLand landscapes/landscape building/cpcrw/materials/env/depth.processed.tif",overwrite=T)
+```

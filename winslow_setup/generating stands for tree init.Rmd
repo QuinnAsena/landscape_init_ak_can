@@ -1,0 +1,243 @@
+---
+title: "Generating input stands for cpcrw"
+author: "Winslow Hansen"
+date: "9/23/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+johnstone=read.table("D:/workspace/Winslow/permafrost/permafrost_param/iLand landscapes/landscape building/raw data/forest_data/Alaska-init-stands-johnstone.txt",header=T, sep= ",")
+walker=read.table("D:/workspace/Winslow/permafrost/permafrost_param/iLand landscapes/landscape building/raw data/forest_data/Alaska-init-stands-walker.txt",header=T, sep= "\t")
+```
+Now we are going to create a convenient site name   
+
+```{r}
+johnstone=johnstone%>%mutate(dataset="johnstone")%>%unite("Site_name",c("dataset","site"),sep="_")
+
+
+walker=walker%>%mutate(dataset="walker")%>%unite("Site_name",c("dataset","burnsite"),sep="_")
+```
+
+
+We will subset each of the datasets down to just the necessary variables Site_name, species densities and species proportions
+
+```{r}
+j.2=data.frame("Site_name"=johnstone$Site_name,"BS.dens"=johnstone$BS.dens,"TA.dens"=johnstone$TA.dens,"PB.dens"=johnstone$PB.dens,
+               "total.dens"=johnstone$total.dens,"BS.prop"=johnstone$bs.prop,"TA.prop"=johnstone$ta.prop,"PB.prop"=johnstone$pb.prop)
+
+w.2=data.frame("Site_name"=walker$Site_name,"BS.dens"=walker$BS.dens.post,"TA.dens"=walker$TA.dens.post,"PB.dens"=walker$PB.dens.post,
+               "total.dens"=walker$total.dens,"BS.prop"=walker$bs.prop,"TA.prop"=walker$ta.prop,"PB.prop"=walker$pb.prop)
+          
+
+```
+Rbinding them together
+```{r}
+total=rbind(j.2,w.2)
+summary(total)
+total=total%>%filter(!is.na(BS.prop))#remove a walker stand with nothing
+```
+```{r}
+bs=total%>%filter(BS.prop>=0.75)
+ta=total%>%filter(TA.prop>=0.75)
+pb=total%>%filter(PB.prop>=0.50)
+mixed=total%>%filter(BS.prop<=0.75&BS.prop>=0.25&TA.prop+PB.prop<=0.75&TA.prop+PB.prop>=0.25)
+```
+
+Produce stands for black spruce forest Start by generating some variation in tree heights
+
+```{r}
+heights=read.table("D:/workspace/Winslow/permafrost/permafrost_param/iLand landscapes/landscape building/raw data/forest_data/Johnstone_tree_heights.txt",header=T,sep="\t")
+estimate_ht_param = function(species,distr){
+heights.y=heights%>%filter(species==species)
+fg=fitdistrplus::fitdist(heights.y$height,distr)
+return(fg)
+}
+
+
+bs.param=estimate_ht_param("spruce","gamma")
+ta.param=estimate_ht_param("aspen","gamma")
+pb.param=estimate_ht_param("birch","weibull")
+
+bs.height=heights%>%filter(species=="spruce")
+d=density(bs.height$height)
+plot(d)
+curve(dgamma(x,shape=3.8,rate=0.101), ##1.86580232   0.02615085
+      add=TRUE,
+      col="blue")
+
+ta.height=heights%>%filter(species=="aspen")
+d=density(ta.height$height)
+plot(d)
+curve(dgamma(x,shape=1.96,rate=0.031), ##1.86580232   0.02615085
+      add=TRUE,
+      col="blue")
+
+pb.height=heights%>%filter(species=="birch")
+d=density(pb.height$height)
+plot(d)
+curve(dweibull(x,shape=2.011525,scale=188.487756), ##1.86580232   0.02615085
+      add=TRUE,
+      col="blue")
+```
+Using the shape and rate parameters above, now we will draw the correct number of pulls from the gamma for just the Johnstone and walker plots, we must exclude the Shenoy plots!
+
+```{r}
+set.seed(11)
+gen.heights=function(species,num.stands,val.1,val.2){
+  data = if(species == "Pima"|species=="Potr"){
+          round(rgamma(n=(20*num.stands),shape=val.1, rate=val.2),digits = 0)
+        }else{
+         round(rweibull(n=(20*num.stands),shape=val.1, scale=val.2),digits=0)
+        }
+  data=data.frame(data)
+  data=data%>%   rename(Height= data) 
+
+return(data)
+}
+
+Pima.heights=gen.heights("Pima",66,3.8,0.101)   ## These values were based on adjustments to fit the distribution by hand that I used in the stability paper. Look above. They fit well.
+summary(Pima.heights)
+
+####
+#Pima.heights=Pima.heights %>%mutate(Height=Height+30)
+#####
+
+Potr.heights=gen.heights("Potr",25,1.96,0.031)
+summary(Potr.heights)
+Bene.heights=gen.heights("Bene",16,2.011525,188.487756)
+summary(Bene.heights)
+Bene.heights=Bene.heights%>%mutate(Height = ifelse(Height>380, 380, Height))
+#Producinga mixed heights dataset for each species
+mixed.Pima.heights=gen.heights("Pima",63,3.8,0.101)
+####
+#mixed.Pima.heights=mixed.Pima.heights %>%mutate(Height=Height+300)
+#####
+mixed.Potr.heights=gen.heights("Potr",63,1.96,0.031)
+mixed.Bene.heights=gen.heights("Bene",63,2.011525,188.487756)
+
+```
+compile the dataset
+```{r}
+
+
+produce.dataset=function(n,dataset,dataset2,species){
+dataset$id=seq(1+n,n+length(dataset$Site_name),by=1)
+id=dataset$id
+id=rep(id, each=20)
+id=data.frame(id)
+density=dplyr::select(dataset, c("id","total.dens","BS.dens","TA.dens","PB.dens"))
+id=left_join(id,density)
+id.2=data.frame(cbind(id,dataset2))
+id.2$age="11"
+id.2$species=species
+return(id.2)
+}
+
+Pima.final=produce.dataset(0,bs, Pima.heights,"Pima")
+summary(Pima.final)
+Potr.final=produce.dataset(66,ta, Potr.heights,"Potr")
+summary(Potr.final)
+Bene.final=produce.dataset(91,pb, Bene.heights,"Bene")
+summary(Bene.final)
+#Producing a mixed dataset for each of the species
+mixed.Pima.final=produce.dataset(107,mixed,mixed.Pima.heights,"Pima")
+summary(mixed.Pima.final)
+mixed.Potr.final=produce.dataset(107,mixed, mixed.Potr.heights,"Potr")
+mixed.Bene.final=produce.dataset(107,mixed, mixed.Bene.heights,"Bene")
+
+
+```
+create init files that will aline with the stand grid.
+```{r}
+prod.sapinit = function(dataset,density){
+		sapinit=data.frame(
+			stand_id=dataset$id,
+			species=dataset$species, 
+			count=density/20,    ###Following the new intialization approach!
+			height_from=round((dataset$Height/100)-0.1,digits=2), # adding some jitter here, as initializing a larger number of *identical* trees will likely result in mortality waves due to missing differentiation between individuals
+			height_to=round((dataset$Height/100)+0.1,digits=2),
+			age=as.numeric(dataset$age))
+
+sapinit$height_from=ifelse(sapinit$height_from<0.05,0.05,sapinit$height_from)
+sapinit$height_to=ifelse(sapinit$height_from==0.05,sapinit$height_to+0.05,sapinit$height_to)
+return(sapinit)
+}
+
+Pima.complete=prod.sapinit(Pima.final,Pima.final$BS.dens)
+
+####
+#Pima.complete = Pima.complete %>% dplyr::mutate(age = as.numeric(age)+30)
+####
+Potr.complete=prod.sapinit(Potr.final,Potr.final$TA.dens)
+Bene.complete=prod.sapinit(Bene.final, Bene.final$PB.dens)
+
+#Producing the mixed for each species
+mixed.Pima.complete=prod.sapinit(mixed.Pima.final,mixed.Pima.final$BS.dens)
+mixed.Potr.complete=prod.sapinit(mixed.Potr.final,mixed.Potr.final$TA.dens)
+mixed.Bene.complete=prod.sapinit(mixed.Bene.final, mixed.Bene.final$PB.dens)
+mixed.complete=rbind(mixed.Pima.complete,mixed.Potr.complete,mixed.Bene.complete)
+mixed.complete=mixed.complete[order(mixed.complete$stand_id),]  ### order by stand id so that species are together with the stand id.
+mixed.complete=mixed.complete%>%filter(count!=0) ### Filter out the rows where count (density) is zero. 
+
+
+####
+#mixed.Pima.complete = mixed.Pima.complete %>% dplyr::mutate(age = as.numeric(age)+30)
+####
+
+#Generating an intialization dataset for white spruce: 
+Pigl.complete=Pima.complete
+Pigl.complete=Pigl.complete%>%mutate(count= runif(length(count),min=7800/20,max=16000/20),
+                                     stand_id=stand_id+133,
+                                     species="Pigl",
+                                     height_from = height_from+1,
+                                     height_to = height_to+1,
+                                     age= age+15)
+summary(Pigl.complete)
+summary(Pima.complete)
+final=rbind(Pima.complete,Potr.complete,Bene.complete,mixed.complete,Pigl.complete)
+final$species = as.factor(final$species)
+summary(final)
+final=final %>% mutate(height_from = ifelse(height_from>4,3.8, height_from),
+                       height_to = ifelse(height_to>4,4,height_to))
+#final = final %>% mutate(count = round(count/2),0) # doing this to reduce the number of stands that get to filled up in the log. 
+write.table(final,"D:/workspace/Winslow/permafrost/permafrost_param/iLand landscapes/landscape building/cpcrw/materials/init/cpcrw_model_init.txt", col.names=T, row.names=F, sep=",")
+```
+
+
+Finally generate the stand grid while the values in your mind are fresh
+```{r}
+library(raster)
+species=raster("D:/workspace/Winslow/permafrost/permafrost_param/iLand landscapes/landscape building/cpcrw/materials/init/forest_species_init.tif")
+species
+plot(species)
+Pima.s=species
+ values(Pima.s)=round(runif(ncell(Pima.s),min=1+6,max=66+6),digits=0)
+Potr.s=species
+ values(Potr.s)=round(runif(ncell(Potr.s),min=67+6,max=91+6),digits=0)
+Bene.s=species
+ values(Bene.s)=round(runif(ncell(Bene.s),min=92+6,max=107+6),digits=0)
+Mixed.s=species
+ values(Mixed.s)=round(runif(ncell(Mixed.s),min=108+6,max=133+6),digits=0)
+Pigl.s=species
+ values(Pigl.s)=round(runif(ncell(Pigl.s),min=134+6,max=199+6),digits=0)
+species = overlay(x=species, y=Pima.s, fun=function(x,y) ifelse(x==1,y,x),forcefun=TRUE) 
+species = overlay(x=species, y=Pigl.s, fun=function(x,y) ifelse(x==2,y,x),forcefun=TRUE) 
+species = overlay(x=species, y=Potr.s, fun=function(x,y) ifelse(x==3,y,x),forcefun=TRUE) 
+species = overlay(x=species, y=Bene.s, fun=function(x,y) ifelse(x==4,y,x),forcefun=TRUE) 
+species = overlay(x=species, y=Mixed.s, fun=function(x,y) ifelse(x==5,y,x),forcefun=TRUE) 
+
+values(species)[values(species)==6] = 206 #Potential forest
+
+species=species-6
+species
+plot(species)
+writeRaster(species, "D:/workspace/Winslow/permafrost/permafrost_param/iLand landscapes/landscape building/cpcrw/materials/init/stand_grid.tif",overwrite=T)
+values(species)[is.na(values(species))] = -9999
+write.table(as.matrix(species),"D:/workspace/Winslow/permafrost/permafrost_param/iLand landscapes/landscape building/cpcrw/materials/init/stand_grid.txt" ,col.names = F,row.names = F)
+
+```

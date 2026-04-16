@@ -1,0 +1,101 @@
+---
+title: "processing_fire"
+author: "Winslow Hansen"
+date: "11/12/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+libraries
+```{r}
+library(tidyverse)
+library(raster)
+raster::rasterOptions(maxmemory = 1e+10)
+library(sf)
+library(stars)
+raster::rasterOptions()
+```
+```{r}
+#update your path here
+clip = raster("D:/workspace/Winslow/permafrost/permafrost_param/iLand landscapes/landscape building/raw data/master_gridf.tif")
+clip
+#clip=spatial.tools::modify_raster_margins(clip,extent_delta = c(0, 7, 6, 0),1)
+#writeRaster(clip,"E:/post doc 2018-2020/Alaska fire modeling/the model/iLand landscapes/landscape building/raw data/master_gridf.tif",overwrite=T)  # this was done to square up the 10x10m grid to deal with converting to 100m RUs
+plot(clip)
+
+clip.poly = st_as_stars(clip) %>% st_as_sf(merge = T)
+st_write(clip.poly, "raw data/master_gridf.shp")
+plot(clip.poly)
+```
+
+Read in the fire perimeter shape file that has been reprojected and clipped to my study landscape in GIS. I had to do this because the R clipping was not working correctly.
+```{r}
+perim = file.path("D:/workspace/Winslow/permafrost/permafrost_param/iLand landscapes/landscape building/raw data/fire/perimeters_clipped.shp") %>%st_read()
+perim=perim %>%mutate(PRESCRIBED = as.factor(PRESCRIBED))
+summary(perim)
+# Filter out prescribed fires
+perim = perim %>% filter(PRESCRIBED == "N"| is.na(PRESCRIBED))
+st_crs(perim)
+#Add an id
+id = data.frame(id = c(1:6))
+perim=cbind(perim,id)
+crs(perim.raster)
+perim.raster=rasterize(perim, clip,field=id)
+plot(perim.raster)
+writeRaster(perim.raster, "F:/work/permafrost/permafrost_param/iLand landscapes/landscape building/cpcrw/materials/fire/perimeters_raster.tif",overwrite=T)
+writeRaster(perim.raster, "F:/work/permafrost/permafrost_param/iLand landscapes/landscape building/cpcrw/materials/fire/perimeters_raster.asc",overwrite=T)
+```
+Generate the planned disturbance file that links to the polygon list
+```{r}
+p.d = perim %>% dplyr::select(year = FIREYEAR, id) %>% data.frame()
+p.d$geometry = NULL
+p.d = p.d %>% mutate(year = as.numeric(year)-1719)  # converting from calendar year to year in the simulation (of a 300 year run that ends in 2019)
+
+write.table(p.d, "F:/work/permafrost/permafrost_param/iLand landscapes/landscape building/cpcrw/materials/fire/planned_disturbance.txt", row.names = F)
+```
+
+Now doing the perimeter processing so iLand can read it
+
+```{r}
+nx <- setValues(perim.raster, rep(xFromCol(perim.raster), dim(perim.raster)[1]))
+plot(nx)
+ny <- t(nx)
+ny <- (setValues(ny, (rep(yFromRow(perim.raster), dim(perim.raster)[2]))))
+ny <- t(ny)
+plot(ny)
+
+### use zonal statistics
+mean.x <- zonal(nx, perim.raster, fun='mean')
+min.x <- zonal(nx, perim.raster, fun='min')
+max.x <- zonal(nx, perim.raster, fun='max')
+mean.y <- zonal(ny, perim.raster, fun='mean')
+min.y <- zonal(ny, perim.raster, fun='min')
+max.y <- zonal(ny, perim.raster, fun='max')
+areas <- freq(perim.raster)
+
+coords <- as.data.frame(cbind(mean.x, mean.y[,2], min.x[,2], max.x[,2], min.y[,2], max.y[,2], areas[,2][!is.na(areas[,1])]/100 ))
+names(coords) <- c("id", "meanx", "meany", "minx", "maxx", "miny", "maxy", "area")
+coords$area <-  areas[match( coords$id, areas[,1] ),2]
+
+
+
+
+
+## check area/rectangle (i.e. fractal geometry), remove weird stuff
+summary( ((coords$maxx-coords$minx)*(coords$maxy-coords$miny))/10000/coords$area)
+
+#### Again not running because of large fires coords <- coords[((coords$maxx-coords$minx)*(coords$maxy-coords$miny))/10000/coords$area < 50,]
+plot( ((coords$maxx-coords$minx)*(coords$maxy-coords$miny))/10000~coords$area)
+### make a nice table
+n
+polygon.data <- data.frame(id=coords$id, minx=coords$minx, maxx=coords$maxx, miny=coords$miny, maxy=coords$maxy, area=coords$area)
+# sort by area
+polygon.data <- polygon.data[order(polygon.data$area),]
+head(polygon.data)
+tail(polygon.data)
+plot(polygon.data$area)
+write.table(polygon.data, file="F:/work/permafrost/permafrost_param/iLand landscapes/landscape building/cpcrw/materials/fire/polygon_list.txt", row.names=F)
+```

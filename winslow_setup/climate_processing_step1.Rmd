@@ -1,0 +1,139 @@
+---
+title: "iLand landscape building"
+author: "Winslow Hansen"
+date: "May 26, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+libraries
+```{r}
+library(tidyverse)
+library(terra)
+library(sf)
+```
+
+Read in the the temperature product as a template
+```{r}
+gcm = "NorEsm2-MM"   #"NorEsm2-MM" "TaiESM1"
+
+
+temp = rast(paste0("Z:/project_data/downscaling/CPCRW/Downscaled ",gcm,"/ssp245/tasmax/",gcm,"-ssp245-tasmax-1950.nc"))
+#day.length=rast("Z:/project_data/downscaling/CPCRW/Daymet daily data/clipped_daymet_v4_daily_dayl.nc")
+```
+generate a climate names grid
+```{r}
+
+climate.grid=temp[[4]]
+```
+
+Read in an environment grid
+```{r}
+env.grid= rast("D:/workspace/Winslow/iLand_AK/cpcrw/materials/env/env.grid.tif" )
+env.grid
+env.grid.coarse= aggregate(env.grid,10)
+```
+Reproject climate.grid
+```{r}
+climate.grid.repr = project(climate.grid, env.grid.coarse,method="near")
+values(climate.grid.repr) <- 1:ncell(climate.grid.repr)
+writeRaster(climate.grid.repr,"D:/workspace/Winslow/iLand_AK/cpcrw/materials/env/climate.grid.tif",overwrite=T)
+
+```
+reproject the daylength grid
+
+
+```{r}
+#day.length.repr = project(day.length, env.grid.coarse,method="bilinear")
+#plot(day.length.repr[[1]])
+```
+
+Okay now we convert the cropped climate.grid to a spatial object, and write it out.
+```{r}
+env.grid.sp= as.points(env.grid,values=T)
+writeVector(env.grid.sp, "D:/workspace/Winslow/iLand_AK/cpcrw/materials/env/env_cells_extract.shp",overwrite=T)
+climate.grid.sp=as.points(climate.grid.repr, value=T)
+writeVector(climate.grid.sp, "D:/workspace/Winslow/iLand_AK/cpcrw/materials/env/climate_cells_extract.shp",overwrite=T)
+
+```
+
+Now produce a shapefile/dataframe that links the env grid to the climate gridcell number
+```{r}
+rasValue=as.data.frame(terra::extract(climate.grid.repr, env.grid.sp,df=T, bind=T))
+rasValue = rasValue %>% dplyr::rename(env.gridCell= env.grid) %>% rename(climate.gridCell = tasmax_4)
+write.table(rasValue, "D:/workspace/Winslow/iLand_AK/cpcrw/materials/climate/env.grid to climate.grid link.txt",row.names = F)
+```
+
+Read in historical temperature data starting with tmin
+```{r}
+ignore_leap_years <- function(year, day_of_year) {
+  # Check if the year is a leap year
+  if (leap_year(year) && day_of_year > 59) {
+    # Add 1 to skip the leap day (February 29)
+    day_of_year <- day_of_year + 1
+  }
+return(day_of_year)
+  }
+ncol <- function(x) dim(x)[2]
+
+process.climate = function(model,ssp,var){
+r=rast(paste0("Z:/project_data/downscaling/CPCRW/Downscaled ",model,"/",ssp,"/",var,"/",model,"-",ssp,"-",var,"-",year,".nc"))
+r.repr=project(r,climate.grid.repr, method="bilinear")
+if(var=="rsds"){
+  r.repr = (r.repr * 86400)/1000000  #Convert radiation from watts/m2 to megajoules m2 day-1 (day length/1000000 joules per megajoule)
+}else{
+  r.repr=r.repr
+}
+
+t=as.data.frame(terra::extract(r.repr,climate.grid.sp,bind=T))
+names(t)[1] <- "climate.gridCell"
+n=ncol(t)
+t_long <- tidyr::gather(t, y_day,value , 2:n)
+if(var=="vp" &year<1980){
+  t_long <- t_long %>% separate(y_day, c('vp', 'y_day'), sep = "\\.") # Had to add this given the name in vapor pressure changed
+}else{
+t_long <- t_long %>% separate(y_day, c('vp', 'y_day'), sep = '_')
+}
+t_long$vp=NULL
+t_long = t_long %>% mutate(y_day= as.numeric(y_day)) 
+t_long = t_long %>% mutate(day_of_year = mapply(ignore_leap_years,year,y_day))
+t_long = t_long %>% mutate(date= make_date(year) + days(day_of_year-1))
+t_long$y_day=NULL
+t_long$day_of_year=NULL
+t_long$value=round(t_long$value, digits=3)
+write.table(t_long,paste0("D:/workspace/Winslow/iLand_AK/cpcrw/materials/climate/",model,"/",ssp,"/",model,"-",ssp,"-",var,"-",year,".txt"),row.names = F, sep = "\t")
+}  
+
+
+dir.create(paste0("D:/workspace/Winslow/iLand_AK/cpcrw/materials/climate/",gcm,"/ssp245"),recursive = T)
+
+dir.create(paste0("D:/workspace/Winslow/iLand_AK/cpcrw/materials/climate/",gcm,"/ssp126"),recursive = T)
+
+dir.create(paste0("D:/workspace/Winslow/iLand_AK/cpcrw/materials/climate/",gcm,"/ssp370"),recursive = T)
+
+
+i="ssp126"
+j="vp"
+year=1950
+
+
+for(i in levels(as.factor(c("ssp126","ssp245","ssp370")))){      
+  for(j in levels(as.factor(c("hurs","pr","rsds","tasmax","tasmin","vp")))){          #
+  for(year in 1950:2100){
+  process.climate(gcm,i,j)
+  print(paste0("Processed var ",j," and year ",year))
+}
+  }
+}
+```
+
+
+
+
+
+
+
+
