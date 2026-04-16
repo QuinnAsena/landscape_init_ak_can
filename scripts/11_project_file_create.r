@@ -7,30 +7,30 @@ dirs <- list.dirs(here(), recursive = FALSE)
 landscape_names <- basename(dirs[grepl("landscape_", basename(dirs))])
 
 # helper function to edit xml nodes
-editxml <- function(xmlfile, tag, value){
-  #tag is a character (xpath) that returns one node.
-  #value is the desired value of the node (character)
+editxml <- function(xmlfile, tag, value) {
+  # tag is a character (xpath) that returns one node.
+  # value is the desired value of the node (character)
   tomod <- xml_find_all(xmlfile, tag)
-  if(length(tomod) == 1) { #you found (only) one node
-    xml_text(tomod) <- value #replace the value
-    print("After the edit:")
-    print(xml_find_all(xmlfile, tag)) #This is what it looks like after the edit
-  }
-  if(length(tomod) != 1) {
-    print(paste0("You found ",length(tomod)," nodes. Re-specify tag to find 1. No edits made"))
+  if (length(tomod) == 1) {
+    xml_text(tomod) <- value
+  } else {
+    warning("Found ", length(tomod), " nodes for '", tag,
+            "'. Re-specify tag to find exactly 1. No edit made.")
   }
 }
 
 # helper function to sample climate years for model runs
-sample_climate <- function(climate_span = 1950:2100, desired_years = 1950:1980, mod_years = 300, seed = 1984) {
+sample_climate <- function(desired_years = 1950:1980, mod_years = 300, seed = 1984) {
   set.seed(seed) # always set the seed for reproducibility
   batch_years <- length(desired_years) # length of historic climate to resample
-  resample_vector <- sample(0:(batch_years - 1), mod_years, replace = TRUE) # zero-indexed vector of random years to sample from the climate data (e.g., 0 = 1950, 1 = 1951, etc.)
+  # zero-indexed vector of random years to sample from the climate data
+  # (e.g., 0 = first year of desired_years, 1 = second year, etc.)
+  resample_vector <- sample(0:(batch_years - 1), mod_years, replace = TRUE)
   climate_filter <- paste0("year >= ", min(desired_years), " and year <= ", max(desired_years))
   random_sample_list <- paste(resample_vector, collapse = ",")
-  return(list(climate_filter = climate_filter,
-              random_sample_list = random_sample_list,
-			  batch_years = batch_years))
+  list(climate_filter    = climate_filter,
+       random_sample_list = random_sample_list,
+       batch_years        = batch_years)
 }
 
 
@@ -38,8 +38,7 @@ sample_climate <- function(climate_span = 1950:2100, desired_years = 1950:1980, 
 master_xml <- read_xml(here("data", "shared-xml-create", "landscape_master.xml"))
 
 gen_project_file <- function(landscape_name, master_xml, run_type,
-                             climate_span, desired_years, mod_years,
-                             filt_cond, seed) {
+                             desired_years, mod_years, filt_cond, seed) {
   x <- read_xml(as.character(master_xml))
   out_xml <- here(landscape_name, paste0(landscape_name, "_", run_type, ".xml"))
 
@@ -49,8 +48,8 @@ gen_project_file <- function(landscape_name, master_xml, run_type,
 
   wid <- ncol(env_grid) * 100
   hig <- nrow(env_grid) * 100
-  xllcorner <- ext(env_grid)[1]
-  yllcorner <- ext(env_grid)[3]
+  xllcorner <- xmin(env_grid)
+  yllcorner <- ymin(env_grid)
   latitude <- round(crds(
     project(
       vect(cbind(mean(c(xmin(env_grid), xmax(env_grid))),
@@ -67,7 +66,7 @@ gen_project_file <- function(landscape_name, master_xml, run_type,
   editxml(x, "//location/y", as.character(yllcorner))
 
   # Set up climate sampling
-  climate_settings <- sample_climate(climate_span, desired_years, mod_years, seed)
+  climate_settings <- sample_climate(desired_years, mod_years, seed)
   editxml(x, "//climate/filter", climate_settings$climate_filter)
   editxml(x, "//climate/randomSamplingList", climate_settings$random_sample_list)
   editxml(x, "//climate/batchYears", as.character(climate_settings$batch_years))
@@ -104,8 +103,32 @@ gen_project_file <- function(landscape_name, master_xml, run_type,
 
 
 
-# move lip directories to each landscape
+shared <- here("data", "shared-xml-create")
 
-# move spp database to each landscape's database directory
+check_copy <- function(ok, label) {
+  if (!all(ok)) warning("File copy failed for: ", label)
+}
 
-# create scripts directory per landsacpe and copy javascripts there
+lapply(landscape_names, function(lcp) {
+  # 1. Copy lip/ directory into each landscape root
+  check_copy(
+    file.copy(file.path(shared, "lip"), here(lcp), recursive = TRUE, overwrite = TRUE),
+    paste(lcp, "lip/")
+  )
+
+  # 2. Copy spp_param.sqlite into each landscape's databases/ directory
+  dir.create(here(lcp, "databases"), recursive = TRUE, showWarnings = FALSE)
+  check_copy(
+    file.copy(file.path(shared, "spp_param.sqlite"),
+              here(lcp, "databases", "spp_param.sqlite"), overwrite = TRUE),
+    paste(lcp, "spp_param.sqlite")
+  )
+
+  # 3. Create scripts/ directory and copy saveWorkflow.js into it
+  dir.create(here(lcp, "scripts"), recursive = TRUE, showWarnings = FALSE)
+  check_copy(
+    file.copy(file.path(shared, "saveWorkflow.js"),
+              here(lcp, "scripts", "saveWorkflow.js"), overwrite = TRUE),
+    paste(lcp, "saveWorkflow.js")
+  )
+})

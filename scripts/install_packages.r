@@ -23,7 +23,8 @@ paks <- c(
   "RSQLite",
   # Utilities
   "here",
-  "future.apply"
+  "future.apply",
+  "xml2"
   # Exploratory / supporting scripts (not required for main pipeline)
   # "httr2",          # ABoVE download, earthdata authentication
   # "gdalcubes",      # earthdata_support.r
