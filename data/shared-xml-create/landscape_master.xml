@@ -42,7 +42,7 @@
       <mortalityEnabled>true</mortalityEnabled> <!-- if false, tree mortaliy (intrinsic and stress related) will not be executed. Management works. -->
       <growthEnabled>true</growthEnabled> <!-- if false, trees will apply/read light patterns, but do not grow -->
       <carbonCycleEnabled>true</carbonCycleEnabled> <!-- if true, the snag dynamics (https://iland-model.org/snag%20dynamics) and soil CN cycling (https://iland-model.org/soil%20C%20and%20N%20cycling) sub-modules are enabled. -->
-      <epsilon>epsilon_overwritten_by_csv</epsilon> <!-- 3PG's maximum efficiency in GPP production (default value: 1.8). Different values are used for iLand in different regions. -->
+      <epsilon>overwritten_by_csv</epsilon> <!-- 3PG's maximum efficiency in GPP production (default value: 1.8). Different values are used for iLand in different regions. -->
       <lightExtinctionCoefficient>0.5</lightExtinctionCoefficient> <!-- "k" parameter (beer lambert) used for calc. of absorbed light on resourceUnit level. Different values are used for iLand in different regions. -->
       <lightExtinctionCoefficientOpacity>0.5</lightExtinctionCoefficientOpacity> <!-- "k" for beer lambert used for opacity of single trees. Different values are used for iLand in different regions. -->
       <temperatureTau>6</temperatureTau> <!-- "tau"-value for delayed temperature calculation acc. to Mäkela 2008 -->
