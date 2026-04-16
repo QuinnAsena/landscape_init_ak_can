@@ -69,7 +69,7 @@ gen_project_file <- function(landscape_name, master_xml, run_type,
   # Set up climate sampling
   climate_settings <- sample_climate(desired_years, mod_years, seed)
   editxml(x, "//climate/filter", climate_settings$climate_filter)
-  editxml(x, "//climate/randomSamplingList", climate_settings$random_sample_list)
+  editxml(x, "//climate/randomSamplingList", climate_settings$random_sample_list) # might need to be quoted string?
   editxml(x, "//climate/batchYears", as.character(climate_settings$batch_years))
 
   if (run_type == "spinup") {

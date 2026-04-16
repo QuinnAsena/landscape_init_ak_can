@@ -329,7 +329,7 @@ sapinit_bind <- bind_rows(sapinit, sapinit_pigl) |>
         species == "birch" ~ "Bene",
         species == "white_spruce" ~ "Pigl",
         species == "spruce" ~ "Pima",
-        species == "mixed.spruce" ~ "Pigl",
+        species == "mixed.spruce" ~ "Pima",
         species == "mixed.aspen" ~ "Potr",
         species == "mixed.birch" ~ "Bene"
       )

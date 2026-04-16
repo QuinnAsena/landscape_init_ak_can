@@ -40,6 +40,12 @@ build_env_file <- function(landscape_name, lc_yr = 1) {
   out_dir <- here(landscape_name, "gis")
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
+  # TODO: verify model.climate.tableName construction before using this function.
+  # build_env_file_link unites landscape_name + climate.grid (the climate cell ID).
+  # This function unites landscape_name + env.grid (the RU cell ID).
+  # If process_climate (step 03) writes one SQLite table per climate grid cell
+  # (not per RU), these table names will not match the database and iLand will
+  # fail to find climate data. Check once climate files are rebuilt.
   env.grid.df <- as.data.frame(env.grid) |>
     rename(env.grid = ru) |>
     mutate(add = landscape_name) |>

@@ -14,7 +14,8 @@ landscape_names <- basename(landscape_dirs)
 
 gcm <- "NorEsm2-MM"
 ssp <- "ssp126"
-var <- c("tasmax", "hurs", "pr", "rsds", "tasmin", "vp")
+# var <- c("tasmax", "hurs", "pr", "rsds", "tasmin", "vp")
+var <- c("tasmax", "pr", "rsds", "tasmin", "vp")
 year <- 1950:2100
 
 param_grid <- expand.grid(
@@ -201,7 +202,7 @@ plan(sequential)
 # --------------------------------------------------------- #
 # ------------  Interpolate climate to RU scale ----------- #
 # --------------------------------------------------------- #
-# Will result in very large amounts of data
+# Will result in very large amounts of data, this function is unused for now.
 
 process_climate <- function(gcm, ssp, var, year, landscape_dir) {
 

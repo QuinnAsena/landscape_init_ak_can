@@ -1,6 +1,5 @@
 library(terra)
 library(here)
-library(future.apply)
 # Creates the env.grid raster for each landscape — a 100x100m equal-area grid
 # where each cell is assigned a unique sequential RU (resource unit) ID.
 # Projects ABoVE land cover tiles to ESRI:102001 (Canada Albers Equal Area),
@@ -45,6 +44,4 @@ process_env_grid <- function(landscape_name) {
 dirs <- list.dirs(here(), recursive = FALSE)
 landscape_names <- basename(dirs[grepl("landscape_", basename(dirs))])
 
-plan(multisession, workers = 21)
-future_lapply(landscape_names, process_env_grid, future.seed = TRUE)
-plan(sequential)
+lapply(landscape_names, process_env_grid)
