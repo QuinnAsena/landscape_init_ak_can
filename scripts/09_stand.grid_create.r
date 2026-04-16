@@ -69,8 +69,8 @@ dirs <- list.dirs(here(), recursive = FALSE)
 landscape_names <- basename(dirs[grepl("landscape_", basename(dirs))])
 
 # Run for land cover year 1 (1984) — re-run with different year_lyr as needed
-plan(multisession, workers = 2)
-future_lapply(landscape_names, process_stand_grid,
-              year_lyr = 1, sapinit_dict = sapling_dictionary,
-              future.seed = TRUE)
-plan(sequential)
+lapply(landscape_names, process_stand_grid,
+              year_lyr = 1, sapinit_dict = sapling_dictionary)
+
+lapply(landscape_names, process_stand_grid,
+              year_lyr = 31, sapinit_dict = sapling_dictionary)

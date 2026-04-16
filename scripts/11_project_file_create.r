@@ -6,6 +6,7 @@ library(terra)
 dirs <- list.dirs(here(), recursive = FALSE)
 landscape_names <- basename(dirs[grepl("landscape_", basename(dirs))])
 
+#--------------- helper functions ---------------#
 # helper function to edit xml nodes
 editxml <- function(xmlfile, tag, value) {
   # tag is a character (xpath) that returns one node.
@@ -33,7 +34,7 @@ sample_climate <- function(desired_years = 1950:1980, mod_years = 300, seed = 19
        batch_years        = batch_years)
 }
 
-
+#--------------- main function to generate project file ---------------#
 
 master_xml <- read_xml(here("data", "shared-xml-create", "landscape_master.xml"))
 
@@ -87,7 +88,6 @@ gen_project_file <- function(landscape_name, master_xml, run_type,
   editxml(x,"//initialization/mode", mode)
   editxml(x,"//initialization/type", type)
   editxml(x,"//initialization/file", file)
-
   
   save_filter <- paste0("year >= ", mod_years - filt_cond, " and year <= ", mod_years)
   # Set save conditions
@@ -101,8 +101,18 @@ gen_project_file <- function(landscape_name, master_xml, run_type,
   write_xml(x, out_xml)
 }
 
+gen_project_file(
+    landscape_name = landscape_names[1],
+    master_xml = master_xml,
+    run_type = "spinup",
+    desired_years = 1950:1980,
+    mod_years = 300,
+    filt_cond = 260,
+    seed = 1984)
 
 
+
+##--------------- Move shared files to landscapes ---------------#
 shared <- here("data", "shared-xml-create")
 
 check_copy <- function(ok, label) {
@@ -110,6 +120,12 @@ check_copy <- function(ok, label) {
 }
 
 lapply(landscape_names, function(lcp) {
+  
+  sub_dirs <- c("databases", "temp", "log", "output", "snapshot")
+  lapply(sub_dirs, \(dir) {
+    dir.create(here(lcp, dir), recursive = TRUE, showWarnings = FALSE)
+  })
+
   # 1. Copy lip/ directory into each landscape root
   check_copy(
     file.copy(file.path(shared, "lip"), here(lcp), recursive = TRUE, overwrite = TRUE),
@@ -117,7 +133,6 @@ lapply(landscape_names, function(lcp) {
   )
 
   # 2. Copy spp_param.sqlite into each landscape's databases/ directory
-  dir.create(here(lcp, "databases"), recursive = TRUE, showWarnings = FALSE)
   check_copy(
     file.copy(file.path(shared, "spp_param.sqlite"),
               here(lcp, "databases", "spp_param.sqlite"), overwrite = TRUE),

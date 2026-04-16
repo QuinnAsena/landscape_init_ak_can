@@ -17,8 +17,8 @@ process_env_grid <- function(landscape_name) {
     here(landscape_name, "supporting_data", "ABoVE_LandCover"),
     full.names = TRUE)
 
-  r0 <- rast(above_lc, lyrs = 1)
-  r <- project(r0, crs("ESRI:102001"), method = "near", res = 100)
+  r0 <- rast(above_lc)
+  r <- project(r0[[1]], crs("ESRI:102001"), method = "near", res = 100)
 
   non_na_idx <- which(!is.na(values(r)))
   values(r)[non_na_idx] <- seq_along(non_na_idx)

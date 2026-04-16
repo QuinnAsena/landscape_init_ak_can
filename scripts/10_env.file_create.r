@@ -286,3 +286,4 @@ landscape_names <- basename(dirs[grepl("landscape_", basename(dirs))])
 
 set.seed(1984)
 lapply(landscape_names, build_env_file_link, lc_yr = 1)
+lapply(landscape_names, build_env_file_link, lc_yr = 31)

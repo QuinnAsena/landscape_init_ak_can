@@ -336,20 +336,23 @@ sapinit_bind <- bind_rows(sapinit, sapinit_pigl) |>
   ) |>
   arrange(stand_id)
 
-write.table(
-  sapinit_bind,
-  file.path(in_dir, "sapinit_bind.txt"),
-  row.names = FALSE, col.names = TRUE, sep = ",")
-
 unique(sapinit_bind$forest_type)
 # Because of the additional stands in "mixed" we have a stand_id range
 # up to 329 rather that 199 (7 more stands * 20)
 range(sapinit_bind$stand_id)
 
-write.table(
-  sapinit_bind,
-  file.path(in_dir, "landscape_model_init.txt"),
-  row.names = FALSE, col.names = TRUE, sep = ",")
+dirs <- list.dirs(here(), recursive = FALSE)
+landscape_names <- basename(dirs[grepl("landscape_", basename(dirs))])
+
+lapply(landscape_names, function(landscape_name) {
+  init_out_dir <- here(landscape_name, "init")
+  dir.create(init_out_dir, recursive = TRUE, showWarnings = FALSE)
+
+  write.table(
+    sapinit_bind,
+    file.path(init_out_dir, "landscape_model_init.txt"),
+    row.names = FALSE, col.names = TRUE, sep = ",")
+})
 
 
 # Map stand_id ranges to the forest class codes assigned in step 07.

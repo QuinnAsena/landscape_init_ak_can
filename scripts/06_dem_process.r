@@ -1,6 +1,6 @@
 library(terra)
 library(here)
-library(future.apply)
+# library(future.apply)
 # Processes ArcticDEM tiles downloaded in step 05 for each landscape.
 # Projects and masks DEM, aspect, hillshade, and permafrost to the 10m
 # landscape grid. Aspect is computed before masking to avoid NA border values
