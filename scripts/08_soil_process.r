@@ -10,10 +10,6 @@ library(here)
 # conversion (already in cm).
 # Outputs are saved to supporting_data/soils_processed/ per landscape, ready
 # for use in step 10.
-#
-# Note: 10_env.file_create.r currently loads soil rasters from the network
-# drive. It will need updating to load from supporting_data/soils_processed/
-# and strip .tif (not _ak.tif) from filenames to derive layer names.
 
 # Depth layer names in correct order — do not use list.files() + sort() as
 # alphabetical order is wrong (e.g. "100-200cm" sorts before "15-30cm")
@@ -79,7 +75,7 @@ process_soil <- function(landscape_name) {
   depth_processed <- subst(depth_processed, NA, 0)
   writeRaster(depth_processed,
               file.path(out_dir, "depth.tif"),
-              overwrite = TRUE)
+              overwrite = TRUE, datatype = "INT2S")
 
   message("  Done: ", landscape_name)
 }

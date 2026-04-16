@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 <meta name="author" content="Quinn Asena">
-<meta name="dcterms.date" content="2026-04-03">
+<meta name="dcterms.date" content="2026-04-16">
 
 <title>Initialising iLand landscapes</title>
 <style>
@@ -2361,15 +2361,15 @@ vertical-align: -.125em;
   <li><a href="#step-04-build-climate-sqlite-databases" id="toc-step-04-build-climate-sqlite-databases" class="nav-link" data-scroll-target="#step-04-build-climate-sqlite-databases">Step 04 — Build climate SQLite databases</a></li>
   <li><a href="#step-05-download-arcticdem-tiles" id="toc-step-05-download-arcticdem-tiles" class="nav-link" data-scroll-target="#step-05-download-arcticdem-tiles">Step 05 — Download ArcticDEM tiles</a></li>
   <li><a href="#step-06-process-dem-and-terrain-derivatives" id="toc-step-06-process-dem-and-terrain-derivatives" class="nav-link" data-scroll-target="#step-06-process-dem-and-terrain-derivatives">Step 06 — Process DEM and terrain derivatives</a></li>
-  <li><a href="#step-07-assign-initial-forest-species" id="toc-step-07-assign-initial-forest-species" class="nav-link" data-scroll-target="#step-07-assign-initial-forest-species">Step 07 — Assign initial forest species</a></li>
-  <li><a href="#step-08-generate-stand-initialisation-data" id="toc-step-08-generate-stand-initialisation-data" class="nav-link" data-scroll-target="#step-08-generate-stand-initialisation-data">Step 08 — Generate stand initialisation data</a></li>
-  <li><a href="#step-09-create-the-stand-grid" id="toc-step-09-create-the-stand-grid" class="nav-link" data-scroll-target="#step-09-create-the-stand-grid">Step 09 — Create the stand grid</a></li>
-  <li><a href="#step-10-build-the-environment-file" id="toc-step-10-build-the-environment-file" class="nav-link" data-scroll-target="#step-10-build-the-environment-file">Step 10 — Build the environment file</a></li>
+  <li><a href="#step-07-download-soil-data" id="toc-step-07-download-soil-data" class="nav-link" data-scroll-target="#step-07-download-soil-data">Step 07 — Download soil data</a></li>
+  <li><a href="#step-08-process-soil-data" id="toc-step-08-process-soil-data" class="nav-link" data-scroll-target="#step-08-process-soil-data">Step 08 — Process soil data</a></li>
+  <li><a href="#step-09-assign-initial-forest-species" id="toc-step-09-assign-initial-forest-species" class="nav-link" data-scroll-target="#step-09-assign-initial-forest-species">Step 09 — Assign initial forest species</a></li>
+  <li><a href="#step-10-generate-stand-initialisation-data" id="toc-step-10-generate-stand-initialisation-data" class="nav-link" data-scroll-target="#step-10-generate-stand-initialisation-data">Step 10 — Generate stand initialisation data</a></li>
+  <li><a href="#step-11-create-the-stand-grid" id="toc-step-11-create-the-stand-grid" class="nav-link" data-scroll-target="#step-11-create-the-stand-grid">Step 11 — Create the stand grid</a></li>
+  <li><a href="#step-12-build-the-environment-file" id="toc-step-12-build-the-environment-file" class="nav-link" data-scroll-target="#step-12-build-the-environment-file">Step 12 — Build the environment file</a></li>
+  <li><a href="#step-13-generate-project-file" id="toc-step-13-generate-project-file" class="nav-link" data-scroll-target="#step-13-generate-project-file">Step 13 — Generate project file</a></li>
   </ul></li>
-  <li><a href="#outputs-for-iland" id="toc-outputs-for-iland" class="nav-link" data-scroll-target="#outputs-for-iland">Outputs for iLand</a>
-  <ul class="collapse">
-  <li><a href="#data-out" id="toc-data-out" class="nav-link" data-scroll-target="#data-out">Data out</a></li>
-  </ul></li>
+  <li><a href="#outputs-for-iland" id="toc-outputs-for-iland" class="nav-link" data-scroll-target="#outputs-for-iland">Outputs for iLand</a></li>
   </ul>
 </nav>
 </div>
@@ -2395,7 +2395,7 @@ vertical-align: -.125em;
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">April 3, 2026</p>
+      <p class="date">April 16, 2026</p>
     </div>
   </div>
   
@@ -2409,52 +2409,75 @@ vertical-align: -.125em;
 
 <section id="introduction" class="level1">
 <h1>Introduction</h1>
+<p>Full discloser: this document was written by Claude as an experiment. I have included some edits.</p>
 <p>This project constructs the spatial and ecological initialisation files required to run the individual-based forest landscape model <a href="http://iland-model.org">iLand</a> across a set of boreal forest landscapes spanning Alaska and Canada. The workflow takes raw remote sensing and climate datasets and transforms them into the grid files, climate databases, species initialisation tables, and environment files that iLand requires to simulate forest dynamics.</p>
-<p>The landscapes were originally selected by Lora Murphy and cover a range of boreal forest conditions across the ABoVE (Arctic-Boreal Vulnerability Experiment) study domain. A single additional landscape at the Caribou-Poker Creeks Research Watershed (CPCRW) in interior Alaska is appended to support direct comparison with earlier single-site modelling work.</p>
-<p>The pipeline is structured as ten sequential R scripts. Each script is self-contained and operates on a consistent directory structure rooted at the project working directory. Processing is parallelised across landscapes using <code>future.apply</code> where independent per-landscape operations permit.</p>
+<p>The landscapes were originally selected by Lora Murphy and cover a range of boreal forest conditions across the ABoVE (Arctic-Boreal Vulnerability Experiment) study domain. See the selection and evaluation process here: <code>Z:\project_data\na_boreal\Landscape building\Landscape selection</code>. A single additional landscape at the Caribou-Poker Creeks Research Watershed (CPCRW) in interior Alaska is appended to support direct comparison with earlier single-site modelling work.</p>
+<p>The pipeline is structured as thirteen sequential R scripts. Each script is self-contained and operates on a consistent directory structure rooted at the project working directory. Processing is parallelised across landscapes using <code>future.apply</code> where independent per-landscape operations permit.</p>
 <hr>
 </section>
 <section id="file-structure" class="level1">
 <h1>File structure</h1>
-<p>Each landscape is stored in its own directory at the project root, named <code>alaska_landscape_01</code>, <code>alaska_landscape_02</code>, …, <code>canada_landscape_01</code>, etc. Within each landscape directory the following structure is produced by the pipeline:</p>
+<p>Each landscape is stored in its own directory at the project root, named <code>landscape_alaska_01</code>, <code>landscape_alaska_02</code>, …, <code>landscape_canada_01</code>, etc. Within each landscape directory the following structure is produced by the pipeline:</p>
 <pre><code>landscape_name/
+├── &lt;landscape_name&gt;_spinup.xml       # iLand project file (step 13)
 ├── gis/
-│   ├── env.grid.txt          # RU grid in ASCII format for iLand
-│   ├── env.grid.tif          # RU grid as GeoTIFF
-│   ├── env.file.txs          # RU grid as GeoTIFF
-│   ├── stand_grid.txt        # Stand ID grid in ASCII format for iLand
-│   ├── stand_grid.tif        # Stand ID grid as GeoTIFF
-│   ├── DEM_processed.txt     # DEM in ASCII format for iLand
-│   └── DEM_processed.tif     # DEM as GeoTIFF
+│   ├── env.grid.txt                  # RU grid in ASCII format for iLand
+│   ├── env.grid.tif                  # RU grid as GeoTIFF
+│   ├── env.file_yr&lt;n&gt;.txt            # Environment file (interpolated climate)
+│   ├── env.file_link_yr&lt;n&gt;.txt       # Environment file (linked climate)
+│   ├── stand_grid_yr&lt;n&gt;.txt          # Stand ID grid in ASCII format for iLand
+│   ├── stand_grid_yr&lt;n&gt;.tif          # Stand ID grid as GeoTIFF
+│   ├── DEM_processed.txt             # DEM in ASCII format for iLand
+│   └── DEM_processed.tif             # DEM as GeoTIFF
+├── init/
+│   └── landscape_model_init.txt      # Sapling initialisation table (step 10)
 ├── databases/
-│   └── &lt;gcm&gt;&lt;ssp&gt;V3.sqlite   # Climate database for iLand
+│   ├── &lt;gcm&gt;&lt;ssp&gt;.sqlite             # Climate database for iLand
+│   └── spp_param.sqlite              # Species parameters (step 13)
+├── lip/                              # Light influence patterns (step 13)
+├── scripts/
+│   └── saveWorkflow.js               # iLand workflow script (step 13)
+├── output/                           # iLand simulation outputs (step 13)
+├── snapshot/                         # iLand snapshots (step 13)
+├── temp/                             # iLand temporary files (step 13)
+├── log/                              # iLand log files (step 13)
 └── supporting_data/
     ├── ABoVE_LandCover/      # Cropped annual land cover tiles
     ├── ABoVE_Water/          # Cropped decadal surface water tiles
     ├── climate_link/         # Per-variable climate text files (linked version)
-    │   ├── &lt;gcm&gt;/&lt;ssp&gt;/&lt;var&gt;/
-    │   └── env.grid-climate.grid-link.txt
-    └── gis/
-        ├── env.grid.png              # Diagnostic plot of the RU grid
-        ├── env.grid_disagg_10.tif    # 10m land cover grid
-        ├── dem_lcp10.tif             # DEM projected to landscape grid
-        ├── aspect_lcp10.tif          # Aspect (degrees)
-        ├── hillshade_lcp10.tif       # Hillshade
-        ├── permafrost_lcp10.tif      # Permafrost presence/absence
-        └── init/
-            └── forest_species_init_lc_yr&lt;n&gt;.tif  # Species codes per RU</code></pre>
-<p>Shared input data lives outside the landscape directories. Empirical stand data and the sapling initialisation files produced by step 08 are stored in <code>data/empirical/</code>. The selected landscape polygons are in <code>data/</code>.</p>
+    │   ├── env.grid-climate.grid-link.txt
+    │   └── &lt;gcm&gt;/&lt;ssp&gt;/&lt;var&gt;/
+    ├── gis/
+    │   ├── env.grid.png              # Diagnostic plot of the RU grid
+    │   ├── env.grid_disagg_10.tif    # 10m land cover grid
+    │   ├── dem_lcp10.tif             # DEM projected to landscape grid
+    │   ├── aspect_lcp10.tif          # Aspect (degrees)
+    │   ├── hillshade_lcp10.tif       # Hillshade
+    │   ├── permafrost_lcp10.tif      # Permafrost presence/absence
+    │   └── init/
+    │       └── forest_species_init_lc_yr&lt;n&gt;.tif  # Species codes per RU
+    ├── soils/
+    │   ├── sand/  sand_0-5cm_mean.tif ... sand_100-200cm_mean.tif
+    │   ├── silt/  silt_0-5cm_mean.tif ... silt_100-200cm_mean.tif
+    │   ├── clay/  clay_0-5cm_mean.tif ... clay_100-200cm_mean.tif
+    │   └── depth/ bdticm.tif
+    └── soils_processed/
+        ├── sand.tif    # Depth-weighted mean %, reprojected to env.grid
+        ├── silt.tif    # Depth-weighted mean %, reprojected to env.grid
+        ├── clay.tif    # Depth-weighted mean %, reprojected to env.grid
+        └── depth.tif   # Depth to bedrock (cm), capped at 200cm</code></pre>
+<p>Shared input data lives outside the landscape directories. Empirical stand data and the stand dictionary (<code>sapinit_dict.txt</code>) produced by step 10 are stored in <code>data/empirical/</code>. The sapling initialisation table (<code>landscape_model_init.txt</code>) is written per-landscape to <code>init/</code>. The selected landscape polygons are in <code>data/</code>.</p>
 <hr>
 </section>
 <section id="data-origins" class="level1">
 <h1>Data origins</h1>
 <section id="above-land-cover" class="level2">
 <h2 class="anchored" data-anchor-id="above-land-cover">ABoVE land cover</h2>
-<p>Annual land cover classifications from the ABoVE project (<a href="https://www.earthdata.nasa.gov/data/catalog/ornl-cloud-annual-landcover-above-1691-1">ORNL DAAC</a>), covering 1984–2014 at approximately 30m resolution. The dataset uses a 15-class scheme including evergreen, deciduous, mixed, and woodland forest classes, as well as shrub, herbaceous, wetland, and barren types. A simplified 10-class version is excluded. The land cover data are the primary input for RU grid construction (step 02) and species initialisation (step 07).</p>
+<p>Annual land cover classifications from the ABoVE project (<a href="https://www.earthdata.nasa.gov/data/catalog/ornl-cloud-annual-landcover-above-1691-1">ORNL DAAC</a>), covering 1984–2014 at approximately 30m resolution. The dataset uses a 15-class scheme including evergreen, deciduous, mixed, and woodland forest classes, as well as shrub, herbaceous, wetland, and barren types. A simplified 10-class version is excluded. The land cover data are the primary input for RU grid construction (step 02) and species initialisation (step 09).</p>
 </section>
 <section id="above-surface-water" class="level2">
 <h2 class="anchored" data-anchor-id="above-surface-water">ABoVE surface water</h2>
-<p>Decadal surface water maps from the ABoVE project (<a href="https://www.earthdata.nasa.gov/data/catalog/ornl-cloud-decadal-water-maps-1324-1.1">ORNL DAAC</a>), covering three decades (1991, 2001, 2011). Used in step 07 to mask water-covered cells from the species initialisation. This product was preferred over the water class in the land cover data on the basis that it avoids erroneous overlap between forested and water pixels.</p>
+<p>Decadal surface water maps from the ABoVE project (<a href="https://www.earthdata.nasa.gov/data/catalog/ornl-cloud-decadal-water-maps-1324-1.1">ORNL DAAC</a>), covering three decades (1991, 2001, 2011). Used in step 09 to mask water-covered cells from the species initialisation. This product was preferred over the water class in the land cover data on the basis that it avoids erroneous overlap between forested and water pixels.</p>
 </section>
 <section id="above-study-domain" class="level2">
 <h2 class="anchored" data-anchor-id="above-study-domain">ABoVE study domain</h2>
@@ -2466,42 +2489,44 @@ vertical-align: -.125em;
 </section>
 <section id="downscaled-climate" class="level2">
 <h2 class="anchored" data-anchor-id="downscaled-climate">Downscaled climate</h2>
-<p>Statistically downscaled daily climate data for the NorESM2-MM global climate model under SSP1-2.6. Variables include maximum and minimum temperature (<code>tasmax</code>, <code>tasmin</code>), precipitation (<code>pr</code>), solar radiation (<code>rsds</code>), vapour pressure (<code>vp</code>), and relative humidity (<code>hurs</code>). Data are accessed from network storage and processed in step 03 into per-landscape text files before being compiled into SQLite databases in step 04.</p>
+<p>Lora has statistically downscaled daily climate data for the EC-Earth3-Veg, GFDL-ESM4, TaiESM1, UKESM1-0-LL, and NorESM2-MM GCMs for SSP1-2.6, SSP2-4.5, and SSP3-7.0. Variables include maximum and minimum temperature (<code>tasmax</code>, <code>tasmin</code>), precipitation (<code>pr</code>), solar radiation (<code>rsds</code>), vapour pressure (<code>vp</code>), and relative humidity (<code>hurs</code>). Data are accessed from network storage and processed in step 03 into per-landscape text files before being compiled into SQLite databases in step 04.</p>
 </section>
 <section id="permafrost" class="level2">
 <h2 class="anchored" data-anchor-id="permafrost">Permafrost</h2>
-<p>A permafrost presence/absence raster sourced from network storage. Projected and masked to each landscape in step 06. Used in step 07 to differentiate black and white spruce on flat aspects.</p>
+<p>A permafrost presence/absence raster sourced from network storage. Projected and masked to each landscape in step 06. Used in step 09 to differentiate black and white spruce on flat aspects.</p>
 </section>
 <section id="soils" class="level2">
 <h2 class="anchored" data-anchor-id="soils">Soils</h2>
-<p>Rasters of soil depth, sand, silt, and clay fraction for the Alaska domain, accessed from network storage. Projected to each landscape grid in step 10 and used to populate soil property fields in the iLand environment file.</p>
+<p>Sand, silt, and clay content (% by weight) from SoilGrids 2.0 (Poggio et al. 2021) at all six standard depth layers (0–5, 5–15, 15–30, 30–60, 60–100, 100–200 cm). Depth to bedrock (BDTICM, cm) from SoilGrids 1.0 (Hengl et al. 2017). Both datasets are at 250m resolution in WGS84.</p>
+<p>Data are downloaded per-landscape via the ISRIC WCS API (sand/silt/clay) and as a streamed global GeoTIFF (depth) in step 07, then processed to depth-weighted means and reprojected to each landscape grid in step 08.</p>
 </section>
 <section id="empirical-stand-data" class="level2">
 <h2 class="anchored" data-anchor-id="empirical-stand-data">Empirical stand data</h2>
 <p>Post-fire regeneration data from two sources:</p>
 <ul>
-<li><strong>Johnstone</strong>: black spruce, trembling aspen, and paper birch stand density and species proportion data from interior Alaska.</li>
+<li><strong>Johnstone</strong>: black spruce, trembling aspen, and Alaskan birch stand density and species proportion data from interior Alaska.</li>
 <li><strong>Walker</strong>: equivalent data from a broader set of Alaskan burn sites.</li>
 </ul>
-<p>These are combined in step 08 to fit height distributions and generate the sapling initialisation table.</p>
+<p>These are combined in step 10 to fit height distributions and generate the sapling initialisation table.</p>
 <hr>
 </section>
 </section>
 <section id="workflow" class="level1">
 <h1>Workflow</h1>
-<p>The pipeline proceeds in ten steps. Steps 01–03 handle spatial and climate data preparation; steps 04–10 build the iLand input files.</p>
+<p>The pipeline proceeds in thirteen steps. Steps 01–04 handle spatial and climate data preparation. Steps 05–08 acquire and process terrain and soil data. Steps 09–13 build the iLand input files.</p>
 <section id="step-01-crop-above-data-to-landscape-polygons" class="level2">
 <h2 class="anchored" data-anchor-id="step-01-crop-above-data-to-landscape-polygons">Step 01 — Crop ABoVE data to landscape polygons</h2>
 <p><strong>Script:</strong> <code>01_above_process.r</code></p>
 <p>The ABoVE land cover and surface water tiles cover the full study domain. This step crops them to each landscape polygon and saves the results to <code>supporting_data/ABoVE_LandCover/</code> and <code>supporting_data/ABoVE_Water/</code> within each landscape directory.</p>
 <p>Before cropping, NA values outside the landscape boundary are replaced with a sentinel value of −1. This prevents outside-landscape NAs from being confused with genuine NA values that exist within the landscape (e.g. water bodies or unclassified pixels). A two-step crop-then-mask operation is applied: first crop to the bounding box, then mask to the polygon boundary.</p>
 <p>The surface water data are structured as one tile per decade rather than a single multi-layer file. These are first grouped by decade, combined into a per-decade VRT, then stacked into a single three-layer raster.</p>
+<p>A single additional landscape at the Caribou-Poker Creeks Research Watershed (CPCRW) is appended to the ABoVE landscape set at this step. CPCRW is processed through the same pipeline as the other landscapes but requires special handling in later steps because it falls outside the spatial domain of the regional downscaled climate dataset for the other datasets (see step 03).</p>
 </section>
 <section id="step-02-create-the-ru-resource-unit-grid" class="level2">
 <h2 class="anchored" data-anchor-id="step-02-create-the-ru-resource-unit-grid">Step 02 — Create the RU (resource unit) grid</h2>
 <p><strong>Script:</strong> <code>02_env.grid_create.r</code></p>
 <p>iLand operates on a 100×100m resource unit grid. This step projects the first land cover layer for each landscape to ESRI:102001 (Canada Albers Equal Area Conic) at 100m resolution and assigns each non-NA cell a unique sequential integer ID. This ID is the <code>env.grid</code> used throughout the pipeline to identify individual RUs.</p>
-<p>Two output formats are written: an ASCII grid (<code>.txt</code>) for direct use by iLand and a GeoTIFF for subsequent spatial processing. A 10m disaggregated version is also produced by disaggregating the original 30m land cover raster by a factor of 3, preserving the 15-class land cover values for use in steps 06 and 07.</p>
+<p>Two output formats are written: an ASCII grid (<code>.txt</code>) for direct use by iLand2.0 and a GeoTIFF for testing with iLand2.1. A 10m disaggregated version is also produced by disaggregating the original 30m land cover raster by a factor of 3, preserving the 15-class land cover values for use in steps 06 and 09.</p>
 </section>
 <section id="step-03-process-downscaled-climate-data" class="level2">
 <h2 class="anchored" data-anchor-id="step-03-process-downscaled-climate-data">Step 03 — Process downscaled climate data</h2>
@@ -2509,7 +2534,9 @@ vertical-align: -.125em;
 <p>Daily climate variables are extracted from netCDF files and written to tab-delimited text files, one per landscape per variable per year. Two approaches are implemented:</p>
 <p><strong><code>process_climate</code></strong> reprojects and bilinearly interpolates the ~1000m climate grid directly to the 100m RU grid. The output has one row per RU per day, producing large files but a direct one-to-one RU-to-climate mapping.</p>
 <p><strong><code>process_climate_link</code></strong> avoids reprojecting the full climate dataset. Instead, the landscape extent is buffered (4000m), the climate data are cropped to that buffer and reprojected back to the landscape CRS, and a lookup table is constructed mapping each RU to its corresponding climate grid cell. This preserves the native climate resolution and is substantially faster for large landscapes.</p>
-<p>Both functions handle two variable-specific transformations: solar radiation (<code>rsds</code>) is converted from W/m² to MJ/m²/day, and vapour pressure (<code>vp</code>) layer names are standardised where the source file uses non-standard naming. Leap years are accounted for by shifting day-of-year indices for days from day 60 onwards.</p>
+<p>Because the RU-to-climate-cell mapping is purely spatial — it does not vary by variable or year — writing it inside the parallel loop would cause multiple workers to overwrite the same file simultaneously (a race condition). A separate <strong><code>write_climate_link</code></strong> function therefore runs sequentially before the parallel loop, writing <code>env.grid-climate.grid-link.txt</code> once per landscape to <code>supporting_data/climate_link/</code>. An early-exit guard skips landscapes whose link file already exists, making the step safe to re-run.</p>
+<p>Both <code>process_climate</code> and <code>process_climate_link</code> handle two variable-specific transformations: solar radiation (<code>rsds</code>) is converted from W/m² to MJ/m²/day, and vapour pressure (<code>vp</code>) layer names are standardised where the source file uses non-standard naming. Leap years are accounted for by shifting day-of-year indices for days from day 60 onwards.</p>
+<p>CPCRW falls outside the spatial domain of the regional downscaled climate dataset used for all other landscapes. Both functions detect this automatically by cropping the first climate layer to the landscape extent and checking whether all values are NA. If so, climate data are drawn from a separate CPCRW-specific directory on network storage instead.</p>
 </section>
 <section id="step-04-build-climate-sqlite-databases" class="level2">
 <h2 class="anchored" data-anchor-id="step-04-build-climate-sqlite-databases">Step 04 — Build climate SQLite databases</h2>
@@ -2535,17 +2562,33 @@ vertical-align: -.125em;
 <p>Projects the downloaded DEM tiles to the 10m landscape grid and derives terrain variables. The key processing order is:</p>
 <ol type="1">
 <li>Merge or VRT the downloaded tiles</li>
-<li>Project to the buffered 10m landscape grid (<code>env_grid_10_buff</code>)</li>
-<li>Compute aspect from the buffered, unmasked DEM — this ensures edge cells have valid neighbours on all sides</li>
-<li>Mask both the DEM and aspect to the true landscape boundary</li>
+<li>Extend the landscape grid by 10 cells (1000m) to create a buffered projection template sharing the same grid origin</li>
+<li>Crop the DEM source to the buffered extent, then project to the template — this retains data beyond the landscape boundary while preserving cell alignment</li>
+<li>Compute aspect from the buffered, projected DEM — edge cells have valid neighbours from the 1000m buffer downloaded in step 05</li>
+<li>Crop and mask both DEM and aspect to the true landscape boundary</li>
 <li>Project and mask hillshade (no buffer needed — it is a pre-computed product)</li>
 <li>Project and mask permafrost</li>
 </ol>
 <p>Outputs are the DEM, aspect, hillshade, and permafrost rasters in the <code>supporting_data/gis/</code> directory. The DEM is additionally written in ASCII format for iLand.</p>
 </section>
-<section id="step-07-assign-initial-forest-species" class="level2">
-<h2 class="anchored" data-anchor-id="step-07-assign-initial-forest-species">Step 07 — Assign initial forest species</h2>
-<p><strong>Script:</strong> <code>07_species_init.r</code></p>
+<section id="step-07-download-soil-data" class="level2">
+<h2 class="anchored" data-anchor-id="step-07-download-soil-data">Step 07 — Download soil data</h2>
+<p><strong>Script:</strong> <code>07_soil_download.r</code></p>
+<p>Downloads raw soil property tiles from ISRIC SoilGrids for each landscape. Requests are scoped to the landscape extent buffered by 4000m, so only the relevant area is transferred.</p>
+<p>Sand, silt, and clay content are downloaded at all six standard depth layers (0–5 through 100–200 cm) via the ISRIC WCS API (SoilGrids 2.0, Poggio et al. 2021). Depth to bedrock (BDTICM) is streamed from a global GeoTIFF hosted on the ISRIC file server via <code>/vsicurl/</code> (SoilGrids 1.0, Hengl et al. 2017) — this avoids downloading the full ~1GB file.</p>
+<p>Raw tiles are saved to <code>supporting_data/soils/&lt;var&gt;/</code> for subsequent processing in step 08. A skip condition prevents re-downloading tiles that already exist.</p>
+</section>
+<section id="step-08-process-soil-data" class="level2">
+<h2 class="anchored" data-anchor-id="step-08-process-soil-data">Step 08 — Process soil data</h2>
+<p><strong>Script:</strong> <code>08_soil_process.r</code></p>
+<p>Processes the raw SoilGrids tiles downloaded in step 07 into single-layer rasters aligned to each landscape’s 100m <code>env.grid</code>.</p>
+<p>For sand, silt, and clay: the six depth layers are stacked and aggregated to a thickness-weighted mean (weights proportional to layer depth interval), then converted from g/kg to %, reprojected to the landscape CRS and resolution, and rounded to integers. Silt is adjusted by ±1 where needed so that sand + silt + clay = 100 exactly.</p>
+<p>For depth to bedrock: reprojected to the landscape grid and capped at 200 cm to match the iLand permafrost module’s maximum effective soil depth.</p>
+<p>Outputs are written to <code>supporting_data/soils_processed/</code> and consumed directly by step 12.</p>
+</section>
+<section id="step-09-assign-initial-forest-species" class="level2">
+<h2 class="anchored" data-anchor-id="step-09-assign-initial-forest-species">Step 09 — Assign initial forest species</h2>
+<p><strong>Script:</strong> <code>09_species_init.r</code></p>
 <p>Classifies each RU cell into an initial forest species based on ABoVE land cover class, topographic aspect, and permafrost presence. The classification rules are:</p>
 <table class="caption-top table">
 <thead>
@@ -2605,32 +2648,32 @@ vertical-align: -.125em;
 </table>
 <p>Cells with NA aspect (border cells where terrain calculation lacks full neighbourhood) fall through to the class-only rules rather than remaining unclassified.</p>
 <p>Before classification, a 50m water proximity buffer is applied using the ABoVE surface water product: cells within 50m of open water are masked out. This avoids initialising forest on pixels that sit within or immediately adjacent to water bodies.</p>
-<p>Species are encoded as integers (1–6) and written as a GeoTIFF for use in steps 09 and 10. The script is run twice: once for land cover year 1 (1984) and once for year 31 (2014).</p>
+<p>Species are encoded as integers (1–6) and written as a GeoTIFF for use in steps 11 and 12. Choose the land cover year in this script, e.g., land cover year 1 = 1984 and 31 = 2014. This can be aligned with surface water decade where 1, 2, 3 = 1991, 2001, 2011.</p>
 </section>
-<section id="step-08-generate-stand-initialisation-data" class="level2">
-<h2 class="anchored" data-anchor-id="step-08-generate-stand-initialisation-data">Step 08 — Generate stand initialisation data</h2>
-<p><strong>Script:</strong> <code>08_stand.grid_process.r</code></p>
+<section id="step-10-generate-stand-initialisation-data" class="level2">
+<h2 class="anchored" data-anchor-id="step-10-generate-stand-initialisation-data">Step 10 — Generate stand initialisation data</h2>
+<p><strong>Script:</strong> <code>10_stand.grid_process.r</code></p>
 <p>Constructs the sapling initialisation table (<code>landscape_model_init.txt</code>) and stand dictionary (<code>sapinit_dict.txt</code>) from empirical post-fire regeneration data. This step does not operate per-landscape — it produces a single set of files shared across all landscapes.</p>
 <p>Stand composition is derived from the Johnstone and Walker datasets, which provide species density and proportion data for black spruce, trembling aspen, and paper birch. Stands are classified by dominant species using proportional thresholds (≥75% for spruce and aspen, ≥50% for birch; all others classified as mixed). The mixed category is represented three times in the dictionary — once per constituent species — so that a mixed RU may draw from any of the three height distributions.</p>
 <p>Height distributions are fitted to empirical tree height data using maximum likelihood estimation: gamma distributions for spruce and aspen, Weibull for birch. Heights are sampled 20 times per stand to produce the initialisation table, with age fixed at 11 years following the original model setup.</p>
 <p>White spruce (<em>Picea glauca</em>, Pigl) is added as a separate forest type by duplicating the black spruce stands with adjusted density (7800–16000 stems/ha), height offset (+1m), and age (+15 years).</p>
-<p>The stand dictionary maps forest class codes (from step 07) to stand_id ranges, enabling step 09 to randomly assign stand IDs to landscape pixels.</p>
+<p>The stand dictionary maps forest class codes (from step 09) to stand_id ranges, enabling step 11 to randomly assign stand IDs to landscape pixels.</p>
 </section>
-<section id="step-09-create-the-stand-grid" class="level2">
-<h2 class="anchored" data-anchor-id="step-09-create-the-stand-grid">Step 09 — Create the stand grid</h2>
-<p><strong>Script:</strong> <code>09_stand.grid_create.r</code></p>
-<p>Assigns a random stand ID from the appropriate species pool to every forested RU cell. The stand dictionary from step 08 defines the valid <code>stand_id</code> range for each forest class. Sampling is done with replacement, scattering stand IDs across the landscape so that iLand initialises a spatially heterogeneous forest rather than large patches of identical stand structure.</p>
+<section id="step-11-create-the-stand-grid" class="level2">
+<h2 class="anchored" data-anchor-id="step-11-create-the-stand-grid">Step 11 — Create the stand grid</h2>
+<p><strong>Script:</strong> <code>11_stand.grid_create.r</code></p>
+<p>Assigns a random stand ID from the appropriate species pool to every forested RU cell. The stand dictionary from step 10 defines the valid <code>stand_id</code> range for each forest class. Sampling is done with replacement, scattering stand IDs across the landscape so that iLand initialises a spatially heterogeneous forest rather than large patches of identical stand structure.</p>
 <p>Potential forest cells (class 6) are assigned a value one above the maximum stand ID, placing them outside the range of any real stand while preserving their identity as recruitable pixels. Non-forest and water cells are set to −9999 (the iLand no-data value). Output is written as both GeoTIFF and ASCII.</p>
 </section>
-<section id="step-10-build-the-environment-file" class="level2">
-<h2 class="anchored" data-anchor-id="step-10-build-the-environment-file">Step 10 — Build the environment file</h2>
-<p><strong>Script:</strong> <code>10_env.file_create.r</code></p>
+<section id="step-12-build-the-environment-file" class="level2">
+<h2 class="anchored" data-anchor-id="step-12-build-the-environment-file">Step 12 — Build the environment file</h2>
+<p><strong>Script:</strong> <code>12_env.file_create.r</code></p>
 <p>Assembles the iLand environment file, which provides per-RU soil properties, carbon and nitrogen pool initialisations, and the climate table name that iLand uses to look up climate data. Two versions are produced corresponding to the two climate approaches in step 03:</p>
 <ul>
 <li><code>build_env_file</code>: uses the interpolated climate grid; the climate table name is formed from the landscape name and the RU’s <code>env.grid</code> ID.</li>
-<li><code>build_env_file_link</code>: uses the linked climate grid; the climate table name is formed from the landscape name and the corresponding climate grid cell ID from the lookup table.</li>
+<li><code>build_env_file_link</code>: uses the linked climate grid; the climate table name is formed from the landscape name and the corresponding climate grid cell ID from the lookup table written in step 03.</li>
 </ul>
-<p>Soil properties (depth, sand, silt, clay fraction) are projected from the AK soil rasters to the RU grid. Carbon and nitrogen pools are initialised from species-specific empirical ranges:</p>
+<p>Soil properties (depth, sand, silt, clay fraction) are loaded from each landscape’s <code>supporting_data/soils_processed/</code> directory (produced in step 08) and extracted at each RU cell location. Carbon and nitrogen pools are initialised from species-specific empirical ranges:</p>
 <ul>
 <li>Young labile carbon drawn from uniform distributions stratified by forest type (spruce/mixed/broadleaved), with C:N ratios applied to derive nitrogen</li>
 <li>Young refractory carbon set to fixed species-specific values</li>
@@ -2638,6 +2681,19 @@ vertical-align: -.125em;
 <li>Moss biomass drawn from species-specific ranges (highest for black spruce, near zero for broadleaved types)</li>
 </ul>
 <p>All numeric fields are rounded before output. The final file is written as a tab-delimited text file in the landscape <code>gis/</code> directory.</p>
+</section>
+<section id="step-13-generate-project-file" class="level2">
+<h2 class="anchored" data-anchor-id="step-13-generate-project-file">Step 13 — Generate project file</h2>
+<p><strong>Script:</strong> <code>13_project_file_create.r</code></p>
+<p>This workflow does not create:</p>
+<ul>
+<li>lip (light influence patterns)</li>
+<li>species parameter databases</li>
+<li>javascript files</li>
+<li>scenario csv</li>
+<li>bash run files</li>
+</ul>
+<p>I have included these files from the original CPCRW project, and this script moves them to each landscape from the central <code>data/shared-xml-create</code> directory. Moving files from the central location ensures consistency across landscapes. The duplication is necessary so that each landscape is self-contained for running iLand.</p>
 <hr>
 </section>
 </section>
@@ -2664,7 +2720,7 @@ vertical-align: -.125em;
 <td>RU grid (ASCII)</td>
 </tr>
 <tr class="even">
-<td><code>stand_grid.txt</code></td>
+<td><code>stand_grid_yr&lt;n&gt;.txt</code></td>
 <td><code>gis/</code></td>
 <td>Stand ID grid (ASCII)</td>
 </tr>
@@ -2679,21 +2735,27 @@ vertical-align: -.125em;
 <td>Climate database</td>
 </tr>
 <tr class="odd">
-<td><code>env.file_link.txt</code></td>
+<td><code>env.file_link_yr&lt;n&gt;.txt</code></td>
 <td><code>gis/</code></td>
-<td>Environment file</td>
+<td>Environment file (linked climate)</td>
 </tr>
 <tr class="even">
 <td><code>landscape_model_init.txt</code></td>
-<td><code>data/empirical/</code></td>
+<td><code>init/</code></td>
 <td>Sapling initialisation table</td>
+</tr>
+<tr class="odd">
+<td><code>spp_param.sqlite</code></td>
+<td><code>databases/</code></td>
+<td>Species parameters</td>
+</tr>
+<tr class="even">
+<td><code>&lt;landscape_name&gt;_spinup.xml</code></td>
+<td>root</td>
+<td>iLand project file</td>
 </tr>
 </tbody>
 </table>
-<p>origins</p>
-<section id="data-out" class="level2">
-<h2 class="anchored" data-anchor-id="data-out">Data out</h2>
-</section>
 </section>
 
 </main>

@@ -31,7 +31,7 @@ above_water_files <- list.files(
 above_water_files <- above_water_files[!grepl(pattern = "QA", above_water_files)]
 
 # Load up Lora's selected landscapes
-landscapes_poly <- vect(here("data", "landscape_selection", "final_plots_above_proj.shp"))
+landscapes_poly <- vect(here("data", "final_plots_above_proj.shp"))
 plot(above_study_domain)
 plot(landscapes_poly, add = TRUE, col = "red")
 # ---------- check crs ---------- #
@@ -64,8 +64,8 @@ alaska_idx <- seq_len(sum(is_alaska))
 canada_idx <- seq_len(sum(!is_alaska))
 
 landscapes_poly$landscape_id <- NA
-landscapes_poly$landscape_id[is_alaska]  <- paste0("alaska_landscape_", sprintf("%02d", alaska_idx))
-landscapes_poly$landscape_id[!is_alaska] <- paste0("canada_landscape_", sprintf("%02d", canada_idx))
+landscapes_poly$landscape_id[is_alaska]  <- paste0("alaska_", sprintf("%02d", alaska_idx))
+landscapes_poly$landscape_id[!is_alaska] <- paste0("canada_", sprintf("%02d", canada_idx))
 
 # Create vrt once outside function
 above_lc_vrt <- vrt(above_lc_files, set_names = TRUE)
