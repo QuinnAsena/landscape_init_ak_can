@@ -111,6 +111,10 @@ process_species <- function(landscape_name,
         species == "Mixed"            ~ 5,
         species == "Potential-forest" ~ 6,
         TRUE                          ~ 7
+        # Code 7 is a defensive catch-all and should never appear in practice —
+        # all Above values 1-9 are explicitly handled above. If it does appear,
+        # 12_env.file_create.r will silently treat it as black spruce (the TRUE
+        # fallback in the carbon pool case_when).
       ),
     ) |>
     filter(forest.type != "Non-forest")
@@ -121,9 +125,10 @@ process_species <- function(landscape_name,
   forest_species <- rast(raster_df_small, type = "xyz", crs = crs(rasters[[1]]))
   writeRaster(forest_species,
               filename = file.path(
-              out_dir, 
+              out_dir,
               paste0("forest_species_init_lc_yr", above_lc_year, ".tif")),
               NAflag = -1, overwrite = TRUE)
+  invisible(NULL)
 }
 
 

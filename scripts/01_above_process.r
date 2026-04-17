@@ -3,8 +3,13 @@ library(here)
 
 # ---------- Read data ---------- #
 # ABoVE study domain: defines the spatial reference grid
+# https://www.earthdata.nasa.gov/data/catalog/ornl-cloud-above-reference-grid-v2-1527-2.1
+
 # ABoVE landcover: annual land cover classifications (1984-2014), 1 tif per tile
+# https://www.earthdata.nasa.gov/data/catalog/ornl-cloud-annual-landcover-above-1691-1
+
 # ABoVE surface water: decadal surface water maps (1991-2011), 1 tif per tile per decade
+# https://www.earthdata.nasa.gov/data/catalog/ornl-cloud-decadal-water-maps-1324-1.1
 
 above_study_domain_file <- list.files(
   "//10.60.2.10/FF_Lab/project_data/na_boreal/data_sets/ABoVE_reference_grid_v2_1527/data",
@@ -15,7 +20,6 @@ plot(above_study_domain)
 crs(above_study_domain)
 
 # Annual land cover: 1 tif per tile, 31 layers (1 per year, 1984-2014)
-# https://www.earthdata.nasa.gov/data/catalog/ornl-cloud-annual-landcover-above-1691-1
 above_lc_files <- list.files(
   "//10.60.2.10/FF_Lab/project_data/na_boreal/data_sets/Annual_Landcover_ABoVE_1691/data",
   pattern = "\\.tif$", full.names = TRUE)
@@ -23,7 +27,6 @@ above_lc_files <- list.files(
 above_lc_files <- above_lc_files[!grepl(pattern = "Simplified", above_lc_files)]
 
 # Surface water: 1 tif per tile per decade — split and combined into a VRT below
-# https://www.earthdata.nasa.gov/data/catalog/ornl-cloud-decadal-water-maps-1324-1.1
 above_water_files <- list.files(
   "//10.60.2.10/FF_Lab/project_data/na_boreal/data_sets/Decadal_Water_Maps_1324/data",
   pattern = "\\.tif$", full.names = TRUE)

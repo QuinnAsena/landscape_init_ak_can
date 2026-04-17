@@ -1,2 +1,3 @@
-﻿sp_param,gcm,fri,epsilon,dbh,sp_init,stand_grid,env_file,id
-species_param_pa01pl035be05pr07,NorEsm2-MMssp126V3,120,2.7,2.5,,gis/,gis/,filt_1980
+sp_param	gcm	fri	epsilon	dbh	stand_grid	env_file	id
+spp_param	NorEsm2-MMssp126V3	120	2.7	2.5	gis/stand_grid_yr1	gis/env.file_link_yr_1	1950-1980
+spp_param	NorEsm2-MMssp126V3	120	2.7	2.5	gis/stand_grid_yr31	gis/env.file_link_yr_31	1950-1980
