@@ -17,7 +17,9 @@ process_env_grid <- function(landscape_name) {
     full.names = TRUE)
 
   r0 <- rast(above_lc)
-  r <- project(r0[[1]], crs("ESRI:102001"), method = "near", res = 100)
+  r2 <- terra::disagg(r0, fact = 3, method = "near")
+  r <- project(r2[[1]], crs("ESRI:102001"), method = "near", res = 100)
+  crs(r2) <- crs(r)
 
   non_na_idx <- which(!is.na(values(r)))
   values(r)[non_na_idx] <- seq_along(non_na_idx)
@@ -33,8 +35,7 @@ process_env_grid <- function(landscape_name) {
               overwrite = TRUE, datatype = "INT4S", NAflag = -1)
   # Disaggregate to 10m resolution retaining original 15 land cover classes.
   # Used in step 06 (DEM processing) and step 07 (species initialisation).
-  r2 <- terra::disagg(r0, fact = 3, method = "near")
-  crs(r2) <- crs(r)
+
   writeRaster(r2, file.path(out_sup, "env.grid_disagg_10.tif"),
               overwrite = TRUE, datatype = "INT4S", NAflag = -1)
 }

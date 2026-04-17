@@ -17,6 +17,8 @@ library(here)
 process_sqlite <- function(gcm, ssp, var, ak_landscape_dirs,
                            climate_subdir = "climate_link") {
 
+  cat("\n\nprocessing: ", ak_landscape_dirs, gcm, ssp, "\n\n")
+
   out_dir <- here(ak_landscape_dirs, "databases")
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -63,7 +65,7 @@ process_sqlite <- function(gcm, ssp, var, ak_landscape_dirs,
     select(model.climate.tableName, year, month, day, min_temp, max_temp, prec, rad, vpd)
 
   db.conn <- dbConnect(RSQLite::SQLite(),
-                       dbname = file.path(out_dir, paste0(gcm, ssp, "V3.sqlite")))
+                       dbname = file.path(out_dir, paste0(gcm, ssp, ".sqlite")))
   on.exit(dbDisconnect(db.conn))
 
   split_data <- split(all_vars, all_vars$model.climate.tableName)

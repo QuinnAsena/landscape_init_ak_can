@@ -6,13 +6,14 @@ set -o pipefail # terminate if any command in pipeline fails
 xml=$1
 start_rep=$2
 end_rep=$3
-simulation_years="$4"
+simulation_years=$4
 
 # Set variables
-path="/glade/work/qasena/iLand2.0/iland-model/build/ilandc/ilandc"
+# Override ILANDC_BIN and ILANDC_OUTPUT_ROOT for local testing; defaults are HPC paths.
+path="${ILANDC_BIN:-/glade/work/qasena/iLand2.0/iland-model/build/ilandc/ilandc}"
 xml_path=$(dirname "$xml")
 landscape_name=$(basename "$xml" .xml)
-output_path="/glade/derecho/scratch/qasena/output_auto/${landscape_name}"
+output_path="$(realpath -m "${ILANDC_OUTPUT_ROOT:-/glade/derecho/scratch/qasena/output_auto/${landscape_name}}")"
 script_dir=$(cd "$(dirname "$0")" && pwd)
 csv_name="${script_dir}/iland_scenarios.csv"
 
@@ -24,7 +25,7 @@ mkdir -p "${output_path}"
 trap 'rm -f "${tmp_xml:-}"' EXIT
 
 # Read CSV and loop through lines
-sed '1d' "$csv_name" | while IFS=, read -r sp_param gcm fri epsilon dbh stand_grid env_file id
+sed '1d' "$csv_name" | while IFS=, read -r sp_param gcm fri epsilon dbh stand_grid env_file id snapshot_file
 do
     for rep in $(seq "$start_rep" "$end_rep")
     do
@@ -41,6 +42,10 @@ do
         cp "$xml" "$tmp_xml"
         sed -i "s|<output>.*</output>|<output>${scenario_dir}</output>|" "$tmp_xml"
 
+        # Conditionally pass snapshot file (scenario runs only; blank for spinup)
+        extra_args=()
+        [ -n "${snapshot_file}" ] && extra_args+=("model.initialization.file=${snapshot_file}")
+
         # Run iLand model
         "${path}" "$tmp_xml" "$simulation_years" \
             system.database.out=${gcm}_dbh${dbh}_${id}_${rep}.sqlite \
@@ -51,7 +56,8 @@ do
             model.settings.epsilon=${epsilon} \
             output.saplingdetail.minDbh=${dbh} \
             model.world.standGrid.fileName=${stand_grid}.txt \
-            model.world.environmentFile=${env_file}.txt
+            model.world.environmentFile=${env_file}.txt \
+            "${extra_args[@]}"
 
         rm "$tmp_xml"
 

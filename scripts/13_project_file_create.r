@@ -41,7 +41,8 @@ master_xml <- read_xml(here("data", "shared-xml-create", "landscape_master.xml")
 gen_project_file <- function(landscape_name, master_xml, run_type,
                              desired_years, mod_years, filt_cond, seed) {
   x <- read_xml(as.character(master_xml))
-  out_xml <- here(landscape_name, paste0(landscape_name, "_", run_type, ".xml"))
+
+  out_xml <- here(landscape_name, paste0(landscape_name, "_", paste0(range(desired_years), collapse = "-"), run_type, ".xml"))
 
   env_file <- list.files(here(landscape_name, "gis"),
                          pattern = "env.grid.tif$", full.names = TRUE)
@@ -110,6 +111,17 @@ gen_project_file(
     filt_cond = 260,
     seed = 1984)
 
+
+for (i in seq_along(landscape_names)) {
+  gen_project_file(
+    landscape_name = landscape_names[i],
+    master_xml     = master_xml,
+    run_type       = "spinup",
+    desired_years  = 1950:1980,
+    mod_years      = 300,
+    filt_cond      = 260,
+    seed           = 1984 + i)   # unique per landscape
+}
 
 
 ##--------------- Move shared files to landscapes ---------------#
