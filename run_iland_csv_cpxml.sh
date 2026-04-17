@@ -1,23 +1,30 @@
-set -e # terminate if non-zero exit
-set -u  # terminate if variable unset
-set -o pipefail  # terminate if any command in pipeline fails
+set -e          # terminate if non-zero exit
+set -u          # terminate if variable unset
+set -o pipefail # terminate if any command in pipeline fails
 
 # Arguments
 xml=$1
 start_rep=$2
 end_rep=$3
+simulation_years="$4"
 
 # Set variables
 path="/glade/work/qasena/iLand2.0/iland-model/build/ilandc/ilandc"
-output_path="/glade/derecho/scratch/qasena/output_auto/CPCRW_hist_spinup"
-xml_path="/glade/work/qasena/iLand_automated"
-simulation_years="300"
-csv_name="/glade/work/qasena/iLand_automated/iland_reps.csv"
+xml_path=$(dirname "$xml")
+landscape_name=$(basename "$xml" .xml)
+output_path="/glade/derecho/scratch/qasena/output_auto/${landscape_name}"
+script_dir=$(cd "$(dirname "$0")" && pwd)
+csv_name="${script_dir}/iland_scenarios.csv"
 
 mkdir -p "${output_path}"
 
+# Clean up temp XML on exit. Note: the while loop runs in a subshell (due to
+# the pipe), so tmp_xml set inside the loop is not visible here. The rm inside
+# the loop handles normal cleanup; this trap covers any exit before the loop.
+trap 'rm -f "${tmp_xml:-}"' EXIT
+
 # Read CSV and loop through lines
-sed 1d "$csv_name" | while IFS=, read -r sp_param gcm fri epsilon dbh stand_grid env_file id
+sed '1d' "$csv_name" | while IFS=, read -r sp_param gcm fri epsilon dbh stand_grid env_file id
 do
     for rep in $(seq "$start_rep" "$end_rep")
     do
@@ -27,7 +34,7 @@ do
         tmp_xml="${xml_path}/${gcm}_dbh${dbh}_${id}_${rep}.xml"
 
         mkdir -p "${scenario_dir}/crownkill"
-		mkdir -p "${scenario_dir}/nFire"
+        mkdir -p "${scenario_dir}/nFire"
         mkdir -p "${scenario_dir}/log"
 
         # Create modified XML with unique output path
@@ -41,10 +48,10 @@ do
             system.database.climate=${gcm}.sqlite \
             system.database.in=${sp_param}.sqlite \
             modules.fire.fireReturnInterval=${fri} \
-			model.settings.epsilon=${epsilon} \
-		    output.saplingdetail.minDbh=${dbh} \
-			world.standGrid.fileName=${stand_grid}.txt \
-			world.environmentFile=${env_file}.txt
+            model.settings.epsilon=${epsilon} \
+            output.saplingdetail.minDbh=${dbh} \
+            model.world.standGrid.fileName=${stand_grid}.txt \
+            model.world.environmentFile=${env_file}.txt
 
         rm "$tmp_xml"
 
