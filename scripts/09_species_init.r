@@ -28,7 +28,7 @@ process_species <- function(landscape_name,
     dem        = "dem_lcp10.tif",
     aspect     = "aspect_lcp10.tif",
     # hillshade  = "hillshade_lcp10.tif",
-    env_grid   = "env.grid_disagg_10.tif",
+    env_grid_10   = "env.grid_disagg_10.tif",
     permafrost = "permafrost_lcp10.tif"
   )
   rasters <- lapply(
@@ -46,10 +46,10 @@ process_species <- function(landscape_name,
   # dataset was more accurate and would not overlap forested area with water.
   water_files <- list.files(
     here(landscape_name, "supporting_data", "ABoVE_Water"),
-    full.names = TRUE)
+    pattern = "ABoVE_Water\\.tif$", full.names = TRUE)
   water_rast <- rast(water_files, lyrs = water_decade_year)
-  water_rast <- disagg(water_rast, fact = 3, method = "near")
-  compareGeom(water_rast, rasters$env_grid, stopOnError = TRUE)
+  water_rast <- project(water_rast, rasters$env_grid_10, method = "near")
+  compareGeom(water_rast, rasters$env_grid_10, stopOnError = TRUE)
   water_rast <- ifel(water_rast == 1, 1, NA)
   dist <- distance(water_rast)
   water_mask <- ifel(dist <= 50, NA, 1)

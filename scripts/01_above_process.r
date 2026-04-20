@@ -107,8 +107,16 @@ crop_lcp <- function(lcp_vrt, poly) {
   vrt_crop_full <- suppressWarnings(crop(lcp_vrt, poly))
   vrt_crop_full <- subst(vrt_crop_full, NA, -1)
   vrt_crop <- suppressWarnings(crop(vrt_crop_full, poly, mask = TRUE))
-
   writeRaster(vrt_crop, file.path(out, paste0(nm, ".tif")), overwrite = TRUE, datatype = "INT4S")
+
+  # Uncomment to save a 1000m-buffered version (_buff1000.tif). Required if
+  # step 02 is run with na.rm = TRUE in aggregate() — see script 02 header.
+  # poly_buff     <- buffer(poly, width = 1000)
+  # vrt_buff_full <- suppressWarnings(crop(lcp_vrt, poly_buff))
+  # vrt_buff_full <- subst(vrt_buff_full, NA, -1)
+  # vrt_buff      <- suppressWarnings(crop(vrt_buff_full, poly_buff, mask = TRUE))
+  # writeRaster(vrt_buff, file.path(out, paste0(nm, "_buff1000.tif")),
+  #             overwrite = TRUE, datatype = "INT4S")
 }
 
 # ---------- crop and mask ABoVE data to each landscape polygon ---------- #

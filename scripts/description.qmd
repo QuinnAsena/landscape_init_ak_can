@@ -202,6 +202,13 @@ confused with genuine NA values that exist within the landscape (e.g. water
 bodies or unclassified pixels). A two-step crop-then-mask operation is applied:
 first crop to the bounding box, then mask to the polygon boundary.
 
+**Buffered outputs (optional).** The buffer code in `crop_lcp` is commented out.
+Uncomment it to save a 1000m-buffered version (`_buff1000.tif`) of each dataset.
+This is only needed if step 02 is re-run with `na.rm = TRUE` in `aggregate()`,
+which includes partial boundary 100m blocks and requires a `cover()` fill to
+guarantee complete 10m sub-cell coverage for those blocks. See the step 02 script
+header for details.
+
 The surface water data are structured as one tile per decade rather than a
 single multi-layer file. These are first grouped by decade, combined into a
 per-decade VRT, then stacked into a single three-layer raster.
@@ -216,17 +223,42 @@ the regional downscaled climate dataset for the other datasets (see step 03).
 
 **Script:** `02_env.grid_create.r`
 
-iLand operates on a 100×100m resource unit grid. This step projects the first
-land cover layer for each landscape to ESRI:102001 (Canada Albers Equal Area
-Conic) at 100m resolution and assigns each non-NA cell a unique sequential
+iLand operates on a 100×100m resource unit grid. This step builds the RU grid
+from the ABoVE land cover raster and assigns each non-NA cell a unique sequential
 integer ID. This ID is the `env.grid` used throughout the pipeline to identify
 individual RUs.
 
-Two output formats are written: an ASCII grid (`.txt`) for direct use by iLand2.0
-and a GeoTIFF for testing with iLand2.1. A 10m disaggregated version
-is also produced by disaggregating the original 30m land cover raster by a
-factor of 3, preserving the 15-class land cover values for use in steps 06
-and 09.
+**Why the extent must be snapped to 100m boundaries.** The ABoVE land cover
+product has 30m cells. A naïve approach would disaggregate by 3 to reach 10m,
+then aggregate by 10 to reach 100m. The problem is that the cropped raster rarely
+has dimensions exactly divisible by 10 (e.g. 1163 rows → 1163 / 10 = 116.3), so
+`aggregate(fact = 10)` produces partial groups at the edges. Those edge 100m
+cells cover fewer than 100 sub-cells, giving an incorrect modal land cover
+and — critically — leaving the 10m and 100m grids not in exact pixel alignment.
+Every downstream join between `env.grid.tif` and `env.grid_disagg_10.tif` then
+produces spurious NAs.
+
+The fix is to snap the bounding extent to 100m boundaries before building the
+grid, then `resample()` the 30m land cover to the snapped 10m template using
+nearest-neighbour interpolation. This guarantees that the resulting 10m grid
+has dimensions exactly divisible by 10, so `aggregate(fact = 10)` produces only
+complete 100×100m groups with no partial-group edge artefacts.
+
+**`na.rm = FALSE` in `aggregate()`.** With the snapped grid, all aggregate groups
+are exact 10×10 blocks, so the `na.rm` choice no longer affects alignment. We use
+`na.rm = FALSE` to keep only blocks where all 100 sub-cells are non-NA — i.e.,
+only fully-covered blocks entirely within the landscape polygon. Boundary blocks
+where the polygon clips through a cell are excluded. `env.grid_disagg_10.tif` is
+then masked to exactly the same footprint, so the two grids are exactly
+consistent by construction. Using `na.rm = TRUE` would instead include any block
+with at least one non-NA sub-cell, expanding the landscape by ~1% at the boundary;
+if that is desired, a `cover()` fill using the buffered land cover from step 01 is
+needed to give those partial blocks complete 10m coverage.
+
+Two output formats are written for `env.grid`: an ASCII grid (`.txt`) for direct
+use by iLand 2.0 and a GeoTIFF for subsequent processing. `env.grid_disagg_10.tif`
+retains the 15-class land cover values at 10m resolution, masked to the RU grid
+footprint.
 
 ## Step 03 — Process downscaled climate data
 
@@ -386,7 +418,10 @@ unclassified.
 Before classification, a 50m water proximity buffer is applied using the ABoVE
 surface water product: cells within 50m of open water are masked out. This
 avoids initialising forest on pixels that sit within or immediately adjacent
-to water bodies.
+to water bodies. The water raster (30m) is aligned to the snapped 10m landscape
+grid by projecting the 1000m-buffered version (saved in step 01) using
+nearest-neighbour interpolation, ensuring it shares the same origin and
+dimensions as `env.grid_disagg_10.tif`.
 
 Species are encoded as integers (1–6) and written as a GeoTIFF for use in
 steps 11 and 12. Choose the land cover year in this script, e.g., land
