@@ -382,8 +382,9 @@ rasters aligned to each landscape's 100m `env.grid`.
 For sand, silt, and clay: the six depth layers are stacked and aggregated to a
 thickness-weighted mean (weights proportional to layer depth interval), then
 converted from g/kg to %, reprojected to the landscape CRS and resolution, and
-rounded to integers. Silt is adjusted by ±1 where needed so that
-sand + silt + clay = 100 exactly.
+rounded to integers. Sand and clay are rounded as proportions of the true
+depth-weighted total; silt is then derived as the exact residual
+(100 − sand − clay), guaranteeing sand + silt + clay = 100 for every cell.
 
 For depth to bedrock: reprojected to the landscape grid and capped at 200 cm
 to match the iLand permafrost module's maximum effective soil depth.

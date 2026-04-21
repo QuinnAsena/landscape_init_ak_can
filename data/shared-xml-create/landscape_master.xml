@@ -240,7 +240,7 @@
       <co2concentration>330</co2concentration> <!-- current value of the atmospheric CO2 concentration. Default value is 380ppm. A time series may be implementing using the Time-Event feature. See also section world.species.CO2Response -->
       <co2pathway>No</co2pathway> <!-- selects a pre-defined CO2 concentration pathway, one of 'RCP2.6', 'RCP4.5', 'RCP6.0', 'RCP8.5', and 'No' (for no change, is the default). See also https://iland-model.org/ClimateData -->
       <co2startYear></co2startYear> <!-- if a co2pathway is used, then co2startYear defines the starting point of CO2 concentration within the simulation. See also https://iland-model.org/ClimateData -->
-      <tableName></tableName> <!-- Name of the SQLite table within the defined climate database to load (system.database.climate). Replace or set in environment file. -->
+      <tableName>placeholder</tableName> <!-- Name of the SQLite table within the defined climate database to load (system.database.climate). Replace or set in environment file. -->
       <batchYears>REPLACE</batchYears> <!-- for performance reasons the access to the climate database accesses is performed bulked. This setting specifies how many years are loaded at once. -->
       <temperatureShift>0</temperatureShift> <!-- simple option to modify the climate. The value is added to each daily temperature (default = 0) -->
       <precipitationShift>1</precipitationShift> <!-- simple option to modify the climate. The daily precipitation is multiplied for each day with this value. (default = 1). -->

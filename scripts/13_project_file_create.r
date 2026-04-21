@@ -103,7 +103,7 @@ gen_project_file <- function(landscape_name, master_xml, run_type,
 }
 
 gen_project_file(
-    landscape_name = landscape_names[1],
+    landscape_name = landscape_names,
     master_xml = master_xml,
     run_type = "spinup",
     desired_years = 1950:1980,

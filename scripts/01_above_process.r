@@ -11,6 +11,9 @@ library(here)
 # ABoVE surface water: decadal surface water maps (1991-2011), 1 tif per tile per decade
 # https://www.earthdata.nasa.gov/data/catalog/ornl-cloud-decadal-water-maps-1324-1.1
 
+# browse earthdata:
+# https://radiantearth.github.io/stac-browser/#/search/external/cmr.earthdata.nasa.gov/stac
+
 above_study_domain_file <- list.files(
   "//10.60.2.10/FF_Lab/project_data/na_boreal/data_sets/ABoVE_reference_grid_v2_1527/data",
   pattern = "\\.tif$", full.names = TRUE)

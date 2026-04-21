@@ -7,9 +7,10 @@ library(here)
 # WHY WE SNAP TO A GRID BEFORE AGGREGATING
 # -----------------------------------------
 # The ABoVE land cover product has 30m cells in ESRI:102001 (Canada Albers Equal
-# Area). After cropping to a landscape polygon, the raster typically has dimensions
-# like 1163 rows × 1165 cols. Dividing by the scale factor needed to reach 100m
-# (30 → 10 requires factor 3; 10 → 100 requires factor 10, so overall 30 × 3.33):
+# Area). After cropping to a landscape polygon, irregular rasters like CPCRW may
+# have dimensions like 1163 rows × 1165 cols. Dividing by the scale factor needed
+# to reach 100m(30 → 10 requires factor 3; 10 → 100 requires factor 10,
+# so overall 30 × 3.33):
 #
 #   disagg(above_30, fact = 3)  →  3489 × 3495
 #   3489 / 10 = 348.9    ← not an integer!
@@ -20,13 +21,18 @@ library(here)
 # sub-cells, so the modal land-cover assignment is based on partial data and the
 # resulting env.grid and env.grid_disagg_10 are not in exact pixel alignment.
 # This misalignment propagates through every downstream script (06, 09, 11, 12)
-# that joins the two grids, causing NA cells and incorrect species assignments.
+# that joins the two grids, causing NA cells and incorrect species assignments
+# in the stand.grid gains the env.grid.
 #
 # The fix: snap the extent to 100m boundaries BEFORE resampling. This guarantees
 # that nrow(above_10) and ncol(above_10) are exact multiples of 10, so every
 # aggregate() output cell covers exactly 10×10 input cells — no partial groups.
 # Cells added at the bounding-box edges receive NA from resample() and never
 # acquire RU IDs, so no post-cropping is needed.
+# This probably is not an issue with the all
+# other landscapes now that they are projected to equal Albers (in the adjusted
+# version of Lora's script) and should have equal dimensions. But I wated to make
+# the script generalisable.
 #
 # WHY na.rm = FALSE IN aggregate()
 # ----------------------------------

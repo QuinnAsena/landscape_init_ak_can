@@ -4,8 +4,9 @@ library(here)
 # Processes raw SoilGrids tiles downloaded in step 05b for each landscape.
 # For sand, silt, and clay: stacks the 6 depth layers, computes a
 # thickness-weighted mean, converts from g/kg to %, reprojects to the 100m
-# env.grid, and rounds to integer. Silt is adjusted by ±1 to correct any
-# rounding artefact so that sand + silt + clay = 100.
+# env.grid, and rounds to integer. Sand and clay are rounded as proportions of
+# the true total; silt is derived as the exact residual (100 - sand - clay) so
+# that sand + silt + clay = 100 exactly for every cell.
 # For depth to bedrock (BDTICM): reprojects to the env.grid with no unit
 # conversion (already in cm).
 # Outputs are saved to supporting_data/soils_processed/ per landscape, ready
@@ -53,10 +54,15 @@ process_soil <- function(landscape_name) {
   })
   names(processed) <- soil_vars
 
-  # Adjust silt by ±1 to correct rounding artefacts so sand + silt + clay = 100
+  # Normalise to proportions of the actual total, then derive silt as the exact
+  # residual. This guarantees sand + silt + clay = 100 regardless of how far the
+  # depth-weighted sum deviates from 100 before rounding.
+  # ifel(total > 0, ...) guards against cells where all three values are 0
+  # (no soil data, filled by subst above) — avoids 0/0 = NaN.
   total <- processed$sand + processed$silt + processed$clay
-  processed$silt <- ifel(total == 101, processed$silt - 1,
-                     ifel(total == 99,  processed$silt + 1, processed$silt))
+  processed$sand <- ifel(total > 0, round(processed$sand / total * 100), 0)
+  processed$clay <- ifel(total > 0, round(processed$clay / total * 100), 0)
+  processed$silt <- ifel(total > 0, 100 - processed$sand - processed$clay, 0)
 
   for (var in soil_vars) {
     names(processed[[var]]) <- var  # layer name used by 10_env.file_create.r
