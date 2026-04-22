@@ -261,7 +261,7 @@
       <randomFunction>max(1-x^2,0)</randomFunction> <!-- defines the function (as an expression https://iland-model.org/Expression) used when estimating positions for individual trees (for init files of type distribution). -->
       <mapFileName></mapFileName> <!-- when using the map mode, the matching of stands and init files is defined in this file (see also: landscape setup ). -->
       <file>REPLACE</file> <!-- path of the initialization file to be loaded. In mode unit this key needs to be overwritten by the environment file. If blank, no trees are loaded. (example: init/snapshot_sml.sqlite) -->
-      <saplingFile>landscape_model_init</saplingFile> <!-- path of the initialization file for saplings (see initialize trees https://iland-model.org/initialize+trees). If blank, no saplings are loaded. -->
+      <saplingFile>landscape_model_init.txt</saplingFile> <!-- path of the initialization file for saplings (see initialize trees https://iland-model.org/initialize+trees). If blank, no saplings are loaded. -->
       <snags>
         <swdC>0</swdC> <!-- initial carbon content in (standing) snags (kg/ha). Replace or set in environment file. -->
         <swdCN>411</swdCN> <!-- CN ratio of snags. Different values are used for iLand in different regions. -->

@@ -349,7 +349,7 @@ lapply(landscape_names, function(landscape_name) {
   dir.create(init_out_dir, recursive = TRUE, showWarnings = FALSE)
 
   write.table(
-    sapinit_bind,
+    sapinit_bind |> dplyr::select(-forest_type),
     file.path(init_out_dir, "landscape_model_init.txt"),
     row.names = FALSE, col.names = TRUE, sep = ",")
 })

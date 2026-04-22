@@ -6,8 +6,7 @@ library(future.apply)
 library(here)
 
 dirs <- list.dirs(here(), recursive = FALSE)
-landscape_dirs <- dirs[grepl("landscape_", basename(dirs))]
-landscape_names <- basename(landscape_dirs)
+landscape_names <- basename(dirs[grepl("landscape_", basename(dirs))])
 
 # gcm <- c("NorEsm2-MM", "TaiESM1", "UKESM1-0-LL", "EC-Earth3-Veg", "GFDL-ESM4")
 # ssp <- c("ssp126", "ssp245", "ssp370", "ssp585")

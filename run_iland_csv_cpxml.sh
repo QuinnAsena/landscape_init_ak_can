@@ -14,6 +14,14 @@ path="${ILANDC_BIN:-/glade/work/qasena/iLand2.0/iland-model/build/ilandc/ilandc}
 xml_path=$(dirname "$xml")
 landscape_name=$(basename "$xml" .xml)
 output_path="$(realpath -m "${ILANDC_OUTPUT_ROOT:-/glade/derecho/scratch/qasena/output_auto/${landscape_name}}")"
+# On Windows (Git Bash / MSYS2) realpath converts Z:/... to /z/... but iLand
+# is a native Windows binary and cannot resolve POSIX-style drive paths.
+# cygpath -m gives a Windows path with forward slashes (Z:/...) — iLand can
+# read it, and forward slashes are safe in sed replacement strings unlike the
+# backslashes produced by cygpath -w (\l, \p etc. have special sed meanings).
+if command -v cygpath &>/dev/null; then
+  output_path="$(cygpath -m "${output_path}")"
+fi
 script_dir=$(cd "$(dirname "$0")" && pwd)
 csv_name="${script_dir}/iland_scenarios.csv"
 

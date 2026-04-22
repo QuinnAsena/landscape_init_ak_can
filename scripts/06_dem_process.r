@@ -45,7 +45,7 @@ process_dem <- function(landscape_name, perma_rast) {
   # the projected raster extends beyond the landscape boundary. Aspect is then
   # computed on this full extent so border cells have valid neighbours, before
   # masking back to env_grid_10 removes the fringe.
-  dem_src <- if (length(dem_files) > 1) vrt(dem_files) else rast(dem_files)
+  dem_src <- if (length(dem_files) > 1) vrt(dem_files, set_names = TRUE) else rast(dem_files)
 
   # Extend env_grid_10 by 10 cells (1000m) to create a buffered template that
   # shares the same grid origin — projecting to this ensures cell alignment so

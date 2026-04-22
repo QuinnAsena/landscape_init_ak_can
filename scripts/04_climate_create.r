@@ -95,8 +95,7 @@ ssp <- "ssp126"
 var <- c("tasmax", "pr", "rsds", "tasmin", "vp")
 
 dirs <- list.dirs(here(), recursive = FALSE)
-landscape_dirs <- dirs[grepl("landscape_", basename(dirs))]
-landscape_names <- basename(landscape_dirs)
+landscape_names <- basename(dirs[grepl("landscape_", basename(dirs))])
 
 param_grid <- expand.grid(
   landscape_dir = landscape_names,
