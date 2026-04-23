@@ -52,3 +52,6 @@ rsconnect/
 /landscape_*/
 /data/landscape_selection/
 /data/lora_proj_temp/
+
+# Claude Code internal files (worktrees, local session settings)
+.claude/
