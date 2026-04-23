@@ -1,0 +1,202 @@
+library(RSQLite)
+library(DBI)
+library(terra)
+library(dplyr)
+library(tidyr)
+
+args <- commandArgs(TRUE)
+user <- args[1]
+treatment <- args[2]
+replicate <- as.numeric(args[3])
+
+data_path <- paste0("/glade/derecho/scratch/", user, "/output_auto/CPCRW_hist_spinup/")
+
+if (length(list.files(data_path)) == 0) {
+  stop("No files in data path: ", data_path)
+}
+
+input_file <- paste0(data_path, treatment, "/rep_",
+                     replicate, "/", treatment, "_",
+                     replicate, ".sqlite")
+
+output_dir <- file.path(data_path, "processed", "basal_area", treatment, paste0("rep_", replicate))
+
+dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
+env_path <- "/glade/work/qasena/CPCRW_fecund/gis/env.grid.tif"
+
+# Check if there are crownkill files to process
+fire_files <- list.files(paste0(data_path, treatment,
+                                "/rep_", replicate, "/crownkill/"),
+                         full.names = TRUE)
+
+if (length(fire_files) < 1) {
+  stop("no crownkill files!")
+}
+
+basal_area_processing_func <- function(input_file, fire_files, env_path) {
+  dbconn <- DBI::dbConnect(
+    RSQLite::SQLite(),
+    dbname = input_file)
+
+  # Fire db
+  fire <- tbl(dbconn, "fire") |>
+    collect()
+
+  fire <- fire |>
+    mutate(prop.dens.killed = n_trees_died / n_trees,
+           prop.ba.killed = basalArea_died / basalArea_total,
+           area_ha = fire$area_m2 / 10000)
+
+  fire$prop.ba.killed[fire$basalArea_total == 0] <- 0
+  fire$prop.dens.killed[fire$n_trees == 0] <- 0
+
+  # env.grid
+  env_grid <- terra::rast(env_path)
+
+  fire_maps <- terra::rast(fire_files)
+  terra::crs(fire_maps) <- terra::crs(env_grid)
+
+  fire_year_dat <- data.frame()
+  for (i in 1:nrow(fire)) {
+    # Skip fires that burned nothing
+    if (fire$area_m2[i] > 0) {
+      # Take the fire map for this fire, and make everything but the fire cells NA
+      fire_mask <- fire_maps[[paste0("crownkill_", fire$fireId[i], "_", fire$year[i])]]
+      fire_mask <- ifel(fire_mask == 0, NA, fire_mask)
+      # Use the mask to extract the rids for burned grids
+      burned_rids <- as.data.frame(mask(env_grid, fire_mask))
+      burned_rids <- burned_rids |> filter(!is.na(env.grid))
+      burned_rids$year=fire$year[i]
+    }
+    fire_year_dat <- rbind(fire_year_dat,burned_rids)
+  }
+  fire_year_dat <- fire_year_dat |>
+    rename("rid" = env.grid, "fire.year"=year)
+
+  fire_year_dat <- fire_year_dat |>
+    group_by(rid) |>
+    summarize(last.fire.year = max(fire.year))
+
+
+  stand <- tbl(dbconn, "stand") |>
+    filter(ru != -1, year == 300) |>
+    dplyr::select(year, ru, rid, species, area_ha, count_ha, basal_area_m2) |>
+    collect()
+
+# Seems like it is much faster to filter if an index is added
+#   DBI::dbGetQuery(dbconn, "PRAGMA index_list('saplingdetail')")
+# But it took ages to add the index, so this is commented-out
+
+  saplingdetail <- tbl(dbconn, "saplingdetail") |>
+    filter(year == 300) |>
+    select(dbh, n_represented, rid, year, ru, species) |>
+    mutate(
+      ba = pi * ((dbh / 100) / 2)^2,
+      ba_all = ba * n_represented) |>
+    group_by(rid, year, ru, species) |>
+    summarize(
+      count_ha_sap = sum(n_represented),
+      dbh_mean_sapling = sum(dbh * n_represented) / sum(n_represented),
+      ba_sum_sapling = sum(ba_all)) |>
+    collect()
+
+  # disconnect
+  dbDisconnect(dbconn)
+
+  cat("*Object sizes:* \n\n",
+      "saplingdetail: ", format(object.size(saplingdetail), units = "Mb"), "\n\n",
+      "stand: ", format(object.size(stand), units = "Mb"), "\n\n")
+
+  stand.t <- full_join(stand, saplingdetail, 
+                       by = c("rid", "ru", "year", "species")) |>
+    mutate(
+      across(everything(), \(x) replace(x, is.na(x), 0)),
+      count.total.ad.sap = count_ha + count_ha_sap,
+      ba.total.ad.sap = basal_area_m2 + ba_sum_sapling) |>
+    dplyr::select(
+      ru, rid, year, species, area_ha,
+      count.total.ad.sap:ba.total.ad.sap
+    )
+
+  stand.t.wide <- stand.t |>
+    tidyr::pivot_wider(
+      names_from = species,
+      values_from = count.total.ad.sap:ba.total.ad.sap,
+      values_fill = 0
+    )
+
+  rm(stand, saplingdetail, stand.t)
+  gc()
+
+  stand.t.wide <- stand.t.wide |>
+    mutate(
+      total.density.ad.sap =
+        count.total.ad.sap_Potr + count.total.ad.sap_Pima +
+        count.total.ad.sap_Bene + count.total.ad.sap_Pigl,
+      total.ba.ad.sap =
+        ba.total.ad.sap_Potr + ba.total.ad.sap_Pima +
+        ba.total.ad.sap_Bene + ba.total.ad.sap_Pigl
+    )
+
+  stand.t.wide <- stand.t.wide |>
+    mutate(
+      IV.ad.sap_Pima = case_when(
+        total.density.ad.sap != 0 & total.ba.ad.sap != 0 ~
+          (count.total.ad.sap_Pima / total.density.ad.sap) +
+            (ba.total.ad.sap_Pima / total.ba.ad.sap),
+        TRUE ~ 0
+      ),
+      IV.ad.sap_Pigl = case_when(
+        total.density.ad.sap != 0 & total.ba.ad.sap != 0 ~
+          (count.total.ad.sap_Pigl / total.density.ad.sap) +
+            (ba.total.ad.sap_Pigl / total.ba.ad.sap),
+        TRUE ~ 0
+      ),
+      IV.ad.sap_Potr = case_when(
+        total.density.ad.sap != 0 & total.ba.ad.sap != 0 ~
+          (count.total.ad.sap_Potr / total.density.ad.sap) +
+            (ba.total.ad.sap_Potr / total.ba.ad.sap),
+        TRUE ~ 0
+      ),
+      IV.ad.sap_Bene = case_when(
+        total.density.ad.sap != 0 & total.ba.ad.sap != 0 ~
+          (count.total.ad.sap_Bene / total.density.ad.sap) +
+            (ba.total.ad.sap_Bene / total.ba.ad.sap),
+        TRUE ~ 0
+      )
+    )
+
+  stand.t.wide <- stand.t.wide |>
+    mutate(
+      sp.dom = as.factor(case_when(
+        IV.ad.sap_Pima > 1 ~ "Pima",
+        IV.ad.sap_Potr > 1 ~ "Potr",
+        IV.ad.sap_Pigl > 1 ~ "Pigl",
+        IV.ad.sap_Bene > 1 ~ "Bene",
+        IV.ad.sap_Pima < 1 & IV.ad.sap_Pigl < 1 & IV.ad.sap_Potr < 1 &
+          IV.ad.sap_Bene < 1 & (IV.ad.sap_Pima + IV.ad.sap_Pigl) > 1
+          ~ "Mixed.spruce",
+        IV.ad.sap_Pima < 1 & IV.ad.sap_Pigl < 1 & IV.ad.sap_Potr < 1 &
+          IV.ad.sap_Bene < 1 & (IV.ad.sap_Bene + IV.ad.sap_Potr) > 1
+          ~ "Mixed.deciduous",
+        TRUE ~ "Not forested"
+      )),
+      treatment = treatment,
+      replicate = replicate
+    )
+
+  stand.t.wide <- left_join(stand.t.wide, fire_year_dat, by = "rid") |>
+    mutate(across(where(is.numeric), \(x) replace(x, is.na(x), 0))) |>
+    mutate(stand.age = 300 - last.fire.year)
+
+  arrow::write_parquet(
+    stand.t.wide,
+    file.path(output_dir, "basal_area300.parquet"),
+    use_dictionary = FALSE
+  )
+  gc()
+}
+
+basal_area_processed <- basal_area_processing_func(
+    input_file = input_file, fire_files = fire_files, env_path = env_path)

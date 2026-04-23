@@ -1,0 +1,332 @@
+---
+title: "Debug summaries"
+author:
+  name: "Quinn Asena"
+date: today
+format:
+  html:
+    code-fold: false
+    toc: true
+    link-external-newwindow: true
+    embed-resources: true
+execute: 
+  cache: true
+theme:
+  light: flatly
+  dark: darkly
+---
+
+
+## Packages {.unlisted .hidden}
+
+```{r}
+#| echo: false
+
+if (!requireNamespace("pak", quietly = TRUE)) {
+  install.packages("pak", repos = "https://cran.r-project.org")
+}
+
+packages <- c(
+  "dplyr", "tidyr", "ggplot2", "RSQLite", "DBI", "readr",
+  "skimr", "DT", "dbplyr", "tibble", "forcats", "purrr"
+)
+pak::pak(packages)
+lapply(packages, library, character.only = TRUE)
+
+```
+
+## Checks
+
+```{r}
+#| code-fold: true
+#| output: false
+
+in_dir  <- "//10.60.2.10/FF_Lab/project_data/na_boreal/sensitivity_analysis/data/output/debug_data/NorV2debug"
+nor_debug <- readr::read_delim(file.path(in_dir, "temp/NorV2debug_establishment.csv"), delim = ";")
+
+dbconn <- DBI::dbConnect(
+  RSQLite::SQLite(),
+  dbname = file.path(in_dir, "output/NorV2HistBaseFecundDebug.sqlite"))
+
+# Water db
+water = tbl(dbconn, "water") |> 
+  mutate(
+    SOLLayer = ifelse(is.na(SOLLayer), 0, SOLLayer),
+    SOL.cm = SOLLayer * 100 + mossLayer * 100) |>
+  collect()
+
+dbDisconnect(dbconn)
+
+```
+
+Join up with water output for SOL
+
+```{r}
+#| output: false
+
+dim(nor_debug)
+# Joining with water for sol
+nor_debug <- left_join(nor_debug, water) |>
+  mutate(species = forcats::fct(species, levels = c("Pima", "Potr", "Pigl", "Bene")))
+dim(nor_debug)
+
+```
+
+Gut check on ru and rid. No ru or rid == -1 (not the cause of `NaN` in TACAAbioticEnv)
+
+```{r}
+# range(nor_debug$ru)
+# length(unique(nor_debug$ru))
+
+# number of unique rid matches unique ru. good.
+# range(nor_debug$rid)
+# length(unique(nor_debug$rid))
+
+
+nor_debug |>
+  summarise(across(
+    all_of(c("ru", "rid")),
+    list(unique = ~ n_distinct(.x, na.rm = TRUE),
+         max = ~ max(.x, na.rm = TRUE),
+         min = ~ min(.x, na.rm = TRUE)),
+         .names = "{.col}_{.fn}"))
+```
+
+## What is causing Nans in TACA abioticenv?
+
+Copied from the wiki:
+
+TACAAbioticEnv:
+
+> TACAAbioticEnv result after abiotic environment (after multiplication with fEnvYr) (result of tolerance pow(sqrt(frostdays after budbirst)) * fEnvYr)
+
+fEnvYr:
+
+> still missing: f_ref: parameter that scales response values to the range 0..1 (1 for best growth conditions)
+
+TACAFrostAfterBud:
+
+> frostdays after budbirst are counted to the end of vegetation period
+
+Tree and climate assessment model; [TACA model](https://doi.org/10.1016/j.ecolmodel.2007.07.026)
+
+
+Possible that the `NaN`s result from underlying calculation `pow(sqrt(frostdays after budbirst)) * fEnvYr`?
+
+Briefly looked into [cpp code](https://github.com/edfm-tum/iland-model/blob/058749ffb2d174d171ca1fc8541baa0f127babbf/src/core/establishment.cpp#L263C13-L263C86), but tests would be time consuming!
+
+How many rids have `NaN`?
+
+```{r}
+#| include: false
+ 
+# length(unique(nor_debug$rid)) - length(unique(nor_nan$rid))
+nor_nan <- nor_debug[which(is.na(nor_debug$TACAAbioticEnv)), ]
+```
+
+Only `r length(unique(nor_nan$rid))` rids, or `r nrow(nor_nan)` rows of data.
+
+The following table is interactive with sort and filter fields, but is excessvely large and I don't see any obvious cause for the `NaN` values.
+
+```{r}
+options(htmlwidgets.TOJSON_ARGS = list(na = 'string'))
+nor_debug |>
+  select(id, year, species, ru, rid, TACAAbioticEnv, SOL.cm, stockable_area, fEnvYr, GDD) |>
+  filter(is.na(TACAAbioticEnv)) |>
+  datatable(filter = "top", options = list(searching = FALSE))
+
+```
+
+
+
+## Try to figure out if any cells have avprobdensity >0  for any of the 4 species
+
+Nope. No cells with avgProbDensity >0 (p100 == max in table below).
+
+```{r}
+#| code-fold: true
+
+# variables <- c("TACAAbioticEnv", "N_Established", "avgProbDensity")
+# nor_debug |>
+#   group_by(species) |>
+#   summarise(across(
+#     all_of("TACAAbioticEnv"),
+#     list(median = ~ median(.x, na.rm = TRUE),
+#          q25 = ~ quantile(.x, 0.25, na.rm = TRUE),
+#          q75 = ~ quantile(.x, 0.75, na.rm = TRUE),
+#          max = ~ max(.x, na.rm = TRUE),
+#          min = ~ min(.x, na.rm = TRUE)),
+#          .names = "{.col}_{.fn}")) |>
+#   datatable() |>
+#   formatRound(columns = 2:6, digits = 4)
+
+
+nor_debug_skim <- nor_debug |>
+  select(avgProbDensity, waterLimitation, GDD, TACAAbioticEnv, SOL.cm, fEnvYr)
+
+skim(nor_debug_skim)
+```
+
+
+
+## 3.Summary plots:
+
+a. N established as a function of TACabioticenv by speices
+
+The following will remove rows where `TACAAbioticEnv` == `NaN`. Not a big loss, only `r length(unique(nor_nan$rid))` rids (`r length(nor_nan$rid)` rows).
+
+```{r}
+
+spp_colours <- c("Pima" = "#8c564b", "Pigl" = "#1f77b4", 
+                 "Potr" = "#2ca02c", "Bene" = "green")
+
+nor_debug_spp <- nor_debug |>
+  group_by(species)
+
+ggplot(nor_debug_spp, aes (x = N_Established, y = TACAAbioticEnv, colour = species)) +
+  geom_point() +
+  scale_colour_manual(values = spp_colours) +
+  theme_minimal()
+
+ggplot(nor_debug_spp, aes (x = N_Established, y = TACAAbioticEnv, colour = species)) +
+  geom_point() +
+  scale_colour_manual(values = spp_colours) +
+  facet_wrap(~ species) +
+  theme_minimal()
+```
+
+Same plots but xlim set to 300
+
+```{r}
+
+ggplot(nor_debug_spp, aes (x = N_Established, y = TACAAbioticEnv, colour = species)) +
+  geom_point() +
+  scale_colour_manual(values = spp_colours) +
+  xlim(0, 300) +
+  theme_minimal()
+
+ggplot(nor_debug_spp, aes (x = N_Established, y = TACAAbioticEnv, colour = species)) +
+  geom_point() +
+  scale_colour_manual(values = spp_colours) +
+  xlim(0, 300) +
+  facet_wrap(~ species) +
+  theme_minimal()
+```
+
+
+
+b. link RID with other output and plot TACabioticenv vs SOL depths
+
+```{r}
+
+ggplot(nor_debug, aes (x = SOL.cm, y = TACAAbioticEnv, colour = species)) +
+  geom_point() +
+  scale_colour_manual(values = spp_colours) +
+  theme_minimal()
+
+ggplot(nor_debug_spp, aes (x = SOL.cm, y = TACAAbioticEnv, colour = species)) +
+  geom_point() +
+  scale_colour_manual(values = spp_colours) +
+  facet_wrap(~ species) +
+  theme_minimal()
+```
+
+
+
+```{r}
+nor_debug |>
+  filter(species %in% c("Pigl", "Bene"),
+         TACAAbioticEnv == 0,
+         SOL.cm < 6) |>
+  select(species, rid, TACAgdd, TACAFrostAfterBud, GDD, TACAAbioticEnv, N_Established, stockable_area, SOL.cm) |>
+  datatable(filter = "top", options = list(searching = FALSE)) |>
+  formatRound(columns = "SOL.cm", digits = 3)
+
+
+```
+
+
+
+
+c. summarizing full ranges of avprobdensity, tacaabiotic env, fenv, and Nestablished by species.
+
+```{r}
+#| code-fold: true
+
+variables <- c("TACAAbioticEnv", "N_Established", "avgProbDensity")
+nor_debug_tables <- map(variables, \(var) {
+  tab <- nor_debug |>
+    group_by(species) |>
+    summarise(across(
+      all_of(var),
+      list(median = ~ median(.x, na.rm = TRUE),
+           q25 = ~ quantile(.x, 0.25, na.rm = TRUE),
+           q75 = ~ quantile(.x, 0.75, na.rm = TRUE),
+           max = ~ max(.x, na.rm = TRUE),
+           min = ~ min(.x, na.rm = TRUE)),
+           .names = "{.col}_{.fn}"))
+}) |>
+set_names(variables)
+
+tab_list <- map(nor_debug_tables, \(tab) {
+  var_tab <- datatable(tab, options = list(searching = FALSE))
+  formatRound(var_tab, columns = 2:ncol(tab), digits = 4)
+  var_tab <- htmltools::div(var_tab)
+})
+
+# tab_list
+```
+
+
+:::{.panel-tabset}
+```{r, results='asis'}
+#| warning: false
+
+for (i in seq_along(tab_list)) {
+  cat("# ", variables[i],"\n")
+  tab_list[[i]]
+  cat('\n\n')
+}
+```
+:::
+
+
+::: {.panel-tabset}
+## TACAAbioticEnv
+
+```{r}
+#| echo: false
+tab_list[[1]]
+```
+
+## N_Established
+
+```{r}
+#| echo: false
+tab_list[[2]]
+```
+
+## avgProbDensity
+
+```{r}
+#| echo: false
+tab_list[[3]]
+```
+
+:::
+
+
+```{r}
+ggplot(nor_debug, aes (x = fEnvYr, fill = species)) +
+  geom_histogram() +
+  scale_fill_manual(values = spp_colours) +
+  theme_minimal()
+
+ggplot(nor_debug, aes (x = SOL.cm)) +
+  geom_histogram() +
+  theme_minimal()  
+```
+
+## ~~If they have avprobdensity >0 try to figure out where the cells are relative to nearby dominant forest types~~
+
+probDensity all 0

@@ -1,0 +1,404 @@
+---
+title: "Seedling density"
+author: "FFL"
+date: today
+---
+
+# Data {.unnumbered .unlisted .hidden}
+
+
+```{r}
+#| label: data processing
+#| cache: false
+source("./scripts/install.R")
+
+out_dir  <- here("data", "estSOLthickness", "seeddens_processed")
+out_file <- here("data", "estSOLthickness", "seeddens_processed", "seedling_density_data.rds")
+in_dir   <- "//10.60.2.10/FF_Lab/project_data/na_boreal/sensitivity_analysis/data/output/estSOLthickness/seeddens"
+if(!file.exists(in_dir)) {
+  stop("Are you connected to Janet?")
+}
+
+dir.create(out_dir, recursive = TRUE)
+
+if (!file.exists(out_file)) {
+  seeddens_files <- list.files(in_dir, full.names = TRUE)
+
+  # plan(sequential)
+  plan(multisession, workers = 5)
+  seedling_density_data <- furrr::future_map_dfr(seeddens_files, \(x) {
+    read_delim(x, show_col_types = FALSE) |>
+      select(year, rid, ru, fire.year, fireId, reburned_rid, rel.year,
+             SOL.cm, starts_with(c("sapling")), treatment, replicate)
+  })
+
+
+  seedling_density_data_fire_filt <- seedling_density_data |> 
+    group_by(treatment, replicate, reburned_rid) |> 
+    drop_na(reburned_rid) |> # Drop anything burned only once
+    distinct(fireId, fire.year) |> # include fireId for case when more than one fire occurred in the same year
+    mutate(tsf_group_diff = coalesce(lead(fire.year) - fire.year, fire.year)) |>  # Use coalesce to replace NA from lead with fire.  year
+    right_join(seedling_density_data) |>
+    mutate(tsf = year - fire.year)
+  
+  # Here we are filtering for rid with 4 years since fire
+  # including rids that burned twice if more that 4 years between fires
+  fire_filt_pos <- seedling_density_data_fire_filt |> 
+    filter((tsf_group_diff >= 4 | is.na(tsf_group_diff)), # Keep NAs in tsf group because NA are rids that did not reburn
+            tsf > 0, tsf <= 4) |> # filtering out 0 year
+    arrange(reburned_rid) # |>
+  # mutate(treatment = str_remove_all(treatment, "CPCRW_|_1_seedling_dens"))
+  # file names were getting too long, so I clipped them in the mutate ^
+  # Can remove when no longer necessary
+  
+  # the following is all Lora's code.
+  # ONLY SMALL SAPLINGS < 1.3m
+  small_seedl_dens_m2 <- fire_filt_pos |>
+    rename(
+      Bene.nseedl = sapling_count_ha_small.Bene,
+      Potr.nseedl = sapling_count_ha_small.Potr,
+      Pima.nseedl = sapling_count_ha_small.Pima,
+      Pigl.nseedl = sapling_count_ha_small.Pigl) |>
+    dplyr::select(
+      treatment, replicate, reburned_rid,
+      year, ru, fireId, tsf, Bene.nseedl,
+      Potr.nseedl, Pima.nseedl, Pigl.nseedl) |>
+    mutate(
+      Pigl.seedl.dens = ifelse(is.na(Pigl.nseedl), 0, Pigl.nseedl/10000),
+      Pima.seedl.dens = ifelse(is.na(Pima.nseedl), 0, Pima.nseedl/10000),
+      Potr.seedl.dens = ifelse(is.na(Potr.nseedl), 0, Potr.nseedl/10000),
+      Bene.seedl.dens = ifelse(is.na(Bene.nseedl), 0, Bene.nseedl/10000))
+  
+  # Create the fire severity code based on SOL thickness in the first year after
+  levels <- c("low", "mod-low", "moderate", "mod-high", "high")
+  fire_severity <- fire_filt_pos |>
+    filter(tsf == 1) |>
+    mutate(soil.sev = levels[cut(SOL.cm, breaks = c(0, 0.5, 1.5, 3, 10, 100))]) |>
+    dplyr::select(treatment, replicate, reburned_rid, ru, fireId, soil.sev)
+  
+    # Add the fire severity to the seedling data and subset to the same years
+  # Originally filtered by observational data: filter(rel.year %in% c(2,4,7,13)) 
+  fire_severity <- left_join(small_seedl_dens_m2, fire_severity) |>
+    pivot_longer(cols = ends_with(".dens"), names_to = "species", values_to = "seedl.dens") |>
+    mutate(species = fct(str_remove(species, ".seedl.dens"),
+                         levels = c("Bene", "Pima", "Potr", "Pigl")),
+           soil.sev = fct(soil.sev, levels = c("low", "mod-low", "moderate", "mod-high", "high")))
+  
+  fire_severity_summary <- fire_severity |>
+    group_by(treatment, replicate, soil.sev, species, tsf) |> 
+    summarise(avg.seedl.den = mean(seedl.dens, na.rm = TRUE))
+  
+  
+  small_seedl_dens_m2_long <- small_seedl_dens_m2 |>
+    pivot_longer(cols = ends_with(".dens"), names_to = "species", values_to = "seedl.dens") |>
+    mutate(species = fct(str_remove(species, ".seedl.dens"),
+                         levels = c("Bene", "Pima", "Potr", "Pigl"))) |>
+    group_by(treatment, replicate, species, tsf) |>
+    summarise(mean.seedl = mean(seedl.dens))
+  
+  # combining sapling variables
+  all_seedl_dens_m2 <- fire_filt_pos |>
+    filter(tsf == 2) |>
+    ungroup() |> # Ungroup necessary for cut, I think ok to ungroup
+    mutate(sap1.Bene = ifelse(is.na(sapling_count_ha_small.Bene), 0, sapling_count_ha_small.Bene),
+           sap2.Bene = ifelse(is.na(sapling_count_ha.Bene), 0, sapling_count_ha.Bene),
+           sap1.Potr = ifelse(is.na(sapling_count_ha_small.Potr), 0, sapling_count_ha_small.Potr),
+           sap2.Potr = ifelse(is.na(sapling_count_ha.Potr), 0, sapling_count_ha.Potr),
+           sap1.Pima = ifelse(is.na(sapling_count_ha_small.Pima), 0, sapling_count_ha_small.Pima),
+           sap2.Pima = ifelse(is.na(sapling_count_ha.Pima), 0, sapling_count_ha.Pima),
+           sap1.Pigl = ifelse(is.na(sapling_count_ha_small.Pigl), 0, sapling_count_ha_small.Pigl),
+           sap2.Pigl = ifelse(is.na(sapling_count_ha.Pigl), 0, sapling_count_ha.Pigl),
+           Bene.nseedl = (sap1.Bene + sap2.Bene),
+           Potr.nseedl = (sap1.Potr + sap2.Potr),
+           Pima.nseedl = (sap1.Pima + sap2.Pima),
+           Pigl.nseedl = (sap1.Pigl + sap2.Pigl),
+           Pigl.seedl.dens = ifelse(is.na(Pigl.nseedl), 0, Pigl.nseedl/10000),
+           Pima.seedl.dens = ifelse(is.na(Pima.nseedl), 0, Pima.nseedl/10000),
+           Potr.seedl.dens = ifelse(is.na(Potr.nseedl), 0, Potr.nseedl/10000),
+           Bene.seedl.dens = ifelse(is.na(Bene.nseedl), 0, Bene.nseedl/10000),
+           soil.thick = cut(SOL.cm, breaks = seq(0, ceiling(max(SOL.cm) / 5) * 5, by = 5))) |>
+  # filter(rel.year %in% c(2,4,7,13)) |>
+    pivot_longer(cols = ends_with(".dens"), names_to = "species", values_to = "seedl.dens") |>
+    mutate(species = fct(str_remove(species, ".seedl.dens"),
+                         levels = c("Pima", "Pigl", "Potr", "Bene"))) |>
+    select(replicate, treatment, rid, tsf, species, soil.thick, seedl.dens)
+  
+  
+  levels(all_seedl_dens_m2$soil.thick) <- sapply(levels(all_seedl_dens_m2$soil.thick), 
+                      function(x){gsub("]","",strsplit(x, ",")[[1]][2], fixed=T)})
+  
+  # We need a few objects from this data wrangling, we can save an RDS file instead of individual csv's
+  # RDS is a native R format so, no issues there. It just saves one list object with all the data
+  saveRDS(list(
+    fire_severity_summary = fire_severity_summary,
+    small_seedl_dens_m2_long = small_seedl_dens_m2_long,
+    all_seedl_dens_m2 = all_seedl_dens_m2), out_file)
+
+} else {
+  seedling_density_data <- readRDS(out_file)
+}
+
+```
+
+# Figures
+
+
+```{r}
+#| echo: false
+#| warning: false
+list2env(seedling_density_data, envir = .GlobalEnv)
+
+fill_colours <- c(Pima = "#8c564b", Pigl = "#1f77b4", 
+                  Potr = "#2ca02c", Bene = "green")
+
+colours <- c(
+  "Pima" = "#8c564b", "Pigl" = "#1f77b4",
+  "Potr" = "#2ca02c", "Bene" = "green",
+  "Mixed.spruce" = "#9467bd", "Mixed.deciduous" = "#bcbd22")
+
+all_seedl_dens_m2 <- all_seedl_dens_m2 |> 
+  mutate(
+    fecund    = as.numeric(str_extract(treatment, "(?<=basefecund_)[0-9.]+")),
+    ep_part   = replace_na(str_extract(treatment, "ep[0-9.]+"), "ep2.7"),
+    treatment = paste0(
+      substr(treatment, 1, 6),
+      "_base_est", fecund,
+      "_", ep_part,
+      "_dbh0.1"
+    ),
+    treatment = factor(treatment, levels = unique(treatment[order(fecund)]))
+  )
+
+```
+
+```{r}
+#| label: post fire seedling fixed
+#| echo: false
+#| fig-height: 10
+
+# Since the plots of each treatment are independent plots with facet_wrap, setting the ylim does not work because it will fix ylim across all fecets, and using scales = will not be the same across treatments.
+
+# We can trick ggplot by making a blank plot with fixed dimensions for each facet and apply it across treatments. I had done this manually, but it broke when the data changed and had a different range.
+
+# Now I have the dummy plot generating programatically from the range of the data, rounding up to the nearest decimal to ensure the range stays fixed.
+
+facet_dummy <- all_seedl_dens_m2 |>
+  group_by(species) |>
+  slice_max(seedl.dens) |>
+  mutate(ylim = ceiling(seedl.dens * 10) / 10) |>
+  select(species, soil.thick, ylim)
+
+
+all_seedl_dens_m2_plot_list2 <- all_seedl_dens_m2 |>
+  split(~ treatment) |>
+  lapply(\(x){
+    ggplot(x, aes(x = soil.thick, y = seedl.dens, fill = species)) +
+      geom_blank(data = facet_dummy, aes(x = soil.thick, y = ylim)) +
+      geom_boxplot() +
+      scale_fill_manual(values = fill_colours, guide = "none") +
+      theme_minimal() + 
+    #  facet_grid(rows = vars(species), cols = vars(tsf), scales = "free") +
+      facet_wrap(~ species, scales = "free") +
+      theme(text = element_text(color = "black", family = "sans", size = 10),
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+            axis.text.x = element_text(colour = "black", size = 10),
+            axis.text.y = element_text(colour = "black", size = 10),
+            legend.text = element_text(size = 8),
+            legend.position= "bottom",
+            legend.background = element_rect(colour = "transparent", fill = 'transparent'),
+            legend.key = element_rect(colour = "transparent", fill = 'transparent'),
+            legend.key.size = unit(0.5, "cm")) +
+            labs(x = "Surface organic layer (cm)", y = bquote(Seedlings ~ m^-2))
+})
+
+headings <- names(all_seedl_dens_m2_plot_list2)
+
+
+```
+
+
+
+## NorEsm epsilon
+
+Here are figures for NorEsm looking at default estSOLthickness = 0.5 and varying epsilon (default2.7)
+
+:::{.panel-tabset}
+```{r}
+#| warning: false
+#| results: asis
+#| fig-height: 7
+
+epsilon_plots <- headings[grep(x = headings, pattern = "^NorEsm.*est0\\.5")]
+epsilon_plot_list <- all_seedl_dens_m2_plot_list2[names(all_seedl_dens_m2_plot_list2) %in% epsilon_plots]
+
+for (i in seq_along(epsilon_plot_list)) {
+  cat("# ",epsilon_plots[i],"\n")
+  print(epsilon_plot_list[[i]])
+  cat('\n\n')
+}
+```
+:::
+
+
+## NorEsm estSOLthickness
+
+These figures vary estSOLthickness and keep epsilon at default 2.7:
+
+:::{.panel-tabset}
+```{r}
+#| warning: false
+#| results: asis
+#| fig-height: 7
+
+est_plots <- headings[grep(x = headings, pattern = "^NorEsm.*est[0-9.]+.*ep2\\.7")]
+est_plot_list <- all_seedl_dens_m2_plot_list2[names(all_seedl_dens_m2_plot_list2) %in% est_plots]
+
+for (i in seq_along(est_plot_list)) {
+  cat("# ",est_plots[i],"\n")
+  print(est_plot_list[[i]])
+  cat('\n\n')
+}
+```
+:::
+
+
+## NorEsm estSOLthickness + epsilon
+
+Same figures as above, but all of them.
+
+:::{.panel-tabset}
+```{r}
+#| warning: false
+#| results: asis
+#| fig-height: 7
+
+est_ep_plots <- headings[grep(x = headings, pattern = "NorEsm")]
+est_ep_plot_list <- all_seedl_dens_m2_plot_list2[names(all_seedl_dens_m2_plot_list2) %in% est_ep_plots]
+
+for (i in seq_along(est_ep_plot_list)) {
+  cat("# ",est_ep_plots[i],"\n")
+  print(est_ep_plot_list[[i]])
+  cat('\n\n')
+}
+```
+:::
+
+
+
+
+## NorEsm vs TaiEsm estSOLthickness
+
+Epsilon fixed at default 2.7
+
+```{r}
+#| warning: false
+#| echo: false
+#| fig-height: 12
+#| fig-width: 8
+
+nor_tai_plots <- headings[grep(x = headings, pattern = "^(NorEsm|TaiESM).*est[0-9.]+.*ep2\\.7")]
+
+seedl_dens_nor_tai <- all_seedl_dens_m2 |>
+  filter(treatment %in% nor_tai_plots) |>
+  mutate(gcm = substr(treatment, 1, 6),
+         est = str_extract(treatment, "est[0-9.]+"))
+
+ggplot(seedl_dens_nor_tai, aes(x = soil.thick, y = seedl.dens, fill = species)) +
+  geom_blank(data = facet_dummy, aes(x = soil.thick, y = ylim)) +
+  geom_boxplot() +
+  scale_fill_manual(values = fill_colours, guide = "none") +
+  theme_minimal() + 
+#  facet_grid(rows = vars(species), cols = vars(tsf), scales = "free") +
+  facet_grid(est ~ gcm) +
+  theme(text = element_text(color = "black", family = "sans", size = 10),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.text.x = element_text(colour = "black", size = 10),
+        axis.text.y = element_text(colour = "black", size = 10),
+        legend.text = element_text(size = 8),
+        legend.position= "bottom",
+        legend.background = element_rect(colour = "transparent", fill = 'transparent'),
+        legend.key = element_rect(colour = "transparent", fill = 'transparent'),
+        legend.key.size = unit(0.5, "cm")) +
+        labs(x = "Surface organic layer (cm)", y = bquote(Seedlings ~ m^-2))
+```
+
+## NorEsm vs TaiEsm epsilon
+
+estSOLthick fixed at default 0.5
+
+```{r}
+#| warning: false
+#| echo: false
+#| fig-height: 12
+#| fig-width: 8
+
+nor_tai_plots_ep <- headings[grep(x = headings, pattern = "^(NorEsm|TaiESM).*est[0-9.]+.*ep2\\.7"
+)]
+
+seedl_dens_nor_tai_ep <- all_seedl_dens_m2 |>
+  filter(treatment %in% nor_tai_plots_ep) |>
+  mutate(gcm = substr(treatment, 1, 6),
+         ep = str_extract(treatment, "ep[0-9.]+"))
+
+ggplot(seedl_dens_nor_tai_ep, aes(x = soil.thick, y = seedl.dens, fill = species)) +
+  geom_blank(data = facet_dummy, aes(x = soil.thick, y = ylim)) +
+  geom_boxplot() +
+  scale_fill_manual(values = fill_colours, guide = "none") +
+  theme_minimal() + 
+#  facet_grid(rows = vars(species), cols = vars(tsf), scales = "free") +
+  facet_grid(ep ~ gcm) +
+  theme(text = element_text(color = "black", family = "sans", size = 10),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.text.x = element_text(colour = "black", size = 10),
+        axis.text.y = element_text(colour = "black", size = 10),
+        legend.text = element_text(size = 8),
+        legend.position= "bottom",
+        legend.background = element_rect(colour = "transparent", fill = 'transparent'),
+        legend.key = element_rect(colour = "transparent", fill = 'transparent'),
+        legend.key.size = unit(0.5, "cm")) +
+        labs(x = "Surface organic layer (cm)", y = bquote(Seedlings ~ m^-2))
+```
+
+
+## Hide {.unnumbered .unlisted .hidden}
+
+### Post-fire regeneration with soil organic layer thickness post-fire
+
+This plot of regeneration post-fire with the fire severity index is not in the main POLE-FM paper. It is in Lora's code, so I recreated it while going through. Each column is the number of years post-fire from 1-4, each row is a treatment.
+
+-   Only sapling_count_small
+
+```{r}
+#| label: fire severity
+#| fig-height: 10
+
+ggplot(data = fire_severity_summary, aes(x = soil.sev, y = avg.seedl.den)) +
+   geom_col(aes(fill=species)) +
+   theme_bw() +
+   scale_fill_manual(values = fill_colours) +
+   labs(title = paste("iLand seedling regeneration post-fire"),
+        x = "Fire severity on soil", y = "Mean Seedlings / m2") +
+   facet_grid(rows = vars(treatment), cols = vars(tsf))
+
+```
+
+### Average seedling density post-fire
+
+This plot is also not in the main POLE-FM paper. Shows mean sapling density for four years after fire.
+
+-   Only sapling_count_small
+
+```{r}
+#| label: average seedling density
+
+ggplot(small_seedl_dens_m2_long, aes(x = tsf, y = mean.seedl, fill = species)) +
+  geom_col() +
+  facet_wrap(~ treatment) +
+  scale_fill_manual(values = fill_colours) +
+  theme_minimal()
+
+```
+

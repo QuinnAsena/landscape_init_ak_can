@@ -1,0 +1,84 @@
+
+### Post-fire SOL
+
+```{r}
+#| label: source sol_postfire script
+#| output: false
+#| eval: false
+
+if(file.exists(here("analyses", "decid_sensitivity", "data", "merged", "SOL_post_fire.csv"))) {
+  SOL_post_fire <- read_csv(here("analyses", "decid_sensitivity", "data", "merged", "SOL_post_fire.csv"))
+} else {
+  source(here("analyses", "decid_sensitivity", "./sol_postfire.R"))
+  SOL_post_fire <- read_csv(here("analyses", "decid_sensitivity", "data", "merged", "SOL_post_fire.csv"))
+}
+```
+
+
+```{r}
+#| label: summarise SOL_post_fire
+#| output: false
+#| eval: false
+
+# summarise the mean change in sol thichness over time by SOL thickness category
+sol_diff_summary <- SOL_post_fire |>
+  group_by(treatment, replicate, SOLcm_post_fire, rel.year) |>
+  summarise(mean_sol_diff = mean(soil_diff, na.rm = TRUE),
+            sd_sol_diff = sd(soil_diff, na.rm = TRUE),
+            mean_sol = mean(SOL.cm, na.rm = TRUE),
+            sd_sol = sd(SOL.cm, na.rm = TRUE))
+
+# Summarise by SOL thickness, and by primary stand type. Could be double checked.
+sol_diff_spp_summary <- SOL_post_fire |>
+  group_by(treatment, replicate, SOLcm_post_fire, rel.year, primary_stand_type) |>
+  summarise(mean_sol_diff = mean(soil_diff, na.rm = TRUE),
+            sd_sol_diff = sd(soil_diff, na.rm = TRUE),
+            mean_sol = mean(SOL.cm, na.rm = TRUE),
+            sd_sol = sd(SOL.cm, na.rm = TRUE))
+
+```
+
+
+Here we are looking at the mean SOL thickness by category for 30 years post fire.
+
+```{r}
+#| eval: false
+
+ggplot(sol_diff_summary, aes(x = rel.year, y = mean_sol, colour = SOLcm_post_fire)) +
+  geom_point() +
+  geom_line() +
+  geom_ribbon(aes(ymin = mean_sol - sd_sol, ymax = mean_sol + sd_sol, fill = SOLcm_post_fire), alpha = 0.1, colour = NA) +
+  facet_grid(cols = vars(treatment), rows = vars(SOLcm_post_fire), scales = "free") +
+  theme_minimal()
+
+```
+
+Here we are looking at the mean _change_ in SOL thickness by category for 30 years post fire (i.e., the difference in SOL thickness year-on-year after fire).
+
+```{r}
+#| eval: false
+
+ggplot(sol_diff_summary, aes(x = rel.year, y = mean_sol_diff, colour = SOLcm_post_fire)) +
+  geom_point() +
+  geom_line() +
+  geom_ribbon(aes(ymin = mean_sol_diff - sd_sol_diff, ymax = mean_sol_diff + sd_sol_diff, fill = SOLcm_post_fire), alpha = 0.1, colour = NA) +
+  facet_grid(cols = vars(treatment), rows = vars(SOLcm_post_fire), scales = "free") +
+  theme_minimal()
+
+```
+
+
+The following plot is grouped by primary stand type since fire. It is messy right now, and defining a prymary stand type by species count has conflicts... 
+
+```{r}
+#| eval: false
+
+ggplot(sol_diff_spp_summary, aes(x = rel.year, y = mean_sol, colour = primary_stand_type)) +
+  geom_point() +
+  geom_line() +
+#  geom_ribbon(aes(ymin = mean_sol - sd_sol, ymax = mean_sol + sd_sol, fill = SOLcm_post_fire), alpha = 0.1) +
+  facet_grid(cols = vars(treatment), rows = vars(SOLcm_post_fire), scales = "free") +
+#  facet_wrap(~ SOLcm_post_fire, scales = "free") +
+  theme_minimal()
+
+```

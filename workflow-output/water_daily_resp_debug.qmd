@@ -1,0 +1,266 @@
+---
+title: "Water and daily response debug"
+author: "FFL"
+date: today
+---
+
+# Intro
+
+## Data {.unnumbered .unlisted .hidden}
+
+```{r}
+#| label: data processing
+#| echo: false
+#| warning: false
+source("./scripts/install.R")
+pak::pak("data.table")
+library(data.table)
+
+out_dir  <- here("data", "debug")
+out_file_water <- here(out_dir, "debug_water.parquet")
+out_file_daily_resp <- here(out_dir, "debug_daily_resp.parquet")
+in_dir   <- "//10.60.2.10/FF_Lab/project_data/na_boreal/sensitivity_analysis/data/output/debug_data/daily_response/temp"
+if(!dir.exists(in_dir)) {
+  stop("Are you connected to Janet?")
+}
+
+dir.create(out_dir, recursive = TRUE)
+
+if (!file.exists(out_file_water)) {
+  water_debug <- read_delim(file.path(in_dir, "debug_water_cycle.csv"), delim = ";")
+
+  water_debug <- water_debug |>
+    select(id, rid, year, content, psi_kpa, combined_response)
+
+  arrow::write_parquet(water_debug, out_file_water)
+
+  } else {
+    # read_parquet is not lazy and will return a tibble
+    # open_dataset is lazy and will need collect()
+    # Use open_dataset if RAM is an issue, but the files are not that big
+    water_debug <- arrow::read_parquet(out_file_water)
+}
+
+
+if (!file.exists(out_file_daily_resp)) {
+  daily_resp <- read_delim(file.path(in_dir, "debug_daily_responses.csv"), delim = ";")
+
+  daily_resp <- daily_resp |>
+    select(date, year, species, rid, waterResponse, tempResponse, VpdResponse, util.Radiation)
+
+  arrow::write_parquet(daily_resp, out_file_daily_resp)
+
+  # } else {
+  # daily_resp <- arrow::read_parquet(out_file_daily_resp)
+}
+
+```
+
+## Water cycle
+
+
+```{r}
+#| label: dplyr wrangling
+#| eval: true
+#| echo: false
+#| output: false
+
+format(object.size(water_debug), units = "Mb")
+#"5078.7 Mb"
+
+water_debug_long <- water_debug |>
+  pivot_longer(-c(id, rid, year))
+
+format(object.size(water_debug_long), units = "Mb")
+# "12696.8 Mb"
+
+rm(water_debug)
+
+water_debug_ridyear <- water_debug_long |>
+  group_by(year, rid, name) |>
+  summarise(mean_val = mean(value),
+  sd_val = sd(value))
+
+format(object.size(water_debug_ridyear), units = "Mb")
+# "60.3 Mb"
+```
+
+
+
+```{r}
+#| label: data.table wrangling
+#| eval: false
+#| echo: false
+#| output: false
+water_debug <- as.data.table(water_debug)
+
+water_debug_long <- melt(water_debug,
+               id.vars = c("id", "rid", "year"),
+               variable.name = "name",
+               value.name = "value")
+
+format(object.size(water_debug_long), units = "Mb")
+
+
+water_debug_ridyear <- water_debug_long[, .(
+  mean_val = mean(value, na.rm = TRUE),
+  sd_val   = sd(value, na.rm = TRUE)
+), by = .(year, rid, name)]
+format(object.size(water_debug_ridyear), units = "Mb")
+
+```
+
+Distributions from daily data. From iLand wiki:
+
+- `psi_kpa`: Soil water potential (kPa) at the beginning of the day, before evapotranspiration.
+- `content`: Current soil water content at the end of the day, after evapotranspiration (mm).
+- `combined_response`: Combined daily response modifier (0-1) of all species on the RU, representing the minimum of the water and VPD responses.
+
+This is plotting all rids for all 5 years. I can do one histogram per year.
+
+
+```{r}
+#| label: plot daily (takes a while)
+#| eval: true
+#| warning: false
+#| fig-height: 10
+head(water_debug_long)
+
+ggplot(water_debug_long, aes(x = value)) +
+  geom_histogram() +
+  facet_wrap(~name, scales = "free", ncol = 1) +
+  theme_minimal()
+
+
+```
+
+
+Distributions from yearly average:
+
+```{r}
+#| label: Plot yearly
+#| warning: false
+#| fig-height: 10
+head(water_debug_ridyear)
+
+ggplot(water_debug_ridyear, aes(x = mean_val)) +
+  geom_histogram() +
+  facet_wrap(~name, scales = "free", ncol = 1) +
+  theme_minimal()
+
+```
+
+
+## Daily response
+
+```{r}
+#| label: starting daily resp
+#| echo: false
+#| output: false
+rm(water_debug_long, water_debug_ridyear)
+
+daily_resp <- arrow::open_dataset(out_file_daily_resp)
+
+format(object.size(daily_resp), units = "Mb")
+
+```
+
+```{r}
+#| label: Making plots
+#| echo: false
+#| output: false
+#| warning: false
+vars <- c("waterResponse", "tempResponse", "VpdResponse", "util.Radiation")
+
+daily_resp_plot_list <- lapply(vars, function(var) {
+  df <- daily_resp |>
+    select(all_of(var), species) |>
+#    slice_sample(n = 1e+05) |>
+    collect()
+
+  plt <- ggplot(df, aes(x = .data[[var]])) +
+    geom_histogram() +
+    facet_wrap(~species) +
+    theme_minimal()
+
+  rm(df)
+  return(plt)
+})
+
+
+```
+
+Histograms of daily waterResponse, tempResponse, VpdResponse, util.Radiation
+
+From iLand wiki:
+
+- `resp_soil`: Monthly average of the daily soil water response modifier (0-1). A value of 1 indicates no water limitation.
+- `resp_temp`: Monthly average of the daily temperature response modifier (0-1). A value of 1 indicates optimal temperature for growth.
+- `resp_vpd`: Monthly average of the daily Vapour Pressure Deficit (VPD) response modifier (0-1). A value of 1 indicates no limitation from atmospheric drought.
+- `utilizable_rad`: The utilizable radiation for the month (MJ/m2). This is the APAR value after being reduced by all preceding response modifiers (meteo, pheno, co2, daylength).
+
+These are distributions for all rids and all 5 years. I can plot histograms per year, or do yearly average like above.
+
+:::{.panel-tabset}
+
+```{r}
+#| label: LONG time to process
+#| results: asis
+#| warning: false
+
+for (i in seq_along(daily_resp_plot_list)) {
+  cat("# ",vars[i],"\n")
+  print(daily_resp_plot_list[[i]])
+  cat('\n\n')
+}
+
+```
+
+:::
+
+
+Daily response with 0 filtered out
+
+
+```{r}
+#|label: Making plots without 0
+#| echo: false
+#| output: false
+vars <- c("waterResponse", "tempResponse", "VpdResponse", "util.Radiation")
+
+daily_resp_plot_list <- lapply(vars, function(var) {
+  df <- daily_resp |>
+    select(all_of(var), species) |>
+    filter(.data[[var]] != 0) |>
+#    slice_sample(n = 1e+05) |>
+    collect()
+
+  plt <- ggplot(df, aes(x = .data[[var]])) +
+    geom_histogram() +
+    facet_wrap(~species) +
+    theme_minimal()
+
+  rm(df)
+  return(plt)
+})
+
+
+```
+
+
+:::{.panel-tabset}
+
+```{r}
+#| label: time to process...
+#| results: asis
+#| warning: false
+
+for (i in seq_along(daily_resp_plot_list)) {
+  cat("# ",vars[i],"\n")
+  print(daily_resp_plot_list[[i]])
+  cat('\n\n')
+}
+
+```
+
+:::

@@ -1,0 +1,442 @@
+---
+title: "Area dominated spinup"
+author: "FFL"
+date: today
+---
+
+# Data {.unnumbered .unlisted .hidden}
+
+
+```{r}
+#| label: data processing
+source("./scripts/install.R")
+
+out_dir  <- here("data", "spinup", "areaDom_processed")
+
+area_dom_dir <- list.dirs("//10.60.2.10/FF_Lab/project_data/na_boreal/sensitivity_analysis/data/output/spinup_summaries/areaDom")
+rep_dirs <- grep(area_dom_dir, pattern = "rep_")
+dirs <- area_dom_dir[rep_dirs]
+dirs <- dirs[!grepl(dirs, pattern = "x")]
+
+if(any(!file.exists(dirs))) {
+  stop("Are you connected to Janet?")
+}
+
+dir.create(out_dir, recursive = TRUE)
+
+if (!file.exists(file.path(out_dir, "area_dom_spinup.rds"))) {
+  area_dom_files <- list.files(dirs, full.names = TRUE)
+
+  area_dom_landscape_year <- arrow::open_dataset(area_dom_files) |>
+    mutate(
+      treatment = as.character(treatment),
+      sp.dom = as.character(sp.dom)
+    ) |>
+    group_by(treatment, replicate, year, sp.dom) |>
+    summarise(area = sum(area_ha), .groups = "drop") |>
+    collect()
+  
+  format(object.size(area_dom_landscape_year), units = "Mb")
+
+  saveRDS(area_dom_landscape_year, file.path(out_dir, "area_dom_spinup.rds"))
+
+} else {
+  area_dom_landscape_year <- readRDS(file.path(out_dir, "area_dom_spinup.rds"))
+}
+
+```
+
+# Figures
+
+```{r}
+#| label: line plots
+#| echo: false
+#| fig-height: 7
+
+colours <- c(
+  "Pima" = "#8c564b", "Pigl" = "#1f77b4",
+  "Potr" = "#2ca02c", "Bene" = "green",
+  "Mixed.spruce" = "#9467bd", "Mixed.deciduous" = "#bcbd22")
+  
+
+area_dom_landscape_year <- area_dom_landscape_year |>
+  filter(sp.dom != "Not forested") |>
+  mutate(
+    rep_sp  = paste(sp.dom, replicate, sep = "_"),
+    treatment = factor(treatment),
+    treatment = case_when(
+         treatment == "NorEsm2-MMssp126V2_species_param_basefecund_0.5_ep1.8_dbh2.5" ~ "NorEsm Epsilon 1.8",
+         TRUE ~ treatment),
+    treatment = case_when(
+         treatment == "NorEsm2-MMssp126V2_species_param_basefecund_0.5_ep2.7_dbh2.5" ~ "NorEsm Epsilon 2.7",
+         TRUE ~ treatment),
+    treatment = case_when(
+         treatment == "TaiESM1ssp126V2_species_param_basefecund_0.5_ep2.7_dbh2.5" ~ "TaiEsm Epsilon 2.7",
+         TRUE ~ treatment),
+    treatment = case_when(
+         treatment == "NorEsm2-MMssp126V2_species_param_basefecund_pigl0.35_ep2.7_dbh2.5" ~ "NorEsm pigl0.35 Epsilon 2.7",
+         TRUE ~ treatment),
+    treatment = case_when(
+         treatment == "NorEsm2-MMssp126V2_species_param_pa01pl035be05pr07_ep2.7_dbh2.5" ~ "NorEsm pa01 pl035 be05 pr07 Epsilon 2.7",
+         TRUE ~ treatment),
+    treatment = case_when(
+         treatment == "NorEsm2-MMssp126V2_species_param_pa01pl035be05pr07_ep2.7_dbh2.5_shift" ~ "NorEsm pa01 pl035 be05 pr07 Epsilon 2.7 Shift",
+         TRUE ~ treatment),
+    treatment = case_when(
+         treatment == "NorEsm2-MMssp126V3_species_param_pa01pl035be05pr07_ep2.7_dbh2.5_filt" ~ "NorEsm pa01 pl035 be05 pr07 Epsilon 2.7 Filt",
+         TRUE ~ treatment)
+  ) |>
+  filter(grepl("NorEsm", treatment),
+         grepl("2.7", treatment))
+# dplyr::filter(x, grepl("max", treatment))
+# dplyr::filter(x, !grepl("max", treatment))
+
+```
+
+
+```{r}
+#| echo: false
+plot_list_area_dom <- area_dom_landscape_year |>
+  split(area_dom_landscape_year$treatment) |>
+  lapply(\(x){
+    ggplot(x, aes(x = year, y = area, group = rep_sp, colour = sp.dom)) +
+      geom_line() +
+      scale_colour_manual(values = colours) +
+      guides(colour = guide_legend(override.aes = list(linewidth = 3))) +
+      ylim(c(0, 45000)) +
+      theme_minimal() +
+      theme(
+        legend.position = "bottom",
+        legend.key.width = unit(2, "cm"))
+  }) 
+
+headings <- names(plot_list_area_dom)
+```
+
+
+```{r}
+#| echo: false
+plot_list_area_dom2 <- area_dom_landscape_year |>
+  filter(
+    sp.dom %in% c("Bene", "Mixed.deciduous", "Potr"),
+    str_detect(treatment, regex("NorEsm"))
+  ) |>
+  droplevels() |>
+  (\(df) split(df, df$treatment))() |>
+  lapply(\(x) {
+    ggplot(x, aes(x = year, y = area, group = rep_sp, colour = sp.dom)) +
+      geom_line() +
+      scale_colour_manual(values = colours) +
+      guides(colour = guide_legend(override.aes = list(linewidth = 3))) +
+      ylim(c(0, 40000)) +
+      theme_minimal() +
+      theme(
+        legend.position = "bottom"
+        )
+  })
+
+headings2 <- names(plot_list_area_dom2)
+```
+
+
+```{r}
+#| echo: false
+plot_list_area_dom3 <- area_dom_landscape_year |>
+  split(list(area_dom_landscape_year$sp.dom)) |>
+  lapply(\(x){
+    ggplot(x, aes(x = year, y = area, group = rep_sp, colour = sp.dom)) +
+      geom_line() +
+      scale_colour_manual(values = colours) +
+      guides(colour = guide_legend(override.aes = list(linewidth = 3))) +
+      facet_wrap(~treatment) +
+      # ylim(c(0, 45000)) +
+      theme_minimal() +
+      theme(
+        legend.position = "bottom",
+        legend.key.width = unit(2, "cm"))
+  }) 
+
+headings3 <- names(plot_list_area_dom3)
+```
+
+
+```{r}
+#| echo: false
+plot_list_area_dom4 <- area_dom_landscape_year |>
+  split(area_dom_landscape_year$treatment) |>
+  lapply(\(x){
+    ggplot(x, aes(x = year, y = area, group = rep_sp, colour = sp.dom)) +
+      geom_line() +
+      scale_colour_manual(values = colours) +
+      guides(colour = guide_legend(override.aes = list(linewidth = 3))) +
+      facet_wrap(~sp.dom) +
+      ylim(c(0, 45000)) +
+      theme_minimal() +
+      theme(
+        legend.position = "bottom",
+        legend.key.width = unit(2, "cm"))
+  }) 
+
+headings4 <- names(plot_list_area_dom4)
+
+# images_out <- "./images/sp_dom"
+# dir.create(images_out)
+
+# ggsave(
+#   file.path(images_out, "sp_dom.png"),
+#   plot_list_area_dom4[[2]] + labs(title = "Epsilon 2.7"),
+#   device = "png",
+#   dpi = 300,
+#   width = 12,
+#   height = 7,
+#   units = "in"
+# )
+
+```
+
+
+
+## Area dominated
+
+
+<!-- :::{.panel-tabset}
+```{r}
+#| warning: false
+#| results: asis
+#| fig-height: 7
+
+for (i in seq_along(plot_list_area_dom)) {
+  cat("# ", headings[i],"\n")
+  print(plot_list_area_dom[[i]])
+  cat('\n\n')
+}
+```
+:::
+
+
+### Deciduous only:
+
+:::{.panel-tabset}
+```{r}
+#| warning: false
+#| results: asis
+#| fig-height: 7
+
+for (i in seq_along(plot_list_area_dom2)) {
+  cat("# ",headings2[i],"\n")
+  print(plot_list_area_dom2[[i]])
+  cat('\n\n')
+}
+```
+::: -->
+
+
+
+### Species by species
+
+:::{.panel-tabset}
+```{r}
+#| warning: false
+#| results: asis
+#| fig-height: 7
+
+for (i in seq_along(plot_list_area_dom3)) {
+  cat("# ",headings3[i],"\n")
+  print(plot_list_area_dom3[[i]])
+  cat('\n\n')
+}
+```
+:::
+
+
+### Species facet
+
+:::{.panel-tabset}
+```{r}
+#| warning: false
+#| results: asis
+#| fig-height: 7
+
+for (i in seq_along(plot_list_area_dom4)) {
+  cat("# ",headings4[i],"\n")
+  print(plot_list_area_dom4[[i]])
+  cat('\n\n')
+}
+```
+:::
+
+
+
+## FISL meeting 2026/01/28 {.unlisted .hidden .unnumbered}
+
+```{r}
+area_dom_wspruce_aspen <- area_dom_landscape_year |>
+  filter(treatment %in% c("NorEsm Epsilon 1.8", "NorEsm Epsilon 2.7"),
+         sp.dom %in% c("Pigl", "Potr"))
+
+labels <- c(
+  Pima = "Black spruce",
+  Pigl = "White spruce",
+  Bene = "Birch",
+  Potr = "Aspen"
+)
+
+area_dom_wspruce_aspen_plot <- ggplot(area_dom_wspruce_aspen, aes(x = year, y = area, group = rep_sp, colour = sp.dom)) +
+  geom_line() +
+  scale_colour_manual(values = colours) +
+  facet_grid(sp.dom ~ treatment,
+             labeller = labeller(sp.dom = labels)) +
+  labs(x = "year", y = "Total area dominated (ha)") +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    legend.key.width = unit(2, "cm"),
+    strip.text = element_text(size = 12))
+
+images_out <- "./images/sp_dom"
+dir.create(images_out)
+
+ggsave(
+  file.path(images_out, "area_dom_wspruce_aspen_plot.png"),
+  area_dom_wspruce_aspen_plot,
+  device = "png",
+  dpi = 300,
+  width = 12,
+  height = 8,
+  units = "in"
+)  
+```
+
+## Other figure layouts for Winslow pres and AGU {.unlisted .hidden}
+
+```{r}
+#| eval: false
+
+# AGU figure
+
+plot_list_area_dom5 <- area_dom_landscape_year |>
+  filter(sp.dom %in% c("Potr", "Bene", "Mixed.deciduous")) |>
+  mutate(sp.dom = factor(sp.dom, levels = c("Potr", "Bene", "Mixed.deciduous")),
+         treatment = case_when(
+         treatment == "NorEsm2-MMssp126V2_species_param_basefecund_0.5_ep1.8_dbh2.5" ~ "Epsilon 1.8",
+         TRUE ~ treatment),
+         treatment = case_when(
+         treatment == "NorEsm2-MMssp126V2_species_param_basefecund_0.5_ep2.7_dbh2.5" ~ "Epsilon 2.7",
+         TRUE ~ treatment)
+         ) |>
+  ggplot(aes(x = year, y = area, group = rep_sp, colour = sp.dom)) +
+    geom_line() +
+    scale_colour_manual(values = colours) +
+    guides(colour = guide_legend(override.aes = list(linewidth = 3))) +
+    facet_grid(rows = vars(sp.dom), cols = vars(treatment)) +
+    ylim(c(0, 45000)) +
+    theme_minimal() +
+    theme(
+      legend.position = "none",
+      legend.key.width = unit(2, "cm"),
+      axis.text = element_text(size = 28),
+      axis.title = element_text(size = 28),
+      strip.text = element_text(size = 28))
+
+ggsave(
+  file.path("C:/Users/asenaq/Documents/workshops_conferences/AGU-2025/poster/sp_dom.svg"),
+  plot_list_area_dom5,
+  device = "svg",
+  width = 45,
+  height = 50,
+  units = "cm"
+)
+```
+
+```{r}
+#| echo: false
+
+# Unused, splitting linetype by epsilon
+plot_list_area_dom6 <- area_dom_landscape_year |>
+  ggplot(aes(x = year, y = area,  group = interaction(rep_sp, treatment), 
+             colour = sp.dom, linetype = treatment)) +
+  geom_line() +
+  scale_colour_manual(values = colours) +
+  guides(colour = guide_legend(override.aes = list(linewidth = 3))) +
+  facet_wrap(~ sp.dom) +
+  ylim(c(0, 45000)) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    legend.key.width = unit(2, "cm")
+  )
+
+```
+
+
+
+
+```{r}
+#| eval: false
+
+# AGU, diff plot from epsilon 2.7
+colours <- c(
+  "Pima" = "#8c564b", "Pigl" = "#1f77b4",
+  "Potr" = "#2ca02c", "Bene" = "green",
+  "Mixed.spruce" = "#9467bd", "Mixed.deciduous" = "#bcbd22")
+
+area_dom_landscape_year_diffs <- area_dom_landscape_year |>
+  select(-rep_sp) |>
+  group_by(treatment, year, sp.dom) |>
+  summarise(mean_area = mean(area, na.rm = TRUE)) |>
+  mutate(treatment = case_when(
+         treatment == "NorEsm2-MMssp126V2_species_param_basefecund_0.5_ep1.8_dbh2.5" ~ "Epsilon_1.8",
+         TRUE ~ treatment),
+         treatment = case_when(
+         treatment == "NorEsm2-MMssp126V2_species_param_basefecund_0.5_ep2.7_dbh2.5" ~ "Epsilon_2.7",
+         TRUE ~ treatment),
+         ) |>
+  pivot_wider(
+    names_from = treatment,
+    values_from = mean_area
+  ) |>
+  mutate(Epsilon_1.8 = replace_na(Epsilon_1.8, 0),
+         Epsilon_2.7 = replace_na(Epsilon_2.7, 0),
+         diff = Epsilon_2.7 - Epsilon_1.8) |>
+  pivot_longer(
+      cols = c(diff),
+      names_to = "comb",
+      values_to = "diffs"
+  )
+
+
+ave_diff_plt <- ggplot(area_dom_landscape_year_diffs, aes(x = year, y = diffs, colour = sp.dom)) +
+  geom_line(linewidth = 1) +
+  scale_colour_manual(
+    values = colours,
+    labels = c(
+      Bene = "Birch", Pigl = "White spruce", Pima = "Black spruce", Potr = "Aspen",
+      Mixed.deciduous = "Mixed deciduous", Mixed.spruce = "Mixed spruce")) +
+  guides(colour = guide_legend(override.aes = list(linewidth = 5))) +
+  labs(x = "Simulation years", y = "Mean difference in spp. dominance",
+       colour = "Species\nDominance") +
+  coord_fixed(ratio = 0.01) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    legend.text = element_text(size = 26, colour = "black"),
+    legend.title = element_text(size = 26, colour = "black"),
+    legend.key.width = unit(4, "cm"),
+    axis.text = element_text(size = 26, colour = "black"),
+    axis.title = element_text(size = 28, colour = "black")
+  )
+
+height_cm <- 28
+width_cm  <- height_cm * 1.45
+
+ggsave(
+  file.path("C:/Users/asenaq/Documents/workshops_conferences/AGU-2025/poster/ave_diff.svg"),
+  ave_diff_plt,
+  device = "svg",
+  width = width_cm,
+  height = height_cm,
+  units = "cm"
+)  
+```
+
+

@@ -1,0 +1,354 @@
+---
+title: "Area Dominated"
+author: "FFL"
+date: today
+---
+
+# Data {.unnumbered .unlisted .hidden}
+
+```{r}
+#| label: data processing
+source("./scripts/install.R")
+
+out_dir  <- here("data", "estSOLthickness", "area_dom_processed")
+out_file <- here("data", "estSOLthickness", "area_dom_processed", "area_dom_sum.rds")
+in_dir   <- "//10.60.2.10/FF_Lab/project_data/na_boreal/sensitivity_analysis/data/output/estSOLthickness/areaDom"
+if(!file.exists(in_dir)) {
+  stop("Are you connected to Janet?")
+}
+
+dir.create(out_dir, recursive = TRUE)
+
+if (!file.exists(out_file)) {
+  area_dom_files <- list.files(in_dir, full.names = TRUE, pattern = "*.txt")
+
+  # plan(sequential)
+  plan(multisession, workers = 10)
+  area_dom_landscape_year <- furrr::future_map_dfr(area_dom_files, \(x) {
+    read_delim(x, show_col_types = FALSE) |>
+      group_by(treatment, replicate, year, sp.dom) |>
+      summarise(area = sum(area_ha), .groups = "drop")
+  })
+  plan(sequential)
+
+  saveRDS(area_dom_landscape_year, out_file)
+
+} else {
+  area_dom_landscape_year <- readRDS(out_file)
+}
+
+```
+
+# Figures
+
+Kristin Braziunas:
+
+> My rule of thumb is that epsilon is sensitive in increments of ~0.1. Most iLand sims I'm familiar with these days are using ranges from 2.6-3.0
+> I recently ran my own sensitivity experiment where I varied epsilon by 0.1 in this range. I also expanded the range (but used wider increments of 0.4 or 0.5) to 1.8-3.5. 
+> I got the range to test from: 
+> - Landsberg & Waring, who developed the radiation use efficiency model that was used as the basis (https://doi.org/10.1016/j.foreco.2013.10.035) - they use 1.8. 
+- Makela et al. 2007 (https://onlinelibrary.wiley.com/doi/full/10.1111/j.1365-2486.2007.01463.x): 1.9-3.1
+- Seidl et al. 2012 (orig iLand paper) gives 1.8 (Europe) and 2.6 (US PNW)
+
+```{r}
+#| label: line plots
+#| echo: false
+#| fig-height: 7
+
+colours <- c(
+  "Pima" = "#8c564b", "Pigl" = "#1f77b4",
+  "Potr" = "#2ca02c", "Bene" = "green",
+  "Mixed.spruce" = "#9467bd", "Mixed.deciduous" = "#bcbd22")
+
+area_dom_landscape_year <- area_dom_landscape_year |>
+  filter(sp.dom != "Not forested") |>
+  mutate(
+    rep_sp  = paste(sp.dom, replicate, sep = "_"),
+    est     = as.numeric(str_extract(treatment, "(?<=(?:basefecund_|maxfecund_))[0-9.]+")),
+    est     = replace_na(est, 0.5),
+    ep_part = replace_na(str_extract(treatment, "ep[0-9.]+"), "ep2.7"),
+    fec_type = if_else(str_detect(treatment, "maxfecund"), "max_est", "base_est"),
+    treatment = paste0(
+      substr(treatment, 1, 6),
+      "_", fec_type, est,
+      "_", ep_part,
+      "_dbh0.1"
+    ),
+    treatment = factor(treatment, levels = unique(treatment[order(est)]))
+  )
+# dplyr::filter(x, grepl("max", treatment))
+# dplyr::filter(x, !grepl("max", treatment))
+
+```
+
+
+```{r}
+#| echo: false
+plot_list_area_dom <- area_dom_landscape_year |>
+  split(area_dom_landscape_year$treatment) |>
+  lapply(\(x){
+    ggplot(x, aes(x = year, y = area, group = rep_sp, colour = sp.dom)) +
+      geom_line() +
+      scale_colour_manual(values = colours) +
+      guides(colour = guide_legend(override.aes = list(linewidth = 3))) +
+      ylim(c(0, 55000)) +
+      facet_wrap(~ treatment) +
+      theme_minimal() +
+      theme(
+        legend.position = "bottom",
+        legend.key.width = unit(2, "cm"))
+  }) 
+
+headings <- names(plot_list_area_dom)
+```
+
+
+```{r}
+#| echo: false
+plot_list_area_dom2 <- area_dom_landscape_year |>
+  filter(
+    sp.dom %in% c("Bene", "Mixed.deciduous", "Potr"),
+    str_detect(treatment, regex("NorEsm"))
+  ) |>
+  droplevels() |>
+  (\(df) split(df, df$treatment))() |>
+  lapply(\(x) {
+    ggplot(x, aes(x = year, y = area, group = rep_sp, colour = sp.dom)) +
+      geom_line() +
+      scale_colour_manual(values = colours) +
+      guides(colour = guide_legend(override.aes = list(linewidth = 3))) +
+      ylim(c(0, 7000)) +
+      facet_wrap(~ treatment) +
+      theme_minimal() +
+      theme(
+        legend.position = "bottom"
+        )
+  })
+
+headings2 <- names(plot_list_area_dom2)
+```
+
+
+
+
+
+
+
+
+
+## NorEsm new epsilon + est results
+
+New results estSOLthickness = 0.5 and 0.3 and epsilon 1.8 and 2.2
+
+:::{.panel-tabset}
+```{r}
+#| warning: false
+#| results: asis
+#| fig-height: 7
+
+epsilon_plots <- headings[grep(x = headings, pattern = "^NorEsm.*est0\\.5|^NorEsm.*est0\\.3")]
+epsilon_plot_list <- plot_list_area_dom[names(plot_list_area_dom) %in% epsilon_plots]
+
+for (i in seq_along(epsilon_plot_list)) {
+  cat("# ",epsilon_plots[i],"\n")
+  print(epsilon_plot_list[[i]])
+  cat('\n\n')
+}
+```
+:::
+
+
+Deciduous only:
+
+
+:::{.panel-tabset}
+```{r}
+#| warning: false
+#| results: asis
+#| fig-height: 7
+
+epsilon_plots2 <- headings[grep(x = headings, pattern = "^NorEsm.*est0\\.5|^NorEsm.*est0\\.3")]
+epsilon_plot_list2 <- plot_list_area_dom2[names(plot_list_area_dom2) %in% epsilon_plots2]
+
+for (i in seq_along(epsilon_plot_list2)) {
+  cat("# ",epsilon_plots2[i],"\n")
+  print(epsilon_plot_list2[[i]])
+  cat('\n\n')
+}
+```
+:::
+
+
+
+
+
+
+
+
+
+## NorEsm epsilon
+
+Here are figures for NorEsm looking at default estSOLthickness = 0.5 and varying epsilon (default2.7)
+
+:::{.panel-tabset}
+```{r}
+#| warning: false
+#| results: asis
+#| fig-height: 7
+
+epsilon_plots <- headings[grep(x = headings, pattern = "^NorEsm.*est0\\.5")]
+epsilon_plot_list <- plot_list_area_dom[names(plot_list_area_dom) %in% epsilon_plots]
+
+for (i in seq_along(epsilon_plot_list)) {
+  cat("# ",epsilon_plots[i],"\n")
+  print(epsilon_plot_list[[i]])
+  cat('\n\n')
+}
+```
+:::
+
+
+
+
+## NorEsm epsilon decid
+
+Here are figures for NorEsm looking at default estSOLthickness = 0.5 and varying epsilon (default2.7)
+
+:::{.panel-tabset}
+```{r}
+#| warning: false
+#| results: asis
+#| fig-height: 7
+
+epsilon_plots2 <- headings[grep(x = headings, pattern = "^NorEsm.*est0\\.5")]
+epsilon_plot_list2 <- plot_list_area_dom2[names(plot_list_area_dom2) %in% epsilon_plots2]
+
+for (i in seq_along(epsilon_plot_list2)) {
+  cat("# ",epsilon_plots2[i],"\n")
+  print(epsilon_plot_list2[[i]])
+  cat('\n\n')
+}
+```
+:::
+
+
+
+## NorEsm estSOLthickness decid
+
+These figures vary estSOLthickness and keep epsilon at default 2.7:
+
+:::{.panel-tabset}
+```{r}
+#| warning: false
+#| results: asis
+#| fig-height: 7
+
+est_plots2 <- headings[grep(x = headings, pattern = "^NorEsm.*est[0-9.]+.*ep2\\.7")]
+est_plot_list2 <- plot_list_area_dom2[names(plot_list_area_dom2) %in% est_plots2]
+
+for (i in seq_along(est_plot_list2)) {
+  cat("# ",est_plots2[i],"\n")
+  print(est_plot_list2[[i]])
+  cat('\n\n')
+}
+```
+:::
+
+
+## NorEsm estSOLthickness
+
+These figures vary estSOLthickness and keep epsilon at default 2.7:
+
+:::{.panel-tabset}
+```{r}
+#| warning: false
+#| results: asis
+#| fig-height: 7
+
+est_plots <- headings[grep(x = headings, pattern = "^NorEsm.*est[0-9.]+.*ep2\\.7")]
+est_plot_list <- plot_list_area_dom[names(plot_list_area_dom) %in% est_plots]
+
+for (i in seq_along(est_plot_list)) {
+  cat("# ",est_plots[i],"\n")
+  print(est_plot_list[[i]])
+  cat('\n\n')
+}
+```
+:::
+
+
+
+
+## NorEsm estSOLthickness + epsilon
+
+All results so far:
+
+
+:::{.panel-tabset}
+```{r}
+#| warning: false
+#| results: asis
+#| fig-height: 7
+
+est_ep_plots <- headings[grep(x = headings, pattern = "NorEsm")]
+est_ep_plot_list <- plot_list_area_dom[names(plot_list_area_dom) %in% est_ep_plots]
+
+for (i in seq_along(est_ep_plot_list)) {
+  cat("# ",est_ep_plots[i],"\n")
+  print(est_ep_plot_list[[i]])
+  cat('\n\n')
+}
+```
+:::
+
+
+
+## NorEsm vs TaiEsm estSOLthickness
+
+Epsilon fixed at default 2.7
+
+```{r}
+#| warning: false
+#| echo: false
+#| fig-height: 12
+#| fig-width: 8
+
+nor_tai_plots <- headings[grep(x = headings, pattern = "^(NorEsm|TaiESM).*est[0-9.]+.*ep2\\.7")]
+
+area_dom_nor_tai <- area_dom_landscape_year |>
+  filter(treatment %in% nor_tai_plots) |>
+  mutate(gcm = substr(treatment, 1, 6),
+         est = str_extract(treatment, "est[0-9.]+"))
+
+ggplot(area_dom_nor_tai, aes(x = year, y = area, group = rep_sp, colour = sp.dom)) +
+  geom_line() +
+  scale_colour_manual(values = colours) +
+  facet_grid(est ~ gcm) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+## NorEsm vs TaiEsm epsilon {.unlisted .hidden}
+
+estSOLthick fixed at default 0.5
+
+```{r}
+#| warning: false
+#| echo: false
+#| fig-height: 12
+#| fig-width: 8
+
+nor_tai_plots_ep <- headings[grep(x = headings, pattern = "^(NorEsm|TaiESM).*est0\\.5")]
+
+area_dom_nor_tai_ep <- area_dom_landscape_year |>
+  filter(treatment %in% nor_tai_plots_ep) |>
+  mutate(gcm = substr(treatment, 1, 6),
+         ep = str_extract(treatment, "ep[0-9.]+"))
+
+ggplot(area_dom_nor_tai_ep, aes(x = year, y = area, group = rep_sp, colour = sp.dom)) +
+  geom_line() +
+  scale_colour_manual(values = colours) +
+  facet_grid(ep ~ gcm) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```

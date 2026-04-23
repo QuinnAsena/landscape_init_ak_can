@@ -1,0 +1,26 @@
+project:
+  type: book
+  output-dir: _book
+
+book:
+  title: "Full Analysis Book"
+  author: "FFL"
+  chapters:
+    - index.qmd
+  #  - area_dominated.qmd
+  #  - seedling_density.qmd
+  #  - SOL_postfire.qmd
+  #  - debug_summaries.qmd
+  #  - water_daily_resp_debug.qmd
+    - spinup_seeddens.qmd
+    - spinup_area_dom.qmd
+  #  - spinup_basal_area.qmd
+    - spinup_prop_dom.qmd
+    
+embed-resources: true
+format:
+  html:
+    toc: true
+    theme:
+      light: flatly
+      dark: darkly

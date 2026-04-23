@@ -99,11 +99,13 @@ landscape_name/
         └── depth.tif   # Depth to bedrock (cm), capped at 200cm
 ```
 
-Shared input data lives outside the landscape directories. Empirical stand
-data and the stand dictionary (`sapinit_dict.txt`) produced by step 10 are
+Shared input data (e.g., `\lip`, species databases, empirical data...) lives
+outside the landscape directories. Empirical standdata and the 
+stand dictionary (`sapinit_dict.txt`) produced by step 10 are
 stored in `data/empirical/`. The sapling initialisation table
 (`landscape_model_init.txt`) is written per-landscape to `init/`. The
-selected landscape polygons are in `data/`.
+selected landscape polygons are in `data/`. Scripts without a numbered
+prefix are test scripts or other scripts not necessary to the workflow.
 
 ---
 
@@ -149,13 +151,16 @@ and SSP3-7.0. Variables include maximum and minimum temperature
 (`tasmax`, `tasmin`), precipitation (`pr`), solar radiation (`rsds`), vapour
 pressure (`vp`), and relative humidity (`hurs`). Data are accessed from
 network storage and processed in step 03 into per-landscape text files before
-being compiled into SQLite databases in step 04.
+being compiled into SQLite databases in step 04. These data live on the Z drive:
+`//10.60.2.10/FF_Lab/project_data/downscaling/Landscapes` for the landscapes, and
+`//10.60.2.10/FF_Lab/project_data/downscaling/CPCRW` for CPCRW.
 
 ## Permafrost
 
 A permafrost presence/absence raster sourced from network storage. Projected
 and masked to each landscape in step 06. Used in step 09 to differentiate
-black and white spruce on flat aspects.
+black and white spruce on flat aspects. Permafrost data are stored on the
+Z drive at `//10.60.2.10/FF_Lab/project_data/na_boreal/data_sets/permafrost/`.
 
 ## Soils
 
@@ -186,6 +191,24 @@ sapling initialisation table.
 The pipeline proceeds in thirteen steps. Steps 01–04 handle spatial and climate
 data preparation. Steps 05–08 acquire and process terrain and soil data.
 Steps 09–13 build the iLand input files.
+
+## Step 00 — landscape selction
+
+Lora Murphy did the original landscape selection, and the full selection and
+evaluation code is here: `Z:\project_data\na_boreal\Landscape building\Landscape selection`.
+
+I have included an adjusted version of the landscape selection in this workflow.
+The original workflow output (square) polygons in the coregion projection which became
+skewed when projected to equal albers. I have made the following adjustments:
+
+1. Use equal albers as the base projection (instead of ecoregion).
+2. Included some efficiency improvements to speed things up.
+3. Altering the projection slightly changes the final landscape selection,
+I have selected the nearest landscape to the original selection by distance.
+Re-randomising the selection, following the original workflow is another option.
+I chose to select by distance because the original selection was evaluated.
+ 
+
 
 ## Step 01 — Crop ABoVE data to landscape polygons
 
@@ -507,7 +530,9 @@ a tab-delimited text file in the landscape `gis/` directory.
 
 **Script:** `13_project_file_create.r`
 
-This workflow does not create:
+This script generates project files per-landscape and distributes shared input data.
+Each landscape requires unique inputs in the project xml file (e.g., location), but some
+shared input databases or scripts. Shared inputs include:
 
 - lip (light influence patterns)
 - species parameter databases
@@ -515,16 +540,19 @@ This workflow does not create:
 - scenario csv
 - bash run files
 
-I have included these files from the original CPCRW project, and this script
-moves them to each landscape from the central `data/shared-xml-create`
-directory. Moving files from the central location ensures consistency across
-landscapes. The duplication is necessary so that each landscape is
-self-contained for running iLand.
+There is a [master project file](https://github.com/WFFRC/iLandResources) living in
+`data\shared-xml-create`that has been adapted to include two placeholder codes:
+
+1. "Replace" indicates landscape-specific inputs that are edited in script 13 to input
+values (such as location and latitude) from the landscape rasters. See also,
+[Miriam Johnson's script](https://github.com/mrjohnston/Gunnison_iLand/blob/master/SingleSpeciesRun/EditandSaveProjectFileXML.R)
+2. "overwrittn_by_csv" indicates scenario-level inputs that are coltrolled by the
+`iland_scenarios.csv` file.
 
 
 ---
 
-# Outputs for iLand
+## Outputs for iLand
 
 The following files are the direct inputs consumed by iLand for each landscape:
 
@@ -537,4 +565,11 @@ The following files are the direct inputs consumed by iLand for each landscape:
 | `env.file_link_yr<n>.txt` | `gis/` | Environment file (linked climate) |
 | `landscape_model_init.txt` | `init/` | Sapling initialisation table |
 | `spp_param.sqlite` | `databases/` | Species parameters |
-| `<landscape_name>_spinup.xml` | root | iLand project file |
+| `<landscape_name>_<run_type>.xml` | root | iLand project file |
+
+# high-level scripts and files
+
+Root directory scripts are for running iLand locally or on the Derecho/Casper HPCs.
+
+1. `run_iland_csv_cpxml.sh`, is the bash script for running iLand locally or on Derecho
+2. `iland_scenarios.csv`, controls the inputs called by `run_iland_csv_cpxml.sh`

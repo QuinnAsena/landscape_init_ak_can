@@ -1,0 +1,703 @@
+---
+title: "Percent post-fire dominance"
+author: "FFL"
+date: today
+---
+
+# Data {.unnumbered .unlisted .hidden}
+
+```{r}
+#| echo: false
+#| warning: false
+source("./scripts/install.R")
+
+basal_out_dir  <- here("data", "spinup", "basal_processed")
+dir.create(basal_out_dir, recursive = TRUE)
+
+basal_area_dir <- list.dirs("//10.60.2.10/FF_Lab/project_data/na_boreal/sensitivity_analysis/data/output/spinup_summaries/basal_area")
+rep_dirs <- grep(basal_area_dir, pattern = "rep_", value = TRUE)
+
+if(any(!file.exists(rep_dirs))) {
+  stop("Are you connected to Janet?")
+}
+
+if (!file.exists(file.path(basal_out_dir, "basal_area_spinup.rds"))) {
+  basal_area_files <- list.files(rep_dirs, full.names = TRUE)
+
+  basal_area_burned_area_year300 <- arrow::open_dataset(basal_area_files) |>
+    collect()
+  
+  saveRDS(basal_area_burned_area_year300, file.path(basal_out_dir, "basal_area_spinup.rds"))
+
+} else {
+  basal_area_burned_area_year300 <- readRDS(file.path(basal_out_dir, "basal_area_spinup.rds"))
+}
+
+```
+
+
+
+```{r}
+#| echo: false
+#| warning: false
+
+map <- terra::rast("Z:/project_data/na_boreal/sensitivity_analysis/data/output/spinup_summaries/fire_regime/NorEsm2-MMssp126V2_species_param_basefecund_0.5_ep2.7_dbh2.5/rep_1/spinup_300.asc")
+map
+terra::app(map,max)
+map_df <- as.data.frame(map, xy=T)
+map_df <- map_df |>
+  rename(ru = spinup_300)
+
+coord <- map_df |> 
+  dplyr::select(x,y)
+
+init_species <- terra::rast("Z:/project_data/na_boreal/sensitivity_analysis/data/output/spinup_summaries/forest_species_init.tif")
+#plot(init_species)
+data <- data.frame(cbind(map_df, extract(init_species, coord)))
+final_init <- data |>
+  rename("init_species" = forest_species_init) |>
+  mutate(init_species = replace_na(init_species, 0))
+
+basal_area_burned_area_year300 |>
+  group_by(treatment, replicate) |>
+  summarise(max_ru = max(ru),
+            min_ru = min(ru))
+
+```
+
+
+```{r}
+#| echo: false
+#| warning: false
+
+basal_area_burned_area_year300 |>
+  group_by(treatment, replicate) |>
+  summarize(n = n())
+
+# the original script formats year 0 and 300 as columns
+# columns does not work very well with multiple replicates
+# but to maintain the identical workflow, we need to filter RUs by total.density.ad.sap
+# the following code temporarily joins year 0 data to filter RUs by total.density.ad.sap from year 300
+# Year 300 is then dopped and calculated separately below
+year_0 <- left_join(basal_area_burned_area_year300, final_init, by = "ru") |>
+  filter(total.density.ad.sap > 50) |>
+  tibble() |>
+  mutate(
+    dom.Pima_0 = as.factor(ifelse(init_species==1, "Dominant","Absent")),
+    dom.Pigl_0 = as.factor(ifelse(init_species==2, "Dominant","Absent")),
+    dom.Potr_0 = as.factor(ifelse(init_species==3, "Dominant","Absent")),
+    dom.Bene_0 = as.factor(ifelse(init_species==4, "Dominant","Absent")),
+    dom.Mixed_0 = as.factor(ifelse(init_species==5, "Dominant","Absent")),
+    forest_present_0 = as.factor(ifelse(init_species==1|init_species==2|init_species==3|init_species==4|init_species == 5, "Forested", "Absent")))
+
+year_0 |>
+  group_by(treatment, replicate) |>
+  summarize(n = n())
+
+year_0 |>
+  group_by(treatment, replicate) |>
+  select(treatment, replicate, forest_present_0) |>
+  filter(forest_present_0 == "Forested") |>
+  summarize(n = n()) |>
+  print(n = 21)
+
+year_0 |>
+  group_by(treatment, replicate) |>
+  filter(forest_present_0 == "Absent") |>
+  summarize(n = n()) |>
+  print(n = 21)
+
+year_0_perc <- year_0 |>
+  pivot_longer(
+    cols = c(dom.Pima_0, dom.Pigl_0, dom.Potr_0,
+             dom.Bene_0, dom.Mixed_0, forest_present_0),
+    names_to  = "variable", values_to = "state" ) |>
+  count(treatment, replicate, variable, state) |>
+  group_by(treatment, replicate, variable) |>
+  mutate(perc = n / max(basal_area_burned_area_year300$ru) * 100) |>
+  ungroup()
+
+
+year_0_perc |>
+  filter(state == "Dominant")
+
+
+```
+
+
+
+
+```{r}
+#| echo: false
+#| warning: false
+
+year_300 <- left_join(basal_area_burned_area_year300, final_init, by="ru") |>
+  filter(total.density.ad.sap > 50) |>
+  (\(x) replace(x, is.na(x), 0))() |>
+  mutate(
+   dom_Pima_300 = as_factor(ifelse(IV.ad.sap_Pima > 1, "Dominant","Absent")),
+   dom_Pigl_300 = as_factor(ifelse(IV.ad.sap_Pigl > 1, "Dominant","Absent")),
+   dom_Potr_300 = as_factor(ifelse(IV.ad.sap_Potr > 1, "Dominant","Absent")),
+   dom_Bene_300 = as_factor(ifelse(IV.ad.sap_Bene > 1, "Dominant","Absent")),
+   dom_mixed_spruce_300 = as_factor(ifelse(dom_Pima_300 =="Absent" & dom_Pigl_300 == "Absent" & dom_Potr_300 =="Absent" & dom_Bene_300 == "Absent" & IV.ad.sap_Pima+IV.ad.sap_Pigl > 1,"Dominant","Absent")),
+   dom_mixed_deciduous_300 = as_factor(ifelse(dom_Pima_300 =="Absent" & dom_Pigl_300 == "Absent" & dom_Potr_300 =="Absent" & dom_Bene_300 == "Absent" & IV.ad.sap_Bene + IV.ad.sap_Potr > 1,"Dominant","Absent")),
+   forest_present_300 = as_factor(ifelse(count.total.ad.sap_Pima > 50 |count.total.ad.sap_Pigl > 50 |count.total.ad.sap_Potr > 50 | count.total.ad.sap_Bene > 50, "Forested", "Non forested")))
+
+year_300 |>
+  group_by(treatment, replicate) |>
+  summarize(n = n())
+
+year_300_perc <- year_300 |>
+ group_by(treatment, replicate, year) |>
+ select(year, replicate, treatment,
+        dom_Pima_300, dom_Pigl_300, dom_Potr_300, dom_Bene_300,
+        dom_mixed_spruce_300, dom_mixed_deciduous_300, forest_present_300) |>
+ pivot_longer(
+    cols = where(is.factor),
+    names_to  = "variable",
+    values_to = "state"
+  ) |>
+  count(treatment, replicate, variable, state) |>
+  group_by(treatment, replicate, variable) |>
+  mutate(perc = n / max(basal_area_burned_area_year300$ru) * 100) |>
+  arrange(treatment, replicate, variable) |>
+  ungroup()
+
+treatment_labs <- c(
+  # "NorEsm2-MMssp126V2_species_param_basefecund_0.5_ep1.8_dbh2.5" =
+  #   "NorEsm\nε = 1.8",
+
+  "NorEsm2-MMssp126V2_species_param_basefecund_0.5_ep2.7_dbh2.5" =
+    "NorEsm\nε = 2.7",
+
+  # "TaiESM1ssp126V2_species_param_basefecund_0.5_ep2.7_dbh2.5" =
+  #   "TaiESM\nε = 2.7",
+
+  "NorEsm2-MMssp126V2_species_param_basefecund_pigl0.35_ep2.7_dbh2.5" =
+    "NorEsm\npigl = 0.35\nε = 2.7",
+
+  "NorEsm2-MMssp126V2_species_param_pa01pl035be05pr07_ep2.7_dbh2.5" =
+    "NorEsm\npa01 | pl035 | be05 | pr07\nε = 2.7",
+
+  "NorEsm2-MMssp126V2_species_param_pa01pl035be05pr07_ep2.7_dbh2.5_shift" =
+    "NorEsm\npa01 | pl035 | be05 | pr07\nε = 2.7 | shift",
+
+  "NorEsm2-MMssp126V3_species_param_pa01pl035be05pr07_ep2.7_dbh2.5_filt" =
+    "NorEsm\npa01 | pl035 | be05 | pr07\nε = 2.7 | filt",
+
+  "NorEsm2-MMssp126V3_species_param_pa01pl035be05pr07_ep2.7_dbh2.5_filt_1980" =
+    "NorEsm\npa01 | pl035 | be05 | pr07\nε = 2.7 | filt 1980"
+)
+```
+
+
+# Percentage forest cover for years 0 and 300
+
+The code has been converted from Winslow's original script to handle the multiple replicates. I have varified that the results are equivalant to the original code.
+
+- The script filters for burned area (i.e., not landscape wide percentage dominance).
+- Original script calculates percentage from the total land area not the burned area (`t=length(which(var=="Dominant"))/60826*100`). I have followed the same code (max ru differs by 1 for me)
+
+
+### Year 0
+
+Results are comparable to POLE-FM. Slight differences occur from different fire regime per replicate but they seem negligible.
+
+```{r}
+#| echo: false
+
+library(DT)
+
+year_0_perc_tbl <- year_0_perc |>
+  ungroup() |>
+  select(treatment, replicate, state, variable, perc) |>
+  filter(treatment %in% names(treatment_labs)) |>
+  pivot_wider(values_from = perc, names_from = treatment)
+
+year_0_perc_tbl |>
+  filter(state == "Dominant") |>
+  select(replicate, state, variable, all_of(names(treatment_labs))) |>
+  DT::datatable(
+    rownames = FALSE, colnames = c("replicate", "state", "variable", unname(treatment_labs)
+    )) |>
+  DT::formatRound(c(4:9), 3)
+
+```
+
+
+<br>
+
+
+```{r}
+#| echo: false
+#| eval: false
+
+year_0_perc_tbl |>
+  select(replicate, state, variable, all_of(names(treatment_labs))) |>
+  DT::datatable(
+    rownames = FALSE, colnames = c(
+      "replicate", "state", "variable", unname(treatment_labs))) |>
+  DT::formatRound(c(4:9), 3)
+```
+
+<br>
+
+The starting forested area also is comparable to POLE-FM.
+
+<br>
+
+```{r}
+#| echo: false
+
+year_0 |>
+  group_by(treatment, replicate) |>
+  count(treatment, replicate, forest_present_0) |>
+  filter(forest_present_0 == "Forested") |>
+  pivot_wider(values_from = n, names_from = treatment) |>
+  select(replicate, forest_present_0, all_of(names(treatment_labs))) |>
+  DT::datatable(
+    rownames = FALSE, colnames = c("replicate", "forest_present_0", unname(treatment_labs)))
+
+```
+
+### Year 300
+
+This table is already filtered to dominant species. You can use the search box to filter to species. Black spruce seems pretty stocastic! Reps 1 and 4 were the likely best matches in the fire regime.
+
+```{r}
+#| echo: false
+
+year_300_perc_tbl <- year_300_perc |>
+  ungroup() |>
+  select(treatment, replicate, state, variable, perc) |>
+  pivot_wider(values_from = perc, names_from = treatment)
+
+
+year_300_perc_tbl |>
+  filter(state == "Dominant") |>
+  select(replicate, state, variable, all_of(names(treatment_labs))) |>
+  DT::datatable(
+    rownames = FALSE, colnames = c("replicate", "state", "variable", unname(treatment_labs))) |>
+  DT::formatRound(c(4:9), digits = 2)
+
+
+```
+
+<br>
+
+<br>
+
+```{r}
+#| echo: false
+#| eval: false
+
+year_300_perc_tbl |>
+  select(replicate, state, variable, all_of(names(treatment_labs))) |>
+  DT::datatable(
+    rownames = FALSE, colnames = c("replicate", "state", "variable", unname(treatment_labs))) |>
+  DT::formatRound(c(4:9), digits = 2)
+```
+
+
+
+
+```{r}
+#| echo: false
+# treatment_labs <- c(
+#   "NorEsm2-MMssp126V2_species_param_basefecund_0.5_ep1.8_dbh2.5" =
+#     "NorEsm\nε = 1.8",
+
+#   "NorEsm2-MMssp126V2_species_param_basefecund_0.5_ep2.7_dbh2.5" =
+#     "NorEsm\nε = 2.7",
+
+#   "TaiESM1ssp126V2_species_param_basefecund_0.5_ep2.7_dbh2.5" =
+#     "TaiESM\nε = 2.7",
+
+#   "NorEsm2-MMssp126V2_species_param_basefecund_pigl0.35_ep2.7_dbh2.5" =
+#     "NorEsm\npigl = 0.35\nε = 2.7",
+
+#   "NorEsm2-MMssp126V2_species_param_pa01pl035be05pr07_ep2.7_dbh2.5" =
+#     "NorEsm\npa01 pl035 be05 pr07\nε = 2.7",
+
+#   "NorEsm2-MMssp126V2_species_param_pa01pl035be05pr07_ep2.7_dbh2.5_shift" =
+#     "NorEsm\npa01 pl035 be05 pr07\nε = 2.7 shift"
+# )
+
+year_300_0 <- year_0_perc |>
+  mutate(year = 0) |>
+  bind_rows(year_300_perc) |>
+  mutate(
+    variable = str_remove(variable, "_[0-9]+$"),
+    variable = str_replace(variable, "\\.", "_"),
+    year = factor(year, levels = c(0, 300)),
+    treatment = factor(treatment, levels = names(treatment_labs))
+  ) |>
+  filter(state == "Dominant",
+         !grepl("Mixed|mixed", variable),
+         treatment %in% names(treatment_labs))
+
+colours <- c(
+  "dom_Pima" = "#8c564b", "dom_Pigl" = "#1f77b4",
+  "dom_Potr" = "#2ca02c", "dom_Bene" = "green")
+
+
+```
+
+
+
+
+```{r}
+#| echo: false
+ggplot(year_300_0,
+  aes(x = year, y = perc, colour = variable, group = replicate)) +
+  geom_point() +
+  geom_line() +
+  facet_grid(variable ~ treatment,
+             labeller = labeller(treatment = as_labeller(treatment_labs))) +
+  scale_colour_manual(values = colours) +
+  theme_minimal() +
+  theme(
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    legend.position = "bottom"
+  )
+
+# year_300_0 |>
+#   filter(treatment == "NorEsm pa01 pl035 be05 pr07 Epsilon 2.7 shift",
+#          variable == "dom_Potr") |>
+#   group_by(treatment, replicate, variable, state, year) |>
+#   summarise(mean_n = mean(n),
+#             mean_perc = mean(perc))
+```
+
+
+This one plots the treatments on top of each other. Doesn't look pretty, but shows the overall grouping for different treatments overlaid.
+
+```{r}
+#| echo: false
+
+ggplot(year_300_0,
+  aes(x = year, y = perc, colour = treatment, group = interaction(replicate, treatment))) +
+  geom_point() +
+  geom_line() +
+  facet_wrap(~variable) +
+  scale_colour_discrete(
+    breaks = names(treatment_labs),
+    labels = unname(treatment_labs)
+  ) +  
+  theme_minimal() +
+  theme(
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    legend.position = "bottom"
+  )
+
+```
+
+
+
+## FISL meeting 2026/01/28 {.unlisted .hidden .unnumbered}
+
+
+```{r}
+#| echo: false
+#| eval: false
+year_300_0_fisl <- year_0_perc |>
+  mutate(year = 0) |>
+  bind_rows(year_300_perc) |>
+  filter(grepl("NorEsm", treatment),
+         grepl("2.7", treatment),
+         state == "Dominant",
+         !grepl("Mixed|mixed", variable)) |>
+  mutate(
+    treatment = case_when(
+         treatment == "NorEsm2-MMssp126V2_species_param_basefecund_0.5_ep2.7_dbh2.5" ~ "Pima 0.15 | Pigl 0.25 | Bene 0.5 | Potr 0.5",
+         TRUE ~ treatment),
+    treatment = case_when(
+         treatment == "NorEsm2-MMssp126V2_species_param_basefecund_pigl0.35_ep2.7_dbh2.5" ~ "Pima 0.15 | Pigl 0.35 | Bene 0.5 | Potr 0.5",
+         TRUE ~ treatment),
+    treatment = case_when(
+         treatment == "NorEsm2-MMssp126V2_species_param_pa01pl035be05pr07_ep2.7_dbh2.5" ~ "Pima 0.1 | Pigl 0.35 | Bene 0.5 | Potr 0.7",
+         TRUE ~ treatment),
+    variable = str_remove(variable, "_[0-9]+$"),
+    variable = str_replace(variable, "\\.", "_"),
+    year = factor(year, levels = c(0, 300)),
+    treatment = factor(treatment, levels = c(
+      "Pima 0.15 | Pigl 0.25 | Bene 0.5 | Potr 0.5",
+      "Pima 0.15 | Pigl 0.35 | Bene 0.5 | Potr 0.5",
+      "Pima 0.1 | Pigl 0.35 | Bene 0.5 | Potr 0.7"
+    ))
+  ) |>
+  filter(state == "Dominant",
+         !grepl("Mixed|mixed", variable))
+
+
+colours <- c(
+  "dom_Pima" = "#8c564b", "dom_Pigl" = "#1f77b4",
+  "dom_Potr" = "#2ca02c", "dom_Bene" = "green")
+
+
+```
+
+```{r}
+#| echo: false
+#| eval: false
+
+labels <- c(
+  dom_Pima = "Black spruce",
+  dom_Pigl = "White spruce",
+  dom_Bene = "Birch",
+  dom_Potr = "Aspen"
+)
+
+pima_plot <- ggplot(
+  year_300_0_fisl |>
+    filter(variable == "dom_Pima"),
+  aes(x = year, y = perc, colour = variable, group = replicate)) +
+  geom_point() +
+  geom_line() +
+  geom_hline(yintercept = 40, colour = "red") +
+  facet_grid(variable ~ treatment,
+             labeller = labeller(variable = labels)) +
+  scale_colour_manual(values = colours) +
+  labs(y = "Percent dominated (post-fire area)",
+       x = "Year", colour = "Species") +
+  theme_minimal() +
+  theme(
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    legend.position = "none",
+    strip.text = element_text(size = 12)
+  )
+
+
+
+images_out <- "./images/prop_dom"
+dir.create(images_out)
+
+ggsave(
+  file.path(images_out, "pima_plot.png"),
+  pima_plot,
+  device = "png",
+  dpi = 300,
+  width = 12,
+  height = 4,
+  units = "in"
+)  
+```
+
+
+```{r}
+#| echo: false
+#| eval: false
+birch_aspen_plot <- ggplot(
+  year_300_0_fisl |>
+    filter(variable == "dom_Bene" | variable == "dom_Potr"),
+  aes(x = year, y = perc, colour = variable, group = replicate)) +
+  geom_point() +
+  geom_line() +
+  facet_grid(variable ~ treatment,
+             labeller = labeller(variable = labels)) +
+  scale_colour_manual(values = colours) +
+  labs(y = "Percent dominated (post-fire area)",
+       x = "Year", colour = "Species") +
+  theme_minimal() +
+  theme(
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    legend.position = "none",
+    strip.text = element_text(size = 12)
+  )
+
+ggsave(
+  file.path(images_out, "birch_aspen_plot.png"),
+  birch_aspen_plot,
+  device = "png",
+  dpi = 300,
+  width = 12,
+  height = 8,
+  units = "in"
+)   
+```
+
+
+
+```{r}
+#| echo: false
+#| eval: false
+wspruce_aspen_plot <- ggplot(
+  year_300_0_fisl |>
+    filter(variable == "dom_Pigl" | variable == "dom_Potr"),
+  aes(x = year, y = perc, colour = variable, group = replicate)) +
+  geom_point() +
+  geom_line() +
+  facet_grid(variable ~ treatment,
+             labeller = labeller(variable = labels)) +
+  scale_colour_manual(values = colours) +
+  labs(y = "Percent dominated (post-fire area)",
+       x = "Year", colour = "Species") +
+  theme_minimal() +
+  theme(
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    legend.position = "bottom",
+    strip.text = element_text(size = 12)
+  )
+
+ggsave(
+  file.path(images_out, "wspruce_aspen_plot.png"),
+  wspruce_aspen_plot,
+  device = "png",
+  dpi = 300,
+  width = 12,
+  height = 8,
+  units = "in"
+)    
+```
+
+
+
+
+
+
+
+
+
+## Winslows original code {.unlisted .hidden .unnumbered}
+
+This is winslows original code wrapped in a split and lapply to work over replicates. I have varified that values are the same as my adjusted code above.
+
+```{r}
+#| eval: false
+
+map <- terra::rast("Z:/project_data/na_boreal/sensitivity_analysis/data/output/spinup_summaries/fire_regime/NorEsm2-MMssp126V2_species_param_basefecund_0.5_ep2.7_dbh2.5/rep_1/spinup_300.asc")
+map
+terra::app(map,max)
+map_df <- as.data.frame(map, xy=T)
+map_df <- map_df |>
+  rename(ru = spinup_300)
+
+coord <- map_df |> 
+  dplyr::select(x,y)
+
+init_species <- terra::rast("Z:/project_data/na_boreal/sensitivity_analysis/data/output/spinup_summaries/forest_species_init.tif")
+#plot(init_species)
+data <- data.frame(cbind(map_df, extract(init_species, coord)))
+final_init <- data |>
+  rename("init_species" = forest_species_init)
+
+
+stand.t.wide <- left_join(basal_area_burned_area_year300, final_init, by="ru")
+
+mapping.data <- split(stand.t.wide, list(stand.t.wide$treatment, stand.t.wide$replicate)) |>
+ lapply(\(x) {
+  stand.t.wider = x %>% pivot_wider(names_from = year, values_from = c(count.total.ad.sap_Pima:stand.age))
+  stand.t.wider =stand.t.wider %>% replace(is.na(.), 0)
+  stand.t.wider = stand.t.wider %>% mutate(init_species.map = ifelse(init_species==1, "Pima",
+                                                                     ifelse(init_species==2, "Pigl",
+                                                                            ifelse(init_species==3, "Potr",
+                                                                                   ifelse(init_species==4,"Bene",
+                                                                                          ifelse(init_species==5, "Mixed","Not forested"))))))
+  stand.t.wider= stand.t.wider %>%filter(total.density.ad.sap_300>50)
+  stand.t.wider= stand.t.wider %>% mutate(dom.Pima_0 = as.factor(ifelse(init_species==1, "Dominant","Absent")),
+                                          dom.Pigl_0 = as.factor(ifelse(init_species==2, "Dominant","Absent")),
+                                          dom.Potr_0 = as.factor(ifelse(init_species==3, "Dominant","Absent")),
+                                          dom.Bene_0 =as.factor(ifelse(init_species==4, "Dominant","Absent")),
+                                          dom.Mixed_0 =as.factor(ifelse(init_species==5, "Dominant","Absent")),
+                                          forest_present_0 = as.factor(ifelse(init_species==1|init_species==2|init_species==3|init_species==4|init_species==5, "Forested", "Absent")),
+                                          dom_Pima_300 = as_factor(ifelse(IV.ad.sap_Pima_300 > 1, "Dominant","Absent")),
+                                          dom_Pigl_300 = as_factor(ifelse(IV.ad.sap_Pigl_300 > 1, "Dominant","Absent")),
+                                          dom_Potr_300 = as_factor(ifelse(IV.ad.sap_Potr_300 > 1, "Dominant","Absent")),
+                                          dom_Bene_300 = as_factor(ifelse(IV.ad.sap_Bene_300 > 1, "Dominant","Absent")),
+                                          dom_mixed_spruce_300 = as_factor(ifelse(dom_Pima_300 =="Absent" &dom_Pigl_300=="Absent" & dom_Potr_300=="Absent" &dom_Bene_300=="Absent" & IV.ad.sap_Pima_300+IV.ad.sap_Pigl_300 >1,"Dominant","Absent")),
+                                          dom_mixed_deciduous_300 = as_factor(ifelse(dom_Pima_300=="Absent" &dom_Pigl_300=="Absent" & dom_Potr_300=="Absent" &dom_Bene_300=="Absent" &IV.ad.sap_Bene_300 + IV.ad.sap_Potr_300 >1,"Dominant","Absent")),
+                                          forest_present_300 = as_factor(ifelse(count.total.ad.sap_Pima_300 >50 |count.total.ad.sap_Pigl_300 >50 |count.total.ad.sap_Potr_300 >50 | count.total.ad.sap_Bene_300 >50, "Forested", "Non forested")))
+  
+  stand.t.wider= stand.t.wider %>% mutate(Pima.transition = ifelse(dom.Pima_0=="Dominant"& dom_Pima_300 =="Dominant", "Remained dominant",
+                                                                    ifelse(dom.Pima_0=="Dominant"&forest_present_300=="Non forested", "Now non forested",
+                                                                   ifelse(dom.Pima_0=="Dominant"& dom_Potr_300=="Dominant", "Now Potr",
+                                                                          ifelse(dom.Pima_0=="Dominant"& dom_Pigl_300=="Dominant", "Now Pigl",
+                                                                                 ifelse(dom.Pima_0=="Dominant"& dom_Bene_300=="Dominant", "Now Bene",
+                                                                                        ifelse(dom.Pima_0=="Dominant" & dom_mixed_spruce_300=="Dominant", "Now mixed spruce",
+                                                                                               ifelse(dom.Pima_0=="Dominant" & dom_mixed_deciduous_300=="Dominant", "Now mixed deciduous",
+                                                                                               ifelse(dom.Pima_0=="Absent"& dom_Pima_300 =="Dominant", "Now dominant","Never there")))))))))
+  
+  stand.t.wider= stand.t.wider %>% mutate(Pigl.transition = ifelse(dom.Pigl_0=="Dominant"& dom_Pigl_300 =="Dominant", "Remained dominant",
+                                                                    ifelse(dom.Pigl_0=="Dominant"&forest_present_300=="Non forested", "Now non forested",
+                                                                   ifelse(dom.Pigl_0=="Dominant"& dom_Potr_300=="Dominant", "Now Potr",
+                                                                          ifelse(dom.Pigl_0=="Dominant"& dom_Pima_300=="Dominant", "Now Pima",
+                                                                                 ifelse(dom.Pigl_0=="Dominant"& dom_Bene_300=="Dominant", "Now Bene",
+                                                                                        ifelse(dom.Pigl_0=="Dominant" & dom_mixed_spruce_300=="Dominant", "Now mixed spruce",
+                                                                                               ifelse(dom.Pigl_0=="Dominant" & dom_mixed_deciduous_300=="Dominant", "Now mixed deciduous",
+                                                                                               ifelse(dom.Pigl_0=="Absent"& dom_Pigl_300 =="Dominant", "Now dominant","Never there")))))))))
+  
+  
+  stand.t.wider= stand.t.wider %>% mutate(Potr.transition = ifelse(dom.Potr_0=="Dominant"& dom_Potr_300 =="Dominant", "Remained dominant",
+                                                                    ifelse(dom.Potr_0=="Dominant"&forest_present_300=="Non forested", "Now non forested",
+                                                                   ifelse(dom.Potr_0=="Dominant"& dom_Pigl_300=="Dominant", "Now Pigl",
+                                                                          ifelse(dom.Potr_0=="Dominant"& dom_Pima_300=="Dominant", "Now Pima",
+                                                                                 ifelse(dom.Potr_0=="Dominant"& dom_Bene_300=="Dominant", "Now Bene",
+                                                                                        ifelse(dom.Potr_0=="Dominant" & dom_mixed_spruce_300=="Dominant", "Now mixed spruce",
+                                                                                               ifelse(dom.Potr_0=="Dominant" & dom_mixed_deciduous_300=="Dominant", "Now mixed deciduous",
+                                                                                               ifelse(dom.Potr_0=="Absent"& dom_Potr_300 =="Dominant", "Now dominant","Never there")))))))))
+  stand.t.wider= stand.t.wider %>% mutate(Bene.transition = ifelse(dom.Bene_0=="Dominant"& dom_Bene_300 =="Dominant", "Remained dominant",
+                                                                    ifelse(dom.Bene_0=="Dominant"&forest_present_300=="Non forested", "Now non forested",
+                                                                   ifelse(dom.Bene_0=="Dominant"& dom_Pigl_300=="Dominant", "Now Pigl",
+                                                                          ifelse(dom.Bene_0=="Dominant"& dom_Pima_300=="Dominant", "Now Pima",
+                                                                                 ifelse(dom.Bene_0=="Dominant"& dom_Potr_300=="Dominant", "Now Potr",
+                                                                                        ifelse(dom.Bene_0=="Dominant" & dom_mixed_spruce_300=="Dominant", "Now mixed spruce",
+                                                                                               ifelse(dom.Bene_0=="Dominant" & dom_mixed_deciduous_300=="Dominant", "Now mixed deciduous",
+                                                                                               ifelse(dom.Bene_0=="Absent"& dom_Bene_300 =="Dominant", "Now dominant","Never there")))))))))
+
+  stand.t.wider$Pima.transition <- factor(stand.t.wider$Pima.transition, levels = c("Remained dominant", "Now dominant" , "Now Pima","Now Pigl","Now Potr", "Now Bene", "Now mixed spruce", "Now mixed deciduous", "Never there"))
+  return(stand.t.wider)
+})
+
+
+length(which(mapping.data[[1]]$forest_present_0 == "Forested"))
+length(which(mapping.data[[2]]$forest_present_0 == "Forested"))
+length(which(mapping.data[[1]]$forest_present_0 == "Absent"))
+length(which(mapping.data[[4]]$forest_present_0 == "Absent"))
+
+```
+
+
+
+```{r}
+#| eval: false
+
+d <- lapply(mapping.data, \(x) {
+  x %>% dplyr::select(dom.Pima_0,dom_Pima_300,dom.Pigl_0,dom_Pigl_300,dom.Potr_0,dom_Potr_300,dom.Bene_0,dom_Bene_300,dom.Mixed_0,dom_mixed_spruce_300,dom_mixed_deciduous_300)
+})
+
+d <- d[[1]]
+
+calc.percentage =function(var,species,label){
+  t=length(which(var=="Dominant"))/60826*100
+  print(paste0("Species ",species," year ",label, " percentage = ",round(t,digits=1)))
+}
+length(which(d$dom.Pigl_0=="Dominant"|d$dom.Pima_0=="Dominant"))
+length(which(d$dom_Pigl_300=="Dominant"|d$dom_Pima_300=="Dominant"|d$dom_mixed_spruce_300=="Dominant"))
+
+length(which(d$dom.Potr_0=="Dominant"|d$dom.Bene_0=="Dominant"|d$dom.Mixed_0=="Dominant"))
+length(which(d$dom_Potr_300=="Dominant"|d$dom_Bene_300=="Dominant"|d$dom_mixed_deciduous_300=="Dominant"))
+
+length(which(d$dom.Pima_0=="Dominant"|d$dom.Pigl_0=="Dominant"|d$dom.Bene_0=="Dominant"|d$dom.Potr_0=="Dominant"|d$dom.Mixed_0=="Dominant"))
+length(which(d$dom_Pima_300=="Dominant"|d$dom_Pigl_300=="Dominant"|d$dom_Bene_300=="Dominant"|d$dom_Potr_300=="Dominant"|d$dom_mixed_spruce_300=="Dominant"|d$dom_mixed_deciduous_300=="Dominant"))
+length(which(mapping.data$total.density.ad.sap_300>50))
+
+calc.percentage(d$dom.Pima_0,"Pima","0")
+calc.percentage(d$dom.Pigl_0,"Pigl","0")
+calc.percentage(d$dom.Bene_0,"Bene","0")
+calc.percentage(d$dom.Potr_0,"Potr","0")
+calc.percentage(d$dom.Mixed_0,"Mixed","0")
+
+calc.percentage(d$dom_Pima_300,"Pima","300")
+calc.percentage(d$dom_Pigl_300,"Pigl","300")
+calc.percentage(d$dom_Bene_300,"Bene","300")
+calc.percentage(d$dom_Potr_300,"Potr","300")
+calc.percentage(d$dom_mixed_spruce_300,"Mixed_spruce","300")
+calc.percentage(d$dom_mixed_deciduous_300,"Mixed_deciduous","300")
+```
+
+
