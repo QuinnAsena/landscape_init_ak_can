@@ -65,7 +65,7 @@ Run R pipeline (scripts 00–13)   →   Upload outputs   →   Run iLand model
 ```
 scripts/            # 13-step initialization pipeline (00–13_*.r)
 data/               # empirical reference data + shared iLand XML templates
-anaysis-scripts/    # post-processing R scripts (area dominance, basal area, seed density)
+analysis-scripts/   # post-processing R scripts (area dominance, basal area, seed density)
 workflow-output/    # Quarto analysis notebooks for iLand output analysis
   workflow-data/    #   data consumed by the analysis notebooks
 ```
