@@ -1,0 +1,312 @@
+---
+title: "Carbon parameterization"
+author: "Winslow Hansen"
+date: "11/13/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+library(tidyverse)
+library(dbplyr)
+library(raster)
+library(scales)
+```
+
+Processing carbon data
+```{r}
+layer = stack("Z:/project_data/na_boreal/data_sets/live_biomass/30-m.tiles/ABoVE_AGB_Bh06v05.tif")
+layer
+layer=layer[[31]]
+layer = layer * 0.01 *1000 #scaling factor of 0.01 multiply by 1000 to convert from megagrams to kilograms
+
+```
+Layer for clipping
+```{r}
+landscape= raster("D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/cpcrw/materials/env/env.grid.tif")
+s =crs(landscape)
+layer=projectRaster(layer,landscape)
+layer
+```
+
+mask
+```{r}
+layer.agg.masked=crop(layer,landscape)
+layer.agg.masked=mask(layer.agg.masked,landscape)
+writeRaster(layer.agg.masked, "D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/cpcrw/model/output/biomass.tif", overwrite=T)
+```
+
+Read in the final layer to start doing the benchmarking.
+```{r}
+
+benchmark= raster("D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/cpcrw/model/output/biomass.tif")
+
+```
+
+Use the env grid to link to benchmark to get rid.
+```{r}
+points=data.frame(rasterToPoints(landscape))  #turn response raster into a points dataset in the middle of each raster cell.
+                coordinates(points)= ~x+y
+            data <- data.frame(points, raster::extract(benchmark, points))
+
+
+data$optional = NULL
+data = data %>% rename("rid" = env.grid,
+                       "live.bio.ag_Benchmark"= raster..extract.benchmark..points.)
+```
+Read in stand biomass
+```{r}
+db.conn <- DBI::dbConnect(RSQLite::SQLite(), dbname="D:/workspace/Winslow//permafrost/permafrost_param/iLand_landscapes/landscape_building/cpcrw/model/output/paper_run/CPCRW_sm_6.sqlite")
+carbon = tbl(db.conn, "carbon")  %>% filter(year ==300) %>% collect()
+  DBI::dbDisconnect(db.conn)
+
+summary(carbon)
+```
+
+Calculate the variables for comparing to the satellite product
+```{r}
+carbon = carbon %>% mutate(live.c.ag_Modeled = stem_c + branch_c + foliage_c) %>% 
+  mutate(live.bio.ag_Modeled = live.c.ag_Modeled*2)
+biomass.modeled = carbon %>% dplyr::select(rid,live.bio.ag_Modeled)
+```
+
+Link the two and pivot longer
+```{r}
+
+data = left_join(data, biomass.modeled, by ="rid")
+summary(data)
+data.long = data %>% pivot_longer(cols = c(live.bio.ag_Benchmark:live.bio.ag_Modeled),  names_to = "form", values_to = "live.bio.ag", names_prefix = "live.bio.ag_")
+
+```
+
+plotting and summarizing
+
+```{r}
+
+library(scales)
+
+data.long.sum = data.long %>% group_by(form) %>% summarize(quantile.bio = quantile(live.bio.ag, c(0.25,0.5,0.75),na.rm=T), q=c(0.25,0.5,0.75 ))
+
+data.long.sum.wider = data.long.sum %>%pivot_wider(names_from = c(form,q), values_from = quantile.bio)
+
+
+
+data.long.sum.wider = data.long.sum.wider %>% mutate(med.biomass.diff = abs(Benchmark_0.5-Modeled_0.5)/((Benchmark_0.5+Modeled_0.5)/2)*100)
+
+ggplot(data.long, aes(x=form, y=live.bio.ag))+
+  geom_boxplot()+
+  theme_bw()+
+scale_y_continuous(labels=comma)+
+    theme(text  = element_text(color="black",  family="sans", size=10),
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+             axis.text.x=element_text(colour="black",size=10),
+             axis.text.y=element_text(colour="black",size=10))+
+  labs(x="", y = bquote(Live~aboveground~biomass~(kg~ha^-1)))
+  
+ggsave("D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/figures/livebiomass.jpg", height=4.5,width=4.5, units = "in", dpi=700)
+
+```
+
+
+
+
+
+Did a 300 year run Now looking at snag outputs from iLand
+```{r}
+db.conn <- DBI::dbConnect(RSQLite::SQLite(), dbname="D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/cpcrw/model/output/paper_run/CPCRW_sm_6.sqlite")
+carbon= tbl(db.conn, "carbon") %>%filter(year==300)  %>% collect()
+  DBI::dbDisconnect(db.conn)
+carbon = carbon %>% mutate(snags.tot_c_ag = snags_c + snagsOther_c_ag)
+carbon.summary= carbon %>% summarise(mean.snag.tot.c = mean(snags_c*1000/10000),
+                                     sd.snag.tot.c = sd(snags.tot_c_ag*1000/10000))
+carbon.summary = carbon.summary %>% mutate(form = "Simulated")
+
+obs.total = (476.7+965.3+357.4+533.6+333.4+250.8+586.9+584.8+238.3+964.2)/10   ## These are the snag contents for 20-39 year old stands from Alexander et al. 2012.
+sd.total = (733.8+1244.5+200.3+445.1+0+320.2+391.9+442.7+0+900.3)/10
+
+carbon.observed = data.frame(mean.snag.tot.c = obs.total, sd.snag.tot.c = sd.total, form = "Observed" )
+carbon.f = rbind(carbon.summary, carbon.observed)
+carbon.f.wider = carbon.f %>%dplyr::select(-sd.snag.tot.c)%>%pivot_wider(names_from = form, values_from = c(1))
+carbon.f.wider = carbon.f.wider %>% mutate(pf.ns.diff = abs(Observed-Simulated)/((Observed+Simulated)/2)*100)
+
+a=ggplot(carbon.f, aes(x=form , y=mean.snag.tot.c))+
+geom_bar(stat="identity", position=position_dodge()) +
+  geom_errorbar(aes(ymin=mean.snag.tot.c-sd.snag.tot.c, ymax=mean.snag.tot.c+sd.snag.tot.c), width=.2,
+                 position=position_dodge(.9))+
+  scale_y_continuous(labels=comma)+
+  theme_bw()+
+   theme(    text  = element_text(color="black",  family="sans", size=10),
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+             axis.text.x=element_text(colour="black",size=10),
+             axis.text.y=element_text(colour="black",size=10),
+            legend.text = element_text(size=8))+
+  labs(x="", y=bquote(Standing~snag~C~(g~m^-2)))
+
+
+
+ggsave("D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/figures/snag.pdf", height=3,width=3, units = "in", dpi=700)
+
+```
+
+
+Read in the produce a stand composition and regen dataset to check stand densities at the beginning and end of the simulation and then pair pare with the simulated carbon dataset
+```{r}
+db.conn <- DBI::dbConnect(RSQLite::SQLite(), dbname="D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/cpcrw/model/output/paper_run/CPCRW_sm_6.sqlite")
+stand = tbl(db.conn, "stand") %>%  filter(year ==300) %>% collect()
+reg.det = tbl(db.conn, "saplingdetail") %>%  filter(year ==300) %>% collect()
+water=tbl(db.conn, "water") %>%  filter(year ==300)%>% collect()
+  DBI::dbDisconnect(db.conn)
+```
+
+Processing regeneration to bind with stand
+```{r}
+reg.det=reg.det%>%mutate(ba=pi*((dbh/100)/2)^2)
+reg.det=reg.det%>%mutate(ba_all=ba*n_represented)
+reg.det.sum=reg.det%>%group_by(year,ru, species)%>%summarize(count_ha_sap=sum(n_represented),
+                                                             dbh_mean_sapling=weighted.mean(dbh,n_represented),
+                                                             ba_sum_sapling=sum(ba_all))
+
+
+```
+
+Merging stand and regenration together to calculate total density.
+
+```{r}
+summary(as.factor(stand$species))
+stand = stand %>% dplyr::select(-cohort_count_ha,-cohort_basal_area)
+stand.t=full_join(stand,reg.det.sum,by = c("ru","year","species"))
+stand.t =stand.t %>% replace(is.na(.), 0)
+stand.t2=stand.t%>%mutate(count.total.ad.sap = count_ha + count_ha_sap,
+                         ba.total.ad.sap = basal_area_m2+ba_sum_sapling)
+```
+Now pivoting wider to generate IV values
+```{r}
+stand.t2.select = stand.t2 %>% dplyr::select(ru,rid, year,species, count.total.ad.sap:ba.total.ad.sap)
+stand.t.wide = stand.t2.select %>% pivot_wider( names_from = species, values_from = c(count.total.ad.sap:ba.total.ad.sap), values_fill = 0)
+stand.t.wide=stand.t.wide %>% mutate(total.density.ad.sap = count.total.ad.sap_Potr + count.total.ad.sap_Pima + count.total.ad.sap_Bene + count.total.ad.sap_Pigl,
+                                     total.ba.ad.sap = ba.total.ad.sap_Potr + ba.total.ad.sap_Pima + ba.total.ad.sap_Bene + ba.total.ad.sap_Pigl)
+stand.t.wide=stand.t.wide%>%mutate(IV.ad.sap_Pima = ifelse(total.density.ad.sap !=0 & total.ba.ad.sap!=0, (count.total.ad.sap_Pima/total.density.ad.sap)+(ba.total.ad.sap_Pima/total.ba.ad.sap),0),
+                                   IV.ad.sap_Pigl = ifelse(total.density.ad.sap !=0 & total.ba.ad.sap!=0, (count.total.ad.sap_Pigl/total.density.ad.sap)+(ba.total.ad.sap_Pigl/total.ba.ad.sap),0),
+                                   IV.ad.sap_Potr = ifelse(total.density.ad.sap !=0 & total.ba.ad.sap!=0, (count.total.ad.sap_Potr/total.density.ad.sap)+(ba.total.ad.sap_Potr/total.ba.ad.sap), 0),
+                                   IV.ad.sap_Bene = ifelse(total.density.ad.sap !=0 & total.ba.ad.sap!=0,(count.total.ad.sap_Bene/total.density.ad.sap)+(ba.total.ad.sap_Bene/total.ba.ad.sap), 0))
+summary(stand.t.wide)
+```
+
+
+Now combing with carbon
+```{r}
+stand.t.final=full_join(stand.t.wide,carbon,by = c("ru","year"))
+stand.t.final=full_join(stand.t.final, water,by=c("ru", "year") )
+stand.t.carbon= stand.t.final %>% dplyr::select(year, ru, IV.ad.sap_Pima, IV.ad.sap_Pigl, IV.ad.sap_Potr,IV.ad.sap_Bene,snags_c, downedWood_c,downedWood_c_ag,litter_c,litter_c_ag, SOLLayer, mossLayer)
+stand.t.carbon <- stand.t.carbon %>% replace(is.na(.), 0)
+```
+
+Plotting downed carbon situation
+Preparing the black spruce data from Walker et al. 2020 
+```{r}
+d.1=read.table("Z:/project_data/na_boreal/data_sets/Organic layer and tree regen/ABoVE_Plot_Data_Burned_Sites_1744/data/AK_CA_Soil_Profile_Synthesis.csv", sep=",", header=T)
+d.1[d.1 == -9999] <- NA
+summary(d.1)
+d.1.driver=d.1 %>% filter(min_org=="org" & project_name != "NWT_MackWalker"&treatment=="Control")
+d.1.driver = d.1.driver %>% mutate(horizon.clean = ifelse(horizon=="GM"|horizon=="moss"|horizon=="live moss","live.moss","dead.moss"))
+summary(as.factor(d.1.driver$horizon.clean))
+summary(d.1.driver)
+d.1.driver.summary = d.1.driver %>% group_by(site,profile) %>% summarize(litter=sum(carbon))
+summary(d.1.driver.summary)
+d.1.driver.summary2=d.1.driver.summary%>% ungroup() %>% summarize(mean.value = mean(litter,na.rm=T),
+                                                     sd.litter= sd(litter,na.rm=T),
+                                                     n.litter=length(litter),
+                                                     SE.value = sd.litter/sqrt(n.litter))
+d.1.driver.summary2$form = "Walker et al. 2020"
+d.1.driver.summary2$Compartment = "SOL"
+d.1.driver.summary2$species = "Pima"
+d.1.driver.summary2 = d.1.driver.summary2 %>% dplyr::select(Compartment,form, species, mean.value,SE.value)
+d.2=read.table("Z:/project_data/na_boreal/data_sets/Organic layer and tree regen/Alexander and Mack 2015/SOL_coarse_wood_carbon.txt", sep="\t", header=T)
+
+d.obs=rbind(d.1.driver.summary2,d.2)
+```
+```{r}
+library(scales)
+summary(stand.t.carbon)
+stand.t.carbon = stand.t.carbon %>% mutate(sp.dom= as.factor( ifelse(IV.ad.sap_Pima >1, "Pima",
+                                                              ifelse( IV.ad.sap_Potr >1, "Potr",
+                                                              ifelse( IV.ad.sap_Pigl >1, "Pigl", 
+                                                              ifelse( IV.ad.sap_Bene >1, "Bene",
+                                                              ifelse( IV.ad.sap_Pima + IV.ad.sap_Pigl>1,  "Mixed spruce",
+                                                                      ifelse(IV.ad.sap_Bene + IV.ad.sap_Potr>1,  "Mixed deciduous", "Non forest"))))))))
+
+stand.t.carbon %>% group_by(sp.dom) %>% summarize(mean.litter=mean((SOLLayer*91*1000*.384) + (mossLayer*31*1000*0.434)),
+                                                  sd.litter=sd((SOLLayer*91*1000*.384) + (mossLayer*31*1000*0.434)),
+                                                  min.litter = min((SOLLayer*91*1000*.384) + (mossLayer*31*1000*0.434)),
+                                                  max.litter = max((SOLLayer*91*1000*.384) + (mossLayer*31*1000*0.434)))
+stand.t.c.300 = stand.t.carbon %>% filter(year==300 & ru !=-1)
+
+summary(stand.t.c.300)
+#all carbon
+plot.summary.landscape = stand.t.c.300  %>% summarise(quantile.total = quantile((SOLLayer*91*1000*.384) + (mossLayer*31*1000*0.434),c(0.25,0.5,0.75)), q=c(0.25,0.5,0.75 ),
+                                            quantile.coarsewood = quantile(downedWood_c_ag,c(0.25,0.5,0.75)), q=c(0.25,0.5,0.75 ))
+plot.summary.landscape
+#Carbon by species
+plot.summary = stand.t.c.300 %>% group_by(sp.dom) %>% summarise(mean.SOL=mean((SOLLayer*91*1000*.384) + (mossLayer*31*1000*0.434)),
+                                                      sd.SOL=sd((SOLLayer*91*1000*.384) + (mossLayer*31*1000*0.434)),
+                                                      se.SOL=sd.SOL/sqrt(length(sd.SOL)),
+                                                      mean.coarse_wood=mean(downedWood_c_ag*1000/10000),
+                                                     sd.coarse_wood = sd(downedWood_c_ag*1000/10000),
+                                                     SE.coarse_wood = sd.coarse_wood/sqrt(length(sd.coarse_wood)))
+plot.summary
+plot.summary = plot.summary %>% mutate(form = "Simulated")
+plot.summary.1=plot.summary %>% dplyr::select("species" = sp.dom, "mean.value" = mean.SOL, "SE.value" = se.SOL, form) %>% mutate(Compartment = "SOL")
+plot.summary.2 = plot.summary %>% dplyr::select("species" = sp.dom, "mean.value" = mean.coarse_wood, "SE.value" = SE.coarse_wood, form) %>% mutate(Compartment = "coarse wood")
+
+plot.total=rbind(plot.summary.1,plot.summary.2,d.obs)
+
+plot.total$form <- factor(plot.total$form, levels = c("Alexander & Mack 2015 20-39yo", "Alexander & Mack 2015 40-59yo",  "Alexander & Mack 2015 60-100yo", "Walker et al. 2020","Simulated"))
+plot.total$species <- factor(plot.total$species, levels = c("Pima","Potr","Bene","Pigl","Mixed spruce", "Mixed deciduous","Non forest"))
+
+summary(plot.total)
+my.cols=(c("Alexander & Mack 2015 20-39yo" = "#2c7bb6", "Alexander & Mack 2015 40-59yo" = "#abd9e9",  "Alexander & Mack 2015 60-100yo" = "#ffffbf", "Walker et al. 2020" = "#fdae61","Simulated" = "#d7191c"))
+SOL.plot=plot.total %>% filter(Compartment =="SOL"& species!= "Non forest") 
+litter=ggplot(SOL.plot, aes(x=species , y=mean.value, fill=form))+
+geom_bar(stat="identity", position=position_dodge()) +
+  geom_errorbar(aes(ymin=mean.value-SE.value, ymax=mean.value+SE.value), width=.2, position=position_dodge(.9))+
+  theme_bw()+
+  scale_y_continuous(labels=comma)+
+  scale_fill_manual(values=my.cols)+
+   theme(    text  = element_text(color="black",  family="sans", size=10),
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+             axis.text.x=element_text(colour="black",size=10),
+             axis.text.y=element_text(colour="black",size=10),
+            legend.text = element_text(size=8),
+            legend.background = element_rect(colour = "transparent", fill = 'transparent'),
+            legend.position = c(0.7,0.85))+
+  labs(x="", y=bquote(SOL~carbon~(g~m^-2)),fill="")
+ ggsave("D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/figures/SOL_carbon.pdf", height=3,width=6.5, units = "in", dpi=300)
+
+ my.cols=(c("Alexander & Mack 2015 20-39yo" = "#2c7bb6", "Alexander & Mack 2015 40-59yo" = "#abd9e9",  "Alexander & Mack 2015 60-100yo" = "#ffffbf", "Simulated" = "#d7191c"))
+
+ CW.plot=plot.total %>% filter(Compartment =="coarse wood" & species != "Non forest")
+ ggplot(CW.plot, aes(x=species , y=mean.value, fill=form))+
+geom_bar(stat="identity", position=position_dodge()) +
+  geom_errorbar(aes(ymin=mean.value-SE.value, ymax=mean.value+SE.value), width=.2, position=position_dodge(.9))+
+  theme_bw()+
+  scale_y_continuous(labels=comma)+
+  scale_fill_manual(values=my.cols)+
+   theme(    text  = element_text(color="black",  family="sans", size=10),
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+             axis.text.x=element_text(colour="black",size=10),
+             axis.text.y=element_text(colour="black",size=10),
+            legend.text = element_text(size=8),
+            legend.background = element_rect(colour = "transparent", fill = 'transparent'),
+            legend.position = "bottom")+
+   guides(fill=guide_legend(nrow=2,byrow=TRUE))+
+  labs(x="", y=bquote(Coarse~wood~carbon~(g~m^-2)),fill="")
+ ggsave("D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/figures/coarsewood_carbon.pdf", height=4,width=6.5, units = "in", dpi=700)
+```
+
+

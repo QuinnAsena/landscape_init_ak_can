@@ -1,0 +1,429 @@
+---
+title: "Carbon parameterization"
+author: "Winslow Hansen"
+date: "11/13/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+library(tidyverse)
+library(terra)
+v=21
+```
+Map raster to pull out the initial species distribution
+```{r}
+map = rast("D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/cpcrw/model/temp/spinup_300.asc")
+map
+app(map,max)
+map.df=as.data.frame(map, xy=T)
+map.df = map.df %>% rename(ru = spinup_300)
+
+init.species = rast("D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/cpcrw/materials/init/forest_species_init.tif")
+#plot(init.species)
+coord=map.df%>%dplyr::select(x,y)
+data=data.frame(cbind(map.df, extract(init.species, coord)))
+final.init=data%>%rename("init.species"=forest_species_init)
+```
+
+Read in the produce a stand composition and regen dataset to check stand densities at the beginning and end of the simulation and then pair pare with the simulated carbon dataset
+```{r}
+db.conn <- DBI::dbConnect(RSQLite::SQLite(), dbname="D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/cpcrw/model/output/paper_run/CPCRW_sm_6.sqlite")
+stand = tbl(db.conn, "stand")  %>% filter(year ==300) %>% collect()
+reg.det = tbl(db.conn, "saplingdetail") %>% filter(year ==300) %>% collect()
+fire =  tbl(db.conn, "fire") %>% collect()
+  DBI::dbDisconnect(db.conn)
+```
+
+
+
+
+
+The first task is to compare stand density and basal area of different stands dominated by different species to RSN and CAFI benchmarks
+First we need to prep the stand data to be comparable
+
+
+
+Processing regeneration to bind with stand
+```{r}
+reg.det=reg.det%>%mutate(ba=pi*((dbh/100)/2)^2)
+reg.det=reg.det%>%mutate(ba_all=ba*n_represented)
+reg.det.sum=reg.det%>%group_by(year,ru, species)%>%summarize(count_ha_sap=sum(n_represented),
+                                                             dbh_mean_sapling=weighted.mean(dbh,n_represented),
+                                                             ba_sum_sapling=sum(ba_all))
+
+summary(reg.det.sum)
+```
+
+Merging stand and regenration together to calculate total density.
+
+```{r}
+stand = stand %>% dplyr::select(-cohort_count_ha,-cohort_basal_area)
+stand.t=full_join(stand,reg.det.sum,by = c("ru","year","species"))
+stand.t2 =stand.t %>% replace(is.na(.), 0)
+stand.t2=stand.t2%>%mutate(count.total.ad.sap = count_ha + count_ha_sap,
+                         ba.total.ad.sap = basal_area_m2+ba_sum_sapling)
+```
+Now pivoting wider to generate IV values
+```{r}
+stand.t2.select = stand.t2 %>% dplyr::select(ru,rid, year,species, count.total.ad.sap:ba.total.ad.sap)
+stand.t.wide = stand.t2.select %>% pivot_wider( names_from = species, values_from = c(count.total.ad.sap:ba.total.ad.sap), values_fill = 0)
+stand.t.wide=stand.t.wide %>% mutate(total.density.ad.sap = count.total.ad.sap_Potr + count.total.ad.sap_Pima + count.total.ad.sap_Bene + count.total.ad.sap_Pigl,
+                                     total.ba.ad.sap = ba.total.ad.sap_Potr + ba.total.ad.sap_Pima + ba.total.ad.sap_Bene + ba.total.ad.sap_Pigl)
+stand.t.wide=stand.t.wide%>%mutate(IV.ad.sap_Pima = ifelse(total.density.ad.sap !=0 & total.ba.ad.sap!=0, (count.total.ad.sap_Pima/total.density.ad.sap)+(ba.total.ad.sap_Pima/total.ba.ad.sap),0),
+                                   IV.ad.sap_Pigl = ifelse(total.density.ad.sap !=0 & total.ba.ad.sap!=0, (count.total.ad.sap_Pigl/total.density.ad.sap)+(ba.total.ad.sap_Pigl/total.ba.ad.sap),0),
+                                   IV.ad.sap_Potr = ifelse(total.density.ad.sap !=0 & total.ba.ad.sap!=0, (count.total.ad.sap_Potr/total.density.ad.sap)+(ba.total.ad.sap_Potr/total.ba.ad.sap), 0),
+                                   IV.ad.sap_Bene = ifelse(total.density.ad.sap !=0 & total.ba.ad.sap!=0,(count.total.ad.sap_Bene/total.density.ad.sap)+(ba.total.ad.sap_Bene/total.ba.ad.sap), 0))
+summary(stand.t.wide)
+```
+
+Approach to identify time since fire for each grid cell in stand.t.wide
+```{r}
+# Let's get all the spread files (fire extents) as a raster stack
+path = "D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/cpcrw/model/output/paper_run/spread_6"
+fire_maps = rast(list.files(path, full.names = T))
+
+# Use the environment grid to get ids for each grid
+path = "D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/cpcrw/model/gis"
+env_grid <- rast(paste0(path, "/env.grid.txt"))
+crs(fire_maps)=crs(env_grid)
+
+#env_grid.2=crop(env_grid,fire_maps)
+env_grid.2=env_grid
+fire <- fire %>% mutate(prop.dens.killed = n_trees_died   / n_trees,
+                        prop.ba.killed   = basalArea_died / basalArea_total)
+fire$prop.ba.killed  [fire$basalArea_total == 0] <- 0
+fire$prop.dens.killed[fire$n_trees         == 0] <- 0
+
+fire_year_dat <- data.frame()
+
+for (i in 1:nrow(fire)) {
+  
+  # Skip fires that burned nothing
+  if (fire$area_m2[i] > 0) {
+    
+    # Take the fire map for this fire, and make everything but the fire cells NA
+    mask <- fire_maps[[paste0("spread_", fire$fireId[i])]]
+    mask = ifel(mask==0, NA,mask)
+    # Use the mask to extract the rids for burned grids
+    burned_rids <- as.data.frame(mask(env_grid.2, mask))
+burned_rids= burned_rids%>%filter(!is.na(env.grid))
+burned_rids$year=fire$year[i]
+  }
+  fire_year_dat=rbind(fire_year_dat,burned_rids)
+}
+fire_year_dat = fire_year_dat %>% rename("rid" = env.grid, "fire.year"=year)
+fire.year_dat.f = fire_year_dat %>% group_by(rid) %>% summarize(last.fire.year = max(fire.year))
+```
+Join together fire year and stand wide
+```{r}
+summary(stand.t.wide)
+stand.t.wide = left_join(stand.t.wide, fire.year_dat.f, by="rid")  
+stand.t.wide =stand.t.wide %>% replace(is.na(.), 0)
+stand.t.wide = stand.t.wide %>% mutate(stand.age = 300 - last.fire.year)
+```
+
+
+
+
+
+
+
+
+Preparing the modeled and benchmarking data for comparison with plots
+```{r}
+stand.t.wide.subset=stand.t.wide %>% filter(year==300 &stand.age > 34) %>% dplyr::select(count.total.ad.sap_Pima:IV.ad.sap_Bene, stand.age)  # Here we filter to stands 35 years or older to match the observations and stands 
+summary(stand.t.wide.subset)
+stand.t.wide.subset$stand.age=NULL
+benchmark_rsn=read.table("D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/cpcrw/model/output/landscape_stand-structure-RSN-validation.txt")
+summary(benchmark_rsn)
+benchmark_rsn_subset = benchmark_rsn %>% dplyr::select(count.total.ad.sap_Pima:count.total.ad.sap_Potr,ba.total.ad.sap_Pima:ba.total.ad.sap_Potr, total.density.ad.sap, total.ba.ad.sap, IV.ad.sap_Pima:IV.ad.sap_Bene)
+benchmark_rsn_subset = benchmark_rsn_subset %>% mutate(form = "Observed-RSN")
+
+benchmark_cafi = read.table("D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/cpcrw/model/output/landscape_structure-CAFI-validation.txt")
+summary(benchmark_cafi)
+benchmark_cafi_subset = benchmark_cafi %>% dplyr::select(count.total.ad.sap_Bene, count.total.ad.sap_Pigl, count.total.ad.sap_Potr, count.total.ad.sap_Pima, ba.total.ad.sap_Bene, ba.total.ad.sap_Pigl, ba.total.ad.sap_Potr, ba.total.ad.sap_Pima, total.density.ad.sap:IV.ad.sap_Bene)
+benchmark_cafi_subset = benchmark_cafi_subset %>% mutate(form = "Observed-CAFI")
+
+benchmark = rbind(benchmark_rsn_subset, benchmark_cafi_subset)
+stand.t.wide.subset=stand.t.wide.subset %>% mutate(form = "Modeled")
+data=rbind(stand.t.wide.subset, benchmark)
+summary(data)
+data= data %>% mutate(sp.dom = as.factor(ifelse(IV.ad.sap_Pima > 1,"Pima",
+                                      ifelse(IV.ad.sap_Potr > 1, "Potr",
+                                             ifelse(IV.ad.sap_Pigl > 1, "Pigl",
+                                                    ifelse(IV.ad.sap_Bene > 1, "Bene","no.species"))))))
+
+data.long = data %>% pivot_longer(cols = c(count.total.ad.sap_Pima:ba.total.ad.sap_Bene,IV.ad.sap_Pima:IV.ad.sap_Bene), names_to = c(".value","species"),names_sep = "_")
+summary(data.long)
+library(scales)
+
+
+
+
+data.long %>% filter(sp.dom!= "no.species") %>%
+ggplot(aes(x=species, y=count.total.ad.sap+1, fill=form))+
+  geom_boxplot()+
+  scale_y_log10()+
+  facet_wrap(.~sp.dom)
+summary(data.long)
+data.plot = data.long %>% filter(sp.dom=="Pima" & species=="Pima"|sp.dom=="Pigl"&species=="Pigl"|sp.dom=="Potr"&species=="Potr"|sp.dom=="Bene"&species=="Bene")
+summary(data.plot)
+d= ggplot(data.plot, aes(x=species, y=count.total.ad.sap, fill=form))+
+  geom_boxplot()+
+  scale_y_log10(labels=comma)+
+  theme_bw()+
+  scale_fill_manual(values=c("#1b7837","#762a83","#9970ab"))+
+  theme(    text  = element_text(color="black",  family="sans", size=10),
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+             axis.text.x=element_text(colour="black",size=10),
+             axis.text.y=element_text(colour="black",size=10),
+            legend.text = element_text(size=8),
+             legend.position= "",
+            legend.background = element_rect(colour = "transparent", fill = 'transparent'),
+            legend.key = element_rect(colour = "transparent", fill = 'transparent'),
+            legend.key.size = unit(0.5, "cm"))+
+  labs(x="", y=bquote(Density~(Trees~ha^-1)),fill="")
+
+
+ba=ggplot(data.plot, aes(x=species, y=ba.total.ad.sap, fill=form))+
+  geom_boxplot()+
+  scale_y_log10(labels=comma)+
+  theme_bw()+
+  scale_fill_manual(values=c("#1b7837","#762a83","#9970ab"))+
+  theme(    text  = element_text(color="black",  family="sans", size=10),
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+             axis.text.x=element_text(colour="black",size=10),
+             axis.text.y=element_text(colour="black",size=10),
+            legend.text = element_text(size=8),
+             legend.position= c(0.75,0.1),
+            legend.background = element_rect(colour = "transparent", fill = 'transparent'),
+            legend.key = element_rect(colour = "transparent", fill = 'transparent'),
+            legend.key.size = unit(0.5, "cm"))+
+  labs(x="", y=bquote(Basal~area~(m^2~ha^-1)),fill="")
+cowplot::plot_grid(d,ba,nrow=1,labels="AUTO",label_size = 10,label_fontface = "plain", label_fontfamily = "sans")
+ggsave("D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/figures/stand.density.ba.jpg", height=4.5,width=6.5, units = "in", dpi=700)
+
+
+data.long %>% filter(sp.dom=="Pima" & species=="Pima"|sp.dom=="Pigl" & species=="Pigl"|sp.dom=="Potr" & species=="Potr"|sp.dom=="Bene" & species=="Bene") %>% group_by(form, sp.dom) %>% summarize(quantile.density = quantile(count.total.ad.sap, c(0.25,0.5,0.75)),q=c(0.25,0.5,0.75),
+                                                                                                                                                                                                   quantile.ba=quantile(ba.total.ad.sap, c(0.25,0.5,0.75)),q=c(0.25,0.5,0.75))
+
+data.plot%>% group_by(form, sp.dom) %>% summarize(quantile.density = quantile(count.total.ad.sap, c(0.25,0.5,0.75)),q=c(0.25,0.5,0.75),
+                                                                                                                                                                                                   quantile.ba=quantile(ba.total.ad.sap, c(0.25,0.5,0.75)),q=c(0.25,0.5,0.75))
+                                                  
+```
+
+
+Now we need to plot where we have lost forest and how forest dominance varies as a function of aspect and SOL
+
+Mapping variables
+Final maps
+First generate a hillshade effect
+```{r}
+library(terra)
+env.grid = rast("D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/cpcrw/materials/env/env.grid.tif")
+dem=rast("D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/raw data/DEM/dem_repr.tif")
+dem=crop(dem,env.grid)
+slope=terrain(dem,v="slope",unit="radians")
+aspect=terrain(dem, v="aspect",unit="radians")
+hill=shade(slope,aspect,40,270,normalize=T)
+hill.df =as.data.frame(hill,xy=T)
+colnames(hill.df) <- c( "x", "y", "value")
+
+```
+Read in water
+```{r}
+library(sf)
+m.river=st_read("D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/raw data/hydrology/export_1594471551598/hydro_63360_py_repr_cpcrw.shp")
+c.river=st_read("D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/raw data/hydrology/attachments/cpcrw_streams.shp")
+m.river2=st_transform(m.river,st_crs(c.river))
+```
+
+```{r}
+stand.t.wide=left_join(stand.t.wide, final.init, by="ru")
+summary(stand.t.wide)
+
+
+cols.1 <- c("Dominant" = "green", "Absent" = "grey")
+cols.2 <- c( "Forested" = "darkgreen", "Non forested" = "grey")
+cols.3 <- c("Remained dominant"="#4daf4a","Now dominant"="#a65628","Now Pima"="#ff7f00", "Now Pigl"="#984ea3","Now Potr"="#377eb8","Now Bene"="#ffff33","Now mixed spruce" ="#01665e","Now mixed deciduous" ="#542788", "Now non forested" = "#e41a1c","Never there"="grey")
+cols.4 <- c("Potr"="#377eb8","Pigl"="#984ea3","Pima"="#ff7f00", "Bene"="#ffff33", "Mixed" ="#80cdc1","mixed deciduous" ="#afcd80","Not forested"="grey")
+
+map = function(dataset, variable, year.label, col){
+plot=ggplot(dataset)+
+  geom_tile(data=hill.df, aes(x=x, y=y, fill=value),show.legend = F)+
+  scale_fill_gradient(low = "grey0", high = "grey100") +
+  ggnewscale::new_scale_fill() +
+  geom_tile(aes_string(x="x", y="y", fill=variable), alpha=0.6)+
+  scale_fill_manual(values = col)+
+ggthemes::theme_map() +
+guides(fill=guide_legend(nrow=4)) +
+  geom_sf(data=m.river2,color="cadetblue2",fill="cadetblue2")+
+  geom_sf(data=c.river, color="cadetblue2")+
+  theme(        legend.position = "bottom",
+                text  = element_text(color="black",  family="sans", size=10),
+         panel.background = element_blank(),
+        plot.margin = unit(c(0, 0, 0, 0), "cm"))+
+  labs(fill="")
+return(plot)
+}
+summary(stand.t.wide)
+
+stand.t.wider = stand.t.wide %>% pivot_wider(names_from = year, values_from = c(count.total.ad.sap_Pima:stand.age))
+stand.t.wider =stand.t.wider %>% replace(is.na(.), 0)
+stand.t.wider = stand.t.wider %>% mutate(init.species.map = ifelse(init.species==1, "Pima",
+                                                                   ifelse(init.species==2, "Pigl",
+                                                                          ifelse(init.species==3, "Potr",
+                                                                                 ifelse(init.species==4,"Bene",
+                                                                                        ifelse(init.species==5, "Mixed","Not forested"))))))
+stand.t.wider= stand.t.wider %>%filter(total.density.ad.sap_300>50)
+stand.t.wider= stand.t.wider %>% mutate(dom.Pima_0 = as.factor(ifelse(init.species==1, "Dominant","Absent")),
+                                        dom.Pigl_0 = as.factor(ifelse(init.species==2, "Dominant","Absent")),
+                                        dom.Potr_0 = as.factor(ifelse(init.species==3, "Dominant","Absent")),
+                                        dom.Bene_0 =as.factor(ifelse(init.species==4, "Dominant","Absent")),
+                                        dom.Mixed_0 =as.factor(ifelse(init.species==5, "Dominant","Absent")),
+                                        forest_present_0 = as.factor(ifelse(init.species==1|init.species==2|init.species==3|init.species==4|init.species==5, "Forested", "Absent")),
+                                        dom_Pima_300 = as_factor(ifelse(IV.ad.sap_Pima_300 > 1, "Dominant","Absent")),
+                                        dom_Pigl_300 = as_factor(ifelse(IV.ad.sap_Pigl_300 > 1, "Dominant","Absent")),
+                                        dom_Potr_300 = as_factor(ifelse(IV.ad.sap_Potr_300 > 1, "Dominant","Absent")),
+                                        dom_Bene_300 = as_factor(ifelse(IV.ad.sap_Bene_300 > 1, "Dominant","Absent")),
+                                        dom_mixed_spruce_300 = as_factor(ifelse(dom_Pima_300 =="Absent" &dom_Pigl_300=="Absent" & dom_Potr_300=="Absent" &dom_Bene_300=="Absent" & IV.ad.sap_Pima_300+IV.ad.sap_Pigl_300 >1,"Dominant","Absent")),
+                                        dom_mixed_deciduous_300 = as_factor(ifelse(dom_Pima_300=="Absent" &dom_Pigl_300=="Absent" & dom_Potr_300=="Absent" &dom_Bene_300=="Absent" &IV.ad.sap_Bene_300 + IV.ad.sap_Potr_300 >1,"Dominant","Absent")),
+                                        forest_present_300 = as_factor(ifelse(count.total.ad.sap_Pima_300 >50 |count.total.ad.sap_Pigl_300 >50 |count.total.ad.sap_Potr_300 >50 | count.total.ad.sap_Bene_300 >50, "Forested", "Non forested")))
+
+stand.t.wider= stand.t.wider %>% mutate(Pima.transition = ifelse(dom.Pima_0=="Dominant"& dom_Pima_300 =="Dominant", "Remained dominant",
+                                                                  ifelse(dom.Pima_0=="Dominant"&forest_present_300=="Non forested", "Now non forested",
+                                                                 ifelse(dom.Pima_0=="Dominant"& dom_Potr_300=="Dominant", "Now Potr",
+                                                                        ifelse(dom.Pima_0=="Dominant"& dom_Pigl_300=="Dominant", "Now Pigl",
+                                                                               ifelse(dom.Pima_0=="Dominant"& dom_Bene_300=="Dominant", "Now Bene",
+                                                                                      ifelse(dom.Pima_0=="Dominant" & dom_mixed_spruce_300=="Dominant", "Now mixed spruce",
+                                                                                             ifelse(dom.Pima_0=="Dominant" & dom_mixed_deciduous_300=="Dominant", "Now mixed deciduous",
+                                                                                             ifelse(dom.Pima_0=="Absent"& dom_Pima_300 =="Dominant", "Now dominant","Never there")))))))))
+
+stand.t.wider= stand.t.wider %>% mutate(Pigl.transition = ifelse(dom.Pigl_0=="Dominant"& dom_Pigl_300 =="Dominant", "Remained dominant",
+                                                                  ifelse(dom.Pigl_0=="Dominant"&forest_present_300=="Non forested", "Now non forested",
+                                                                 ifelse(dom.Pigl_0=="Dominant"& dom_Potr_300=="Dominant", "Now Potr",
+                                                                        ifelse(dom.Pigl_0=="Dominant"& dom_Pima_300=="Dominant", "Now Pima",
+                                                                               ifelse(dom.Pigl_0=="Dominant"& dom_Bene_300=="Dominant", "Now Bene",
+                                                                                      ifelse(dom.Pigl_0=="Dominant" & dom_mixed_spruce_300=="Dominant", "Now mixed spruce",
+                                                                                             ifelse(dom.Pigl_0=="Dominant" & dom_mixed_deciduous_300=="Dominant", "Now mixed deciduous",
+                                                                                             ifelse(dom.Pigl_0=="Absent"& dom_Pigl_300 =="Dominant", "Now dominant","Never there")))))))))
+
+
+stand.t.wider= stand.t.wider %>% mutate(Potr.transition = ifelse(dom.Potr_0=="Dominant"& dom_Potr_300 =="Dominant", "Remained dominant",
+                                                                  ifelse(dom.Potr_0=="Dominant"&forest_present_300=="Non forested", "Now non forested",
+                                                                 ifelse(dom.Potr_0=="Dominant"& dom_Pigl_300=="Dominant", "Now Pigl",
+                                                                        ifelse(dom.Potr_0=="Dominant"& dom_Pima_300=="Dominant", "Now Pima",
+                                                                               ifelse(dom.Potr_0=="Dominant"& dom_Bene_300=="Dominant", "Now Bene",
+                                                                                      ifelse(dom.Potr_0=="Dominant" & dom_mixed_spruce_300=="Dominant", "Now mixed spruce",
+                                                                                             ifelse(dom.Potr_0=="Dominant" & dom_mixed_deciduous_300=="Dominant", "Now mixed deciduous",
+                                                                                             ifelse(dom.Potr_0=="Absent"& dom_Potr_300 =="Dominant", "Now dominant","Never there")))))))))
+stand.t.wider= stand.t.wider %>% mutate(Bene.transition = ifelse(dom.Bene_0=="Dominant"& dom_Bene_300 =="Dominant", "Remained dominant",
+                                                                  ifelse(dom.Bene_0=="Dominant"&forest_present_300=="Non forested", "Now non forested",
+                                                                 ifelse(dom.Bene_0=="Dominant"& dom_Pigl_300=="Dominant", "Now Pigl",
+                                                                        ifelse(dom.Bene_0=="Dominant"& dom_Pima_300=="Dominant", "Now Pima",
+                                                                               ifelse(dom.Bene_0=="Dominant"& dom_Potr_300=="Dominant", "Now Potr",
+                                                                                      ifelse(dom.Bene_0=="Dominant" & dom_mixed_spruce_300=="Dominant", "Now mixed spruce",
+                                                                                             ifelse(dom.Bene_0=="Dominant" & dom_mixed_deciduous_300=="Dominant", "Now mixed deciduous",
+                                                                                             ifelse(dom.Bene_0=="Absent"& dom_Bene_300 =="Dominant", "Now dominant","Never there")))))))))
+
+                                                                 
+   
+
+
+mapping.data=stand.t.wider
+mapping.data$Pima.transition <- factor(mapping.data$Pima.transition, levels = c("Remained dominant", "Now dominant" , "Now Pima","Now Pigl","Now Potr", "Now Bene", "Now mixed spruce", "Now mixed deciduous", "Never there"))
+#   summary(as.factor(mapping.data$Pigl.transition))
+# Pima.dom.yr0 = map(mapping.data, "dom.Pima_0", "0",cols.1)
+# Pigl.dom.yr0 = map(mapping.data, "dom.Pigl_0", "0",cols.1)
+# Potr.dom.yr0 = map(mapping.data, "dom.Potr_0", "0",cols.1)
+# Bene.dom.yr0 = map(mapping.data,"dom.Bene_0", "0",cols.1)
+# forested.yr0 = map(mapping.data,"forest_present_0", "0",cols.2)
+# 
+# Pima.dom.yr150 = map(mapping.data, "dom_Pima_150", "150",cols.1)
+# Pigl.dom.yr150 = map(mapping.data, "dom_Pigl_150", "150",cols.1)
+# Potr.dom.yr150 = map(mapping.data, "dom_Potr_150", "150",cols.1)
+# Bene.dom.yr150 = map(mapping.data, "dom_Bene_150", "150",cols.1)
+# forested.yr150 = map(mapping.data, "forest_present_150", "150",cols.2)
+# 
+# Pima.dom.yr300 = map(mapping.data, "dom_Pima_300", "300",cols.1)
+# Pigl.dom.yr300 = map(mapping.data, "dom_Pigl_300", "300",cols.1)
+# Potr.dom.yr300 = map(mapping.data, "dom_Potr_300", "300",cols.1)
+# Bene.dom.yr300 = map(mapping.data, "dom_Bene_300", "300",cols.1)
+# mixed.dom.yr300 =map(mapping.data, "dom_mixed_300", "300",cols.1)
+# forested.yr300 = map(mapping.data, "forest_present_300", "300",cols.2)
+pima.lost = map(mapping.data, "Pima.transition",300,cols.3)
+ggsave("D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/figures/pima.species.map.jpg",height=4.5,width=6.5,units="in")
+pigl.lost = map(mapping.data, "Pigl.transition",300,cols.3)
+ggsave("D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/figures/pigl.species.map.jpg",height=4.5,width=4.5,units="in")
+potr.lost = map(mapping.data, "Potr.transition",300,cols.3)
+ggsave("D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/figures/potr.species.map.jpg",height=4.5,width=4.5,units="in")
+bene.lost = map(mapping.data, "Bene.transition",300,cols.3)
+ggsave("D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/figures/bene.species.map.jpg",height=4.5,width=4.5,units="in")
+# 
+# 
+# pdf(paste("D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/cpcrw/model/output/species_presence_dom_",v,".pdf",sep=""),height=8,width=10)
+# cowplot::plot_grid(forested.yr0, forested.yr300)
+# cowplot::plot_grid(Pigl.dom.yr0, Pigl.dom.yr300,pigl.lost)
+# cowplot::plot_grid(Potr.dom.yr0,Potr.dom.yr300,potr.lost)
+# cowplot::plot_grid(Bene.dom.yr0,Bene.dom.yr300,bene.lost)
+# dev.off()
+
+
+
+init.map=ggplot(stand.t.wider)+
+  geom_tile(data=hill.df, aes(x=x, y=y, fill=value),show.legend = F)+
+  scale_fill_gradient(low = "grey0", high = "grey100") +
+  ggnewscale::new_scale_fill() +
+  geom_raster(aes(x=x, y=y, fill=as.factor(init.species.map)),alpha=0.6)+
+  scale_fill_manual(values = cols.4)+
+  ggthemes::theme_map() +
+  geom_sf(data=m.river2,color="cadetblue2",fill="cadetblue2")+
+  geom_sf(data=c.river, color="cadetblue2")+
+  theme(        legend.position = "right",
+         panel.background = element_blank(),
+        plot.margin = unit(c(0, 0, 0, 0), "cm"))+
+  labs(fill="")
+ggsave("D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/figures/init.species.map.jpg",height=4.5,width=6.5,units="in")
+
+level.2 = cowplot::plot_grid(pima.lost,pigl.lost,potr.lost,bene.lost,nrow=2)
+level.1=cowplot::plot_grid(init.map,ncol=2)
+level.3 = cowplot::plot_grid(level.1,level.2,nrow=3)
+```
+Calculating change in species composition
+```{r}
+d = mapping.data %>% dplyr::select(dom.Pima_0,dom_Pima_300,dom.Pigl_0,dom_Pigl_300,dom.Potr_0,dom_Potr_300,dom.Bene_0,dom_Bene_300,dom.Mixed_0,dom_mixed_spruce_300,dom_mixed_deciduous_300)
+
+
+calc.percentage =function(var,species,label){
+  t=length(which(var=="Dominant"))/60826*100
+  print(paste0("Species ",species," year ",label, " percentage = ",round(t,digits=1)))
+}
+length(which(d$dom.Pigl_0=="Dominant"|d$dom.Pima_0=="Dominant"))
+length(which(d$dom_Pigl_300=="Dominant"|d$dom_Pima_300=="Dominant"|d$dom_mixed_spruce_300=="Dominant"))
+
+length(which(d$dom.Potr_0=="Dominant"|d$dom.Bene_0=="Dominant"|d$dom.Mixed_0=="Dominant"))
+length(which(d$dom_Potr_300=="Dominant"|d$dom_Bene_300=="Dominant"|d$dom_mixed_deciduous_300=="Dominant"))
+
+length(which(d$dom.Pima_0=="Dominant"|d$dom.Pigl_0=="Dominant"|d$dom.Bene_0=="Dominant"|d$dom.Potr_0=="Dominant"|d$dom.Mixed_0=="Dominant"))
+length(which(d$dom_Pima_300=="Dominant"|d$dom_Pigl_300=="Dominant"|d$dom_Bene_300=="Dominant"|d$dom_Potr_300=="Dominant"|d$dom_mixed_spruce_300=="Dominant"|d$dom_mixed_deciduous_300=="Dominant"))
+length(which(mapping.data$total.density.ad.sap_300>50))
+
+calc.percentage(d$dom.Pima_0,"Pima","0")
+calc.percentage(d$dom.Pigl_0,"Pigl","0")
+calc.percentage(d$dom.Bene_0,"Bene","0")
+calc.percentage(d$dom.Potr_0,"Potr","0")
+calc.percentage(d$dom.Mixed_0,"Mixed","0")
+
+calc.percentage(d$dom_Pima_300,"Pima","300")
+calc.percentage(d$dom_Pigl_300,"Pigl","300")
+calc.percentage(d$dom_Bene_300,"Bene","300")
+calc.percentage(d$dom_Potr_300,"Potr","300")
+calc.percentage(d$dom_mixed_spruce_300,"Mixed_spruce","300")
+calc.percentage(d$dom_mixed_deciduous_300,"Mixed_deciduous","300")
+
+```

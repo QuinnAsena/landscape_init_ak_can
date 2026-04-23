@@ -1,0 +1,523 @@
+---
+title: "Bore hole analysis 4-1-2021"
+author: "Winslow Hansen"
+date: "4/1/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+read libraries and the water debug
+```{r}
+library(tidyverse)
+library(lubridate)
+```
+
+Read in data from water cycle
+```{r}
+sim_wc <- read_delim("../temp/debug_water_cycle.csv", 
+                                ";", escape_double = FALSE, trim_ws = TRUE)
+
+sim_wc=sim_wc%>%mutate(date=as.Date(as.character(date), "%Y%m%d"))
+summary(sim_wc)
+check =sim_wc %>% filter(is.na(date))
+sim_wc=sim_wc %>% filter(!is.na(date)) # removing the leap years (Feb 29)
+```
+
+Read in the environment file to link to site
+```{r}
+env=read.table("../gis/permafrost_bore_hole_environment.txt",header=T)
+env=env%>%mutate(rid = id)
+env=env%>%dplyr::select(model.climate.tableName,rid,model.settings.permafrost.organicLayerDefaultDepth)
+sim_wc=left_join(sim_wc,env,by="rid")
+sim_wc%>%group_by(model.climate.tableName) %>%summarize(max.date=max(date))
+```
+
+Prepare the simulated data for plotting together
+```{r}
+summary(sim_wc)
+sim_wc$julian=yday(sim_wc$date)
+sim_wc$year=year(sim_wc$date)
+sim_wc$month=month(sim_wc$date)
+sim_wc=sim_wc%>%mutate(depth.zero=ifelse(pftop>0  & pffreezeback==0,pftop,
+                                         ifelse(pfbottom!=2, pfbottom,pffreezeback)))
+sim_wc=sim_wc%>%mutate(groundice.high = pmax(pftop, pffreezeback),
+                       topice.min = pmin(pftop, pffreezeback))
+sim_wc=sim_wc %>% rename(SOL.depth = model.settings.permafrost.organicLayerDefaultDepth)
+check.psi=sim_wc %>%group_by(year,model.climate.tableName)%>%summarize(min.psi =mean(psi_kpa)/1000)
+check.data=sim_wc%>%filter(year>2013)%>%group_by(model.climate.tableName,year)%>% summarize(depth.zero.min=min(depth.zero),
+                                                                        depth.zero.max=max(depth.zero))
+
+summary(check.data)
+```
+Read in the Benchmarking data
+```{r}
+daily=read.table("F:/work/permafrost/permafrost_param/benchmarking data/benchmark data final/Daily_soil-temp.txt",header = T)
+```
+Interpolate between depths
+```{r}
+library(lubridate)
+d.s=daily%>%mutate(Date=as.Date(Date,format="%m/%d/%Y"))
+d.s=d.s%>%mutate(year=year(Date),
+                 month=month(Date),
+                 day=day(Date),
+                 julian=yday(Date))
+
+
+    zero.isotherm=function(i,j){
+     d.s.filter=d.s%>%filter(Site.name == i & Date == j)
+     d.s.filter=d.s.filter[complete.cases(d.s.filter), ]
+     if(nrow(d.s.filter)==0){
+       return(s=NA)
+  
+     }else if (d.s.filter$temp_4m > 0 & d.s.filter$temp_2m > 0 & d.s.filter$temp_1.5m > 0 & d.s.filter$temp_1.0m > 0  & d.s.filter$temp_0.5m > 0  & d.s.filter$temp_0.03m > 0){
+       return(s = 0)
+     } else if (d.s.filter$temp_4m < -0.5 & d.s.filter$temp_2m < -0.5 & d.s.filter$temp_1.5m < -0.5 & d.s.filter$temp_1.0m < -0.5  & d.s.filter$temp_0.5m < -0.5  & d.s.filter$temp_0.03m < -0.5){
+          return(s = 0)
+     } else if (d.s.filter$temp_0.03m == 0){
+       return(s=0)
+     } else if (d.s.filter$temp_0.5m == 0){
+       return(s=0.5)
+     } else if (d.s.filter$temp_1.0m ==0) {
+       return(s = 1)
+     } else if (d.s.filter$temp_1.5m == 0){
+       return(s = 1.5 )
+     } else if (d.s.filter$temp_2m == 0){
+       return (s = 2)
+     } else if (d.s.filter$temp_4m == 0){
+       return (s = 4)
+     }else if(d.s.filter$temp_0.03m > 0 & d.s.filter$temp_0.5m < 0){
+             diff =(0 - d.s.filter$temp_0.5m)/(d.s.filter$temp_0.03m-d.s.filter$temp_0.5m)*(0.03-0.5)
+           return (s =(diff+0.5))
+     }else if(d.s.filter$temp_0.5m > 0 & d.s.filter$temp_1.0m < 0){
+             diff =(0 - d.s.filter$temp_1.0m)/(d.s.filter$temp_0.5m-d.s.filter$temp_1.0m)*(0.5-1)
+           return (s =(diff+1))
+     }else if(d.s.filter$temp_1.0m > 0 & d.s.filter$temp_1.5m < 0){
+             diff =(0 - d.s.filter$temp_1.5m)/(d.s.filter$temp_1.0m-d.s.filter$temp_1.5m)*(1-1.5)
+           return (s =(diff+1.5))
+     }else if(d.s.filter$temp_1.5m > 0 & d.s.filter$temp_2m < 0){
+             diff =(0 - d.s.filter$temp_2m)/(d.s.filter$temp_1.5m-d.s.filter$temp_2m)*(1.5-2)
+           return (s =(diff+2))
+     }else if(d.s.filter$temp_2m > 0 & d.s.filter$temp_4m < 0){
+             diff =(0 - d.s.filter$temp_4m)/(d.s.filter$temp_2m-d.s.filter$temp_4m)*(2-4)
+           return (s =(diff+4))
+                   
+          }else if(d.s.filter$temp_0.03m < -0.5 & d.s.filter$temp_0.5m>-0.5){
+             diff =(-0.5 - d.s.filter$temp_0.03m)/(d.s.filter$temp_0.5m-d.s.filter$temp_0.03m)*(0.5-0.03)
+           return (s =(diff+0.03))
+          }else if(d.s.filter$temp_0.5m < -0.5 & d.s.filter$temp_1.0m>-0.5){
+             diff =(-0.5 - d.s.filter$temp_0.5m)/(d.s.filter$temp_1.0m-d.s.filter$temp_0.5m)*(1-0.5)
+           return (s =(diff+0.5))
+          }else if( d.s.filter$temp_1.0m < -0.5 & d.s.filter$temp_1.5m>-0.5){
+             diff =(-0.5 - d.s.filter$temp_1.0m)/(d.s.filter$temp_1.5m-d.s.filter$temp_1.0m)*(1.5-1)
+           return (s =(diff+1))
+          }else if( d.s.filter$temp_1.5m < -0.5 & d.s.filter$temp_2m>-0.5){
+             diff =(-0.5 - d.s.filter$temp_1.5m)/(d.s.filter$temp_2m-d.s.filter$temp_1.5m)*(2-1.5)
+           return (s =(diff+1.5))
+             }else if(d.s.filter$temp_2m < -0.5 & d.s.filter$temp_4m>-0.5){
+             diff =(-0.5 - d.s.filter$temp_2m)/(d.s.filter$temp_4m-d.s.filter$temp_2m)*(4-2)
+           return (s =(diff+2))
+                
+             }else{
+               0
+             }
+    }
+    
+   
+    
+    
+    depth = data.frame()
+for(i in levels(as.factor(d.s$Site.name))){
+for (j in levels(as.factor(d.s$Date))){
+
+   k= data.frame("depth.zero" = zero.isotherm(i,j))
+   k$Date=j
+   k$Site.name=i
+   depth=rbind(depth,k)
+  }
+}
+depth=depth%>%mutate(date=as.Date(Date),
+                     Site.name=as.factor(Site.name))
+depth$Date=as.Date(depth$Date)
+summary(depth)
+depth2=depth[complete.cases(depth), ]
+summary(depth2)
+env2=env %>%dplyr::select(Site.name=model.climate.tableName, SOL.depth= model.settings.permafrost.organicLayerDefaultDepth)
+depth2=left_join(depth2,env2)
+depth2=depth2%>%mutate(depth.zero = depth.zero-SOL.depth)  # account for the depth of the soil organic layer (our best guesstimate!)
+depth2=depth2%>% mutate(depth.zero = ifelse(depth.zero>2,0,depth.zero))  # this is to account for the face we are modeling permafrost or no permafrost down to 2 meters but need to go beyond that in the observations since the organic layer is included in the observations but not in simulations
+depth2=depth2%>%mutate(year= year(date))
+depth2=depth2%>%group_by(year)%>% mutate(depth.zero.final = ifelse(depth.zero < lag(depth.zero) ,0,depth.zero))  #This helps us capture actual thaw and freeze up. As surface temperature drops in in the early fall it causes our interpolated depth to erroneously decline. This helps us show the clearest picture of the dynamics. 
+depth2=depth2 %>% mutate(depth.zero=depth.zero.final)
+depth2$year=NULL
+depth2$depth.zero.final=NULL
+summary(depth2)
+depth2%>%filter(is.na(depth.zero))
+```
+
+```{r}
+sim_wc.sub=sim_wc%>%dplyr::select(depth.zero,date,Site.name=model.climate.tableName, SOL.depth)
+sim_wc.sub=sim_wc.sub%>%mutate(form="Simulated")
+depth2=depth2%>%mutate(form="Observed")
+depth2$Date=NULL
+total=rbind(sim_wc.sub,depth2)
+total$julian=yday(total$date)
+total$year=year(total$date)
+total$month=month(total$date)
+
+total = total %>% filter(year>2013&year<2019)
+total=total%>%mutate(depth.zero = ifelse(depth.zero<0,0,depth.zero)) # This accounts for when active layer is shallower than the soil organic layer that we are estimating so depth can't be negative
+total=total %>% mutate(depth.zero = ifelse(depth.zero == 0, NA,depth.zero))
+summary(total) 
+
+```
+Read in the Snow depth data
+```{r}
+snow=read.table("F:/work/permafrost/permafrost_param/benchmarking data/benchmark data final/bore.hole.snow.depth.txt",header = T)
+snow=snow%>%mutate(date= as.Date(date),
+                   year= year(date),
+                   month= month(date),
+                   day=day(date),
+                   julian=yday(date))
+outliers=snow %>% filter(year==2013 & Site.name=="APP_2009_013")
+ggplot(outliers, aes(x=date, y = Snow.depth))+
+  geom_point()
+snow=snow %>%mutate(outlier = ifelse(Site.name=="APP_2009_013" & year ==2013 & julian == 13|
+                                       Site.name=="APP_2009_013" & year ==2014 & julian == 13|
+                                       Site.name=="APP_2009_014" & year ==2010 & julian == 21|
+                                       Site.name=="APP_2009_033" & year ==2003 & julian == 61|
+                                       Site.name=="APP_2009_033" & year ==2003 & julian == 77,1,0))
+snow=snow %>% filter(outlier!=1)  # Removing observed weeks above where snow depth drops to zero and then goes up in the next week. These are mistaken values
+snow=snow%>%dplyr::select(Site.name, Snow.depth,date,year, julian )
+snow.sum1=snow %>% group_by(Site.name,year)%>%mutate(first_melt= Snow.depth == 0 & !duplicated(Snow.depth == 0)) 
+
+summary(snow.sum1)
+snow.sum=snow.sum1 %>%group_by(Site.name, year)%>% summarise(max.depth = max(Snow.depth),
+                                                        day.melt =  julian[which(first_melt == TRUE)])
+snow.sum=snow.sum %>% mutate(form = "Observed")
+sim_wc.snow=sim_wc  %>% dplyr::select(Site.name = model.climate.tableName, Snow.depth =snow_height, date, year, julian )
+sim_wc.snow = sim_wc.snow %>% arrange(Site.name, date)
+sim_wc.snow.sum1=sim_wc.snow %>% group_by(Site.name,year)%>%mutate(first_melt= Snow.depth == 0 & !duplicated(Snow.depth == 0)) 
+sim_wc.snow.sum2= sim_wc.snow.sum1 %>% filter(year<2018)%>% group_by(Site.name, year)%>% summarise(max.depth = max(Snow.depth),
+                                                        day.melt =  julian[which(first_melt == TRUE)])
+sim_wc.snow.sum2 = sim_wc.snow.sum2 %>% mutate(form = "Simulated")
+total.snow=rbind(snow.sum, sim_wc.snow.sum2)
+```
+Plot snow comparison
+```{r}
+ totalsnow.wide = total.snow %>% pivot_wider(names_from = form, values_from = c(max.depth, day.melt))
+totalsnow.wide=totalsnow.wide[complete.cases(totalsnow.wide), ]
+summary(totalsnow.wide)
+max.depth=ggplot(totalsnow.wide, aes(x=max.depth_Observed, y=max.depth_Simulated/100))+
+  geom_point()+
+  theme_bw()+
+  theme(    text  = element_text(color="black",  family="sans", size=10),
+             panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+             axis.text.x=element_text(colour="black",size=10),
+             axis.text.y=element_text(colour="black",size=10),
+             legend.text = element_text(size=10),
+             plot.title = element_text(colour="black",size=10))+
+  geom_abline()+
+  scale_y_continuous(limits=c(0,2.5))+
+  scale_x_continuous(limits=c(0,2.5))+
+ # geom_text(aes(label=year),hjust=0, vjust=0)+
+  #annotate("text", x=0.4, y=2.4, label= "RMSE =  0.32") + 
+  labs(x= "Obs. max. annual snow depth (m)", y="Sim. max. annual snow depth (m)")
+summary(lm(max.depth_Simulated/100~max.depth_Observed, data=totalsnow.wide))
+Metrics::rmse(totalsnow.wide$max.depth_Observed, totalsnow.wide$max.depth_Simulated/100)
+
+day.melt=ggplot(totalsnow.wide, aes(x=day.melt_Observed, y=day.melt_Simulated))+
+  geom_point()+
+  theme_bw()+
+  theme(    text  = element_text(color="black",  family="sans", size=10),
+             panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+             axis.text.x=element_text(colour="black",size=10),
+             axis.text.y=element_text(colour="black",size=10),
+             legend.text = element_text(size=10),
+             plot.title = element_text(colour="black",size=10))+
+  geom_abline()+
+  scale_y_continuous(limits=c(25,175))+
+  scale_x_continuous(limits=c(25,175))+
+  #geom_text(aes(label=year),hjust=0, vjust=0)+
+  #annotate("text", x=55, y=170, label= "RMSE =  6.9") + 
+  labs(x= "Obs. day of zero snow", y="Sim. day of zero snow")
+summary(lm(day.melt_Simulated~day.melt_Observed, data=totalsnow.wide))
+Metrics::rmse(totalsnow.wide$day.melt_Observed, totalsnow.wide$day.melt_Simulated)
+
+snow.plot= cowplot::plot_grid(max.depth,day.melt,align = "hv",nrow=1, labels = c("A","B"),label_fontface = "plain",label_fontfamily = "sans", label_size = 10)
+
+```
+Prepare temperature data
+Fix dates
+```{r}
+
+d.s.subset.fr=d.s%>%dplyr::select(Site.name,temp_0.03m,temp_0.5m,temp_1.0m,temp_1.5m,temp_2m,temp_4m, temp_6m, year,julian)
+
+```
+
+REad in the climate data for this site from simulations
+
+```{r}
+
+output=DBI::dbConnect(RSQLite::SQLite(), "F:/work/permafrost/permafrost_param/borehole_test/model/databases/Permafrost.borehole_climate.sqlite")
+climate.total=data.frame()
+for (i in levels(as.factor(total$Site.name))){
+ climate=tbl(output,i)
+climate=climate%>%filter(year>2013)%>%collect()
+climate$Site.name=as.factor(i)
+climate.total=rbind(climate.total,climate)
+}
+DBI::dbDisconnect(output)
+
+ climate.total$date <- as.Date(with(climate.total, paste(year, month, day,sep="-")), "%Y-%m-%d")
+ climate.total$julian=yday(climate.total$date)
+climate.total=climate.total%>%mutate(temp.sim=(max_temp+min_temp)/2)%>%dplyr::select(Site.name,temp.sim,year,julian)
+```
+
+```{r}
+
+
+temp.total=left_join(d.s.subset.fr,climate.total,by=c("Site.name","year","julian"))
+temp.total=temp.total%>%dplyr::select(Site.name, temp_0.03m,temp_0.5m,temp_1.0m,temp_1.5m,temp_2m,temp_4m, temp_6m,temp.sim,year,julian)
+temp.total.long = temp.total%>%pivot_longer(cols = temp_0.03m:temp.sim,names_to="form",values_to="temp")
+summary(temp.total.long)
+
+s=temp.total.long %>% filter(is.na(temp))
+s =temp.total.long=temp.total.long%>% filter(!is.na(temp))
+
+```
+
+```{r}
+   Run =41
+SOL.lambda=0.12
+Deep.pf.depth=5
+for (i in levels(as.factor(total$Site.name))){
+  for (j in 2014:2018){
+data.temp1=temp.total.long%>%filter(Site.name==i & year==j& form =="temp.sim")
+plot1=ggplot(data.temp1, aes(x=julian,y=temp,color=form))+
+       geom_line()+
+    theme_bw()+
+  theme(legend.position =  c(0.8, 0.2))+
+    labs(title=paste0(i," ",j,"SOL lambda = ", SOL.lambda, "Deep.pf.depth =", Deep.pf.depth))
+
+data.temp2=temp.total.long%>%filter(Site.name==i & year==j& form != "temp.sim" )
+
+plot2=ggplot(data.temp2, aes(x=julian,y=temp,color=form))+
+       geom_line()+
+  theme_bw()+
+    theme(legend.position =  c(0.8, 0.2))+
+  
+    labs(title=paste0(i," ",j,"SOL lambda = ", SOL.lambda, "Deep.pf.depth =", Deep.pf.depth))
+
+   
+data1=sim_wc%>%filter(model.climate.tableName==i&year==j)
+data2=total%>%filter(Site.name==i&year==j)
+data3=snow %>%filter(Site.name==i&year==j)
+plot3=ggplot(data1, aes(x=julian,y=thermalConductivity))+
+       geom_line()+
+  theme_bw()+
+    labs(title=paste0(i," ",j,"SOL lambda = ", SOL.lambda, "Deep.pf.depth =", Deep.pf.depth))
+
+
+
+plot4=ggplot()+
+       geom_ribbon(data=data1, aes( x=julian, ymax=2, ymin=pfbottom), fill="lightblue",alpha=0.5 ) + 
+       geom_ribbon(data=data1, aes( x=julian,ymax=pfbottom, ymin=groundice.high), fill="darkgray",alpha=0.5 ) + 
+       geom_ribbon(data=data1, aes( x=julian,ymax=groundice.high, ymin=topice.min), fill="lightblue",alpha=0.5 ) + 
+       geom_ribbon(data=data1, aes( x=julian,ymax=topice.min, ymin=0), fill="darkgray",alpha=0.5 )+
+       geom_ribbon( data=data1, aes(x=julian, ymax= -snow_height/100, ymin=0), fill = "white", color="black") +
+       geom_point(data=data3, aes(x=julian, y=-Snow.depth))+
+      geom_point(data= data2,aes(x=julian,y=depth.zero,color=form),size=2,alpha=0.1)+
+    theme_bw()+
+  theme(legend.position =  c(0.8, 0.2))+
+       scale_y_reverse()+
+    labs(title=paste0(i," ",j,"SOL lambda = ", SOL.lambda, "Deep.pf.depth =", Deep.pf.depth))
+
+  plot.y=cowplot::plot_grid(plot1,plot2,plot3,plot4,nrow=4,align = "hv")
+  print(plot.y)
+  ggsave(paste0("F:/work/permafrost/permafrost_param/borehole_test/model/output/",i,"/Year",j,"_Run_",Run,".jpg"),width = 10,
+  height = 20)
+
+  }
+
+}
+
+
+levels(as.factor(total$Site.name))
+```
+Evaluating permafrost places
+```{r}
+
+check1=total%>%filter(Site.name=="APP_2009_033" & year==2015 |Site.name=="APP_2009_033" & year==2016|Site.name=="APP_2009_033" &year==2017 | Site.name=="APP_2009_033" &year==2018 )
+check2=total%>%filter(Site.name=="APP_2009_039" & year==2015 | Site.name=="APP_2009_039" &year==2016 |Site.name=="APP_2009_039" & year==2018 )
+check3=total%>%filter(Site.name=="APP_2009_093" & year==2014 |Site.name=="APP_2009_093" &year==2015 | Site.name=="APP_2009_093" &year==2016 | Site.name=="APP_2009_093" &year==2018 )
+check4=total%>%filter(Site.name=="APP_2010_038" & year==2014 |Site.name=="APP_2010_038" &year==2015 | Site.name=="APP_2010_038" &year==2016|Site.name=="APP_2010_038" &year==2017 | Site.name=="APP_2010_038" &year==2018 )
+check5=total%>%filter(Site.name=="APP_2010_116" & year==2016|Site.name=="APP_2010_116" &year==2017 | Site.name=="APP_2010_116" &year==2018 )
+check6=total%>%filter(Site.name=="APP_2010_192" & year==2017 )
+check7=total%>%filter(Site.name=="APP_2011_005" &  year==2016|Site.name=="APP_2011_005" & year==2017 | Site.name=="APP_2011_005" & year==2018 )
+
+final=rbind(check1,check2,check3,check4,check5,check6,check7)
+check.summary=final %>%group_by(Site.name,year, form, SOL.depth) %>% filter(julian>150 &julian< 300) %>%summarize(max.depth.zero = max(depth.zero,na.rm=T),
+                                                                              day.max =  max(julian[which(depth.zero == max.depth.zero)]))
+ check.summary.2 = check.summary %>% pivot_wider(names_from = form, values_from = c(max.depth.zero,day.max))
+ check.summary.2 = check.summary.2 %>% mutate(day.diff = day.max_Observed - day.max_Simulated)
+summary(check.summary.2)
+ pf=ggplot(check.summary.2, aes(x=max.depth.zero_Observed, y=max.depth.zero_Simulated))+
+  geom_point()+
+  theme_bw()+
+  theme(    text  = element_text(color="black",  family="sans", size=10),
+             panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+             axis.text.x=element_text(colour="black",size=10),
+             axis.text.y=element_text(colour="black",size=10),
+             legend.text = element_text(size=10),
+             plot.title = element_text(colour="black",size=10))+
+  geom_abline()+
+  scale_y_continuous(limits=c(0,2))+
+  scale_x_continuous(limits=c(0,2))+
+  #annotate("text", x=0.6, y=1.9, label= "RMSE =  0.36") + 
+  labs(x= "Obs. max. annual thaw depth (m)", y="Sim. max. annual thaw depth (m)")
+
+summary(lm(max.depth.zero_Observed~max.depth.zero_Simulated, data=check.summary.2))
+Metrics::rmse(check.summary.2$max.depth.zero_Observed, check.summary.2$max.depth.zero_Simulated)
+Metrics::rmse(check.summary.2$day.max_Observed, check.summary.2$day.max_Simulated)
+
+
+
+```
+Evaluating seasonal freezing sites
+APP_2009_012 (2015-2018) , APP_2009_013 (2015-2018), APP_2009_014 (2015-2018), APP_2009_026 (2015-2016), APP_2009_028 (2015-2018), APP_2009_031 (2015-2018), APP_2009_032 (2015-2018), APP_2009_036 (2016-2018), APP_2010_156 (2015-2018), APP_2010_164 (2016-2018)
+```{r}
+
+check1=total%>%filter(Site.name=="APP_2009_012" & year==2015 |Site.name=="APP_2009_012" & year==2016|Site.name=="APP_2009_012" &year==2017 | Site.name=="APP_2009_012" &year==2018 )
+check2=total%>%filter(Site.name=="APP_2009_013" & year==2015 | Site.name=="APP_2009_013" &year==2016 | Site.name=="APP_2009_013" &year==2017 |Site.name=="APP_2009_013" & year==2018 )
+check3=total%>%filter(Site.name=="APP_2009_014" & year==2016|Site.name=="APP_2009_014" &year==2017 | Site.name=="APP_2009_014" &year==2018 )
+check4=total%>%filter(Site.name=="APP_2009_026" & year==2015 |Site.name=="APP_2009_026" & year==2016)
+check5=total%>%filter(Site.name=="APP_2009_028" & year==2015 |Site.name=="APP_2009_028" & year==2016|Site.name=="APP_2009_028" &year==2017 | Site.name=="APP_2009_028" &year==2018 )
+check6=total%>%filter(Site.name=="APP_2009_031" & year==2015 |Site.name=="APP_2009_031" & year==2016|Site.name=="APP_2009_031" &year==2017 | Site.name=="APP_2009_031" &year==2018 )
+check7=total%>%filter(Site.name=="APP_2009_032" & year==2015 |Site.name=="APP_2009_032" & year==2016|Site.name=="APP_2009_032" &year==2017 | Site.name=="APP_2009_032" &year==2018 )
+check8=total%>%filter(Site.name=="APP_2009_036" & year==2015 |Site.name=="APP_2009_036" & year==2016|Site.name=="APP_2009_036" &year==2017 | Site.name=="APP_2009_036" &year==2018 )
+check9=total%>%filter(Site.name=="APP_2010_156" & year==2015 |Site.name=="APP_2010_156" & year==2016|Site.name=="APP_2010_156" &year==2017 | Site.name=="APP_2010_156" &year==2018 )
+check10=total%>%filter(Site.name=="APP_2010_164" & year==2016|Site.name=="APP_2010_164" &year==2017 | Site.name=="APP_2010_164" &year==2018 )
+
+final=rbind(check1,check2,check3,check4,check5,check6,check7,check8,check9,check10)
+
+
+check.summary=final  %>% filter(julian< 100)%>%group_by(Site.name,year, form,SOL.depth) %>%summarize(max.depth.zero = max(depth.zero,na.rm=T),
+                                                                                                                 day.max =  max(julian[which(depth.zero == max.depth.zero)]))
+ check.summary.2 = check.summary %>% pivot_wider(names_from = form, values_from = c(max.depth.zero, day.max))
+ 
+ 
+  check.summary.2 = check.summary.2 %>% mutate(max.depth.zero_Simulated = ifelse(Site.name=="APP_2009_012" & year==2017, 1.9821151,
+                                                                                                           ifelse(Site.name=="APP_2009_036" &year==2017, 1.9963045,
+                                                                                                                  ifelse(Site.name=="APP_2009_013" &year==2017,1.9791584,
+                                                                                                                         ifelse(Site.name=="APP_2009_036" & year==2016,1.9833178,
+                                                                                                                                ifelse( Site.name=="APP_2009_036" & year==2018, 1.9904930,
+                                                                                                                                        ifelse(Site.name=="APP_2010_164" &year==2017,1.9923523 ,max.depth.zero_Simulated))))))) # At these sites and years, simulated freezeup happened the year earlier and thus is missed when calculating by year. Manually fixing.
+  
+check.summary.2 = check.summary.2 %>% mutate(day.max_Simulated = ifelse(Site.name=="APP_2009_012" & year==2017, -20,
+                                                                                                           ifelse(Site.name=="APP_2009_036" &year==2017, -32,
+                                                                                                                  ifelse(Site.name=="APP_2009_013" &year==2017,-16,
+                                                                                                                         ifelse(Site.name=="APP_2009_036" & year==2016,-18,
+                                                                                                                                ifelse( Site.name=="APP_2009_036" & year==2018, -2,
+                                                                                                                                        ifelse(Site.name=="APP_2010_164" &year==2017, -2, day.max_Simulated))))))) # At these sites and years, simulated freezeup happened the year earlier and thus is missed when  
+  
+  
+ check.summary.2 = check.summary.2 %>% mutate(day.diff = day.max_Observed - day.max_Simulated)
+
+check.summary.2 =check.summary.2 %>% filter(!is.na(max.depth.zero_Observed)) # remove year 2015 from this site which does not have a complete observed record but was needed to get the maximum freezeup in the next year corrected above
+ 
+summary(check.summary.2)
+
+npf=ggplot(check.summary.2, aes(x=max.depth.zero_Observed, y=max.depth.zero_Simulated))+
+  geom_point()+
+   theme_bw()+
+  theme(    text  = element_text(color="black",  family="sans", size=10),
+             panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+             axis.text.x=element_text(colour="black",size=10),
+             axis.text.y=element_text(colour="black",size=10),
+             legend.text = element_text(size=10),
+             plot.title = element_text(colour="black",size=10))+
+  geom_abline()+
+ scale_y_continuous(limits=c(0,2))+
+  scale_x_continuous(limits=c(0,2))+
+ # annotate("text", x=0.6, y=1.9, label= "RMSE =   0.44") + 
+  labs(x= "Obs. max. annual freeze depth (m)", y="Sim. max. freeze depth (m)")
+
+summary(lm(max.depth.zero_Observed~max.depth.zero_Simulated, data=check.summary.2))
+Metrics::rmse(check.summary.2$max.depth.zero_Observed, check.summary.2$max.depth.zero_Simulated)
+Metrics::rmse(check.summary.2$day.max_Observed, check.summary.2$day.max_Simulated)
+
+part.1 = cowplot::plot_grid(pf,npf,nrow=1,labels = c("C","D"),label_fontface = "plain",label_fontfamily = "sans", label_size = 10)
+cowplot::plot_grid(snow.plot,part.1,nrow=2)
+ggsave("F:/work/permafrost/ms/appendices/figures/snow_pf.jpg", width = 6.5, height = 6)
+
+```
+
+```{r}
+i = "APP_2010_038"
+j=2016
+data1=sim_wc%>%filter(model.climate.tableName==i&year==j)
+data2=total%>%filter(Site.name==i&year==j)
+data3= snow %>% filter(Site.name==i&year==j)
+pf.annual=ggplot()+
+       geom_ribbon(data=data1, aes( x=julian, ymax=2, ymin=pfbottom), fill="lightblue",alpha=0.5 ) + 
+       geom_ribbon(data=data1, aes( x=julian,ymax=pfbottom, ymin=groundice.high), fill="darkgray",alpha=0.5 ) + 
+       geom_ribbon(data=data1, aes( x=julian,ymax=groundice.high, ymin=topice.min), fill="lightblue",alpha=0.5 ) + 
+       geom_ribbon(data=data1, aes( x=julian,ymax=topice.min, ymin=0), fill="darkgray",alpha=0.5 )+
+      geom_path( data=data1, aes(x=julian, y= -snow_height/100), color="#b35806",size=1) +
+       geom_path(data=data3, aes(x=julian, y=-Snow.depth), color="#542788",size=1)+
+      geom_point(data= data2,aes(x=julian,y=depth.zero,color=form),size=2)+
+      scale_color_manual(values = c("#542788","#b35806"))+
+    theme_bw()+
+  theme(legend.position =  c(0.8, 0.9),
+         panel.grid.major = element_blank(),
+         legend.background = element_rect(colour = "transparent", fill = 'transparent'),
+            legend.key = element_rect(colour = "transparent", fill = 'transparent'),
+            panel.grid.minor = element_blank(),
+             axis.text.x=element_text(colour="black",size=10),
+             axis.text.y=element_text(colour="black",size=10),
+             legend.text = element_text(size=10),
+             plot.title = element_text(colour="black",size=10))+
+       scale_y_reverse()+
+      # annotate("text", x=30, y=-1.4, label= "(C) Permafrost") + 
+    labs(x= "Julian day", y="Depth (m)",color="")
+
+ 
+i = "APP_2009_012"
+j=2016
+data1=sim_wc%>%filter(model.climate.tableName==i&year==j)
+data2=total%>%filter(Site.name==i&year==j)
+
+npf.annual=ggplot()+
+       geom_ribbon(data=data1, aes( x=julian, ymax=2, ymin=pfbottom), fill="lightblue",alpha=0.5 ) + 
+       geom_ribbon(data=data1, aes( x=julian,ymax=pfbottom, ymin=groundice.high), fill="darkgray",alpha=0.5 ) + 
+       geom_ribbon(data=data1, aes( x=julian,ymax=groundice.high, ymin=topice.min), fill="lightblue",alpha=0.5 ) + 
+       geom_ribbon(data=data1, aes( x=julian,ymax=topice.min, ymin=0), fill="darkgray",alpha=0.5 )+
+      geom_path( data=data1, aes(x=julian, y= -snow_height/100), color="#b35806",size=1) +
+       geom_path(data=data3, aes(x=julian, y=-Snow.depth), color="#542788",size=1)+
+      geom_point(data= data2,aes(x=julian,y=depth.zero,color=form),size=2)+
+        scale_color_manual(values = c("#542788","#b35806"))+
+         scale_y_reverse()+
+    theme_bw()+
+  theme(legend.position =  "none",
+         panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+             axis.text.x=element_text(colour="black",size=10),
+             axis.text.y=element_text(colour="black",size=10),
+             legend.text = element_text(size=10),
+        legend.background = element_rect(colour = "transparent", fill = 'transparent'),
+            legend.key = element_rect(colour = "transparent", fill = 'transparent'),
+             plot.title = element_text(colour="black",size=10))+
+       #  annotate("text", x=30, y=-0.7, label= "No-permafrost") + 
+    labs(x= "Julian day", y="Depth (m)",color="")
+
+cowplot::plot_grid(pf.annual,npf.annual,nrow=2,labels = c("A","B"),label_fontface = "plain",label_fontfamily = "sans", label_size = 10, align="hv")
+ggsave("F:/work/permafrost/ms/appendices/figures/fig.s1.3.pdf", width = 6.5, height = 6.5)
+
+```

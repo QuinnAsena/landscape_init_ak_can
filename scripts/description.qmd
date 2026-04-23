@@ -573,3 +573,12 @@ Root directory scripts are for running iLand locally or on the Derecho/Casper HP
 
 1. `run_iland_csv_cpxml.sh`, is the bash script for running iLand locally or on Derecho
 2. `iland_scenarios.csv`, controls the inputs called by `run_iland_csv_cpxml.sh`
+
+## analysis-scripts
+
+`/analysis-scripts/` contains scripts for processing iLand outputs.
+
+## workflow-output
+
+`/workflow-output/` contains the .qmd files that do pose-processing wrangling and
+visualisation of the processsed outputs.

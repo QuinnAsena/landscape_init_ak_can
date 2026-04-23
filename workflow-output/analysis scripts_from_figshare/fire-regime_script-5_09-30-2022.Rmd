@@ -1,0 +1,714 @@
+---
+title: "Fire evaluation"
+author: "Lora Murphy"
+date: "9/29/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Goals:
+Quantify the fire return interval, average fire severity (percent crown kill), percent stand replacing, average fire size, and annual area burned. Compare with the observed fires as best as you can from the large fire database. 
+
+Large fire database is in data_sets/fire directory.
+
+Fire rotation period is functionally equivalent to fire return interval, so we will work with that.
+
+```{r echo=FALSE, message=FALSE}
+library(RSQLite)
+library(tidyverse)
+library(rgdal)
+library(ggplot2)
+library(raster)
+library(rgeos)
+library(kableExtra)
+library(maptools)
+
+# iLand fire table output documentation
+#-----------------------------------------------------------------------------#
+# caption     | datatype | description
+#-----------------------------------------------------------------------------#
+# year            integer simulation year
+# fireId          integer unique ID of the fire event (1..N) on the whole project area.
+# area_plan_m2    integer	Area of the planned fire m2
+# area_m2         integer	Realized area of burnt cells m2
+# iterations      integer	Number of iterations of the cellular automaton
+# coord_x         double	Coordinates (x) of the starting point (m)
+# coord_y         double	Coordinates (y) of the starting point (m)
+# n_trees	        integer total number of trees on all burning cells
+# n_trees_died	  double	total number of trees that were killed by the fire
+# basalArea_total	double	sum of basal area of trees >4m height (m2) located on pixels that burn during an event
+# basalArea_died  double	sum of basal area of died trees (>4m, m2)
+# psme_died       double	fraction of doug fir that died (based on basal area of psme trees on burning pixels)
+# avgFuel_kg_ha	  double	average total fuel (forest floor + dwd) of burning cells (kg biomass/ha)
+# windSpeed       double	current wind speed during the event (m/s)
+# windDirection   double	current wind direction during the event (°) 
+#-----------------------------------------------------------------------------#
+outdoc_iland <- data.frame(
+  variable = c("year", "fireId", "area_plan_m2", "area_m2", "iterations",
+               "coord_x", "coord_y", "n_trees", "n_trees_died", 
+               "basalArea_total", "basalArea_died", "psme_died", 
+               "avgFuel_kg_ha", "windSpeed", "windDirection"),
+  description = c(
+    "simulation year",
+    "unique ID of the fire event (1..N) on the whole project area.",
+    "Area of the planned fire m2",
+    "Realized area of burnt cells m2",
+    "Number of iterations of the cellular automaton",
+    "Coordinates (x) of the starting point (m)",
+    "Coordinates (y) of the starting point (m)",
+    "total number of trees on all burning cells",
+    "total number of trees that were killed by the fire",
+    "sum of basal area of trees >4m height (m2) located on pixels that burn during an event",
+    "sum of basal area of died trees (>4m, m2)",
+    "fraction of doug fir that died (based on basal area of psme trees on burning pixels)",
+    "average total fuel (forest floor + dwd) of burning cells (kg biomass/ha)",
+    "current wind speed during the event (m/s)",
+    "current wind direction during the event (°)"
+  )
+)
+
+#-----------------------------------------------------------------------------#
+# Historical data metadata
+#-----------------------------------------------------------------------------#
+# NAME              Name of the fire, assigned by Dispatch Centers.
+# RECORDNUMBER      Alaska Interagency Coordination Center (AICC) issued fire number.
+# ACRES             GIS calculated area, expressed in acres.
+# AFSNUMBER         AFS fire code.
+# DOFNUMBER         State of Alaska fire code.
+# USFSNUMBER        USFS fire code.
+# ADDNUMBER         Field for internal AFS use.
+# PERIMETERDATE     Date perimeter was acquired OR date of the post-fire image when imagery is the data source for the perimeter.
+# LATESTPERIMETER   Indicates that the record represent that most recent fire perimeter.
+# SOURCE            Source used to delineate the fire perimeter.
+# SOURCEMETHOD      Optional: Perimeter mapping source/platform.
+# SOURCECLASS       Optional: Estimated accuracy of the fire perimeter.
+# AGENCYACRES       Agency-provided estimate/calculation of fire size.
+# ACREAGEMETHOD     How acreage was calculated.
+# COMMENTS          Any comments associated with the data record.
+# FIREID            ID for the fire. This field is used to join fire perimeter (polygon) records to fire locations (point). Perimeter FIREID = Fire points ID.
+# FIREYEAR          Year the fire occured.
+# UPDATETIME        Time the data record was updated
+# UPDATEUSER        User updating the record.
+# USEDONFINALREPORT Identified is the perimeter was used in the final fire report. Yes or No
+# FPOUTDATE         Date a fire is declared 'out'.
+# FPMERGEDDATE      Date the fire merged with another fire.
+# IRWINID           Unique ID assigned by the Integrated Reporting of Wildland-Fire Information (IRWIN) application.
+# PRESCRIBED        Identify prescribed fires. Yes or No
+# FIRESEASONS       Decade the fire burned (e.g., 2000-2009)
+# SHAPE_Length      Length of feature in internal units.
+# SHAPE_Area        Area of feature in internal units squared.
+#-----------------------------------------------------------------------------#
+hist_meta <- data.frame(
+  variable = c("NAME", "RECORDNUMBER", "ACRES", "AFSNUMBER", "DOFNUMBER", 
+               "USFSNUMBER", "ADDNUMBER", "PERIMETERDATE", "LATESTPERIMETER",
+               "SOURCE", "SOURCEMETHOD", "SOURCECLASS", "AGENCYACRES",
+               "ACREAGEMETHOD", "COMMENTS", "FIREID", "FIREYEAR", "UPDATETIME",
+               "UPDATEUSER", "USEDONFINALREPORT", "FPOUTDATE", "FPMERGEDDATE",
+               "IRWINID", "PRESCRIBED", "FIRESEASONS", "SHAPE_Length",
+               "SHAPE_Area"),
+  description = c(
+    "Name of the fire, assigned by Dispatch Centers.",
+    "Alaska Interagency Coordination Center (AICC) issued fire number.",
+    "GIS calculated area, expressed in acres.",
+    "AFS fire code.", "State of Alaska fire code.", "USFS fire code.",
+    "Field for internal AFS use.", 
+    "Date perimeter was acquired OR date of the post-fire image when imagery is the data source for the perimeter.",
+    "Indicates that the record represent that most recent fire perimeter.",
+    "Source used to delineate the fire perimeter.",
+    "Optional: Perimeter mapping source/platform.",
+    "Optional: Estimated accuracy of the fire perimeter.",
+    "Agency-provided estimate/calculation of fire size.",
+    "How acreage was calculated.",
+    "Any comments associated with the data record.",
+    "ID for the fire. This field is used to join fire perimeter (polygon) records to fire locations (point).",
+    "Year the fire occured.", "Time the data record was updated",
+    "User updating the record.", 
+    "Identified is the perimeter was used in the final fire report. Yes or No",
+    "Date a fire is declared \'out\'.",
+    "Date the fire merged with another fire.",
+    "Unique ID assigned by the Integrated Reporting of Wildland-Fire Information (IRWIN) application.",
+    "Identify prescribed fires. Yes or No",
+    "Decade the fire burned (e.g., 2000-2009)",
+    "Length of feature in internal units.",
+    "Area of feature in internal units squared."
+  )
+)
+
+
+# iLand plot area, from log; let's make ha
+cpcrw_area <- (25500 * 23900 ) / 10000
+```
+
+## iLand Fire Output
+Contents of iLand output fire table:
+```{r, echo = FALSE} 
+knitr::kable(outdoc_iland)
+```
+
+```{r}
+#-----------------------------------------------------------------------------#
+# Load iLand fire table
+#-----------------------------------------------------------------------------#
+on_ws <- T
+fire=data.frame()
+for(i in 1:10){
+if (on_ws) {
+  db.conn <- DBI::dbConnect(RSQLite::SQLite(),   paste0(dbname="D:/workspace/winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/cpcrw/model/output/paper_run/CPCRW_sm_",i,".sqlite"))
+  df <- dbReadTable(db.conn, "fire")
+  dbDisconnect(db.conn)
+} else {
+  fire <- read.table("C:/Users/lora/Documents/Winslow/permafrost/iLand landscapes/landscape building/cpcrw/model/output/fire/fire.csv", sep=" ",
+                     header=T)
+}
+df$replicate=i
+fire=rbind(fire,df)
+}
+# Drop fires where there was no burn
+fire <- fire[fire$area_m2 > 0,]
+
+# Get fire area in hectares  
+fire$area_ha <- fire$area_m2 / 10000
+
+# Take only the last 100 years of the simulation
+#last_year <- max(fire$year)
+#fire <- fire[fire$year %in% 201:300, ]
+#rm(last_year)
+
+```
+
+
+
+
+## Historical data
+
+Description from metadata:
+Alaska Fire History Perimeter Polygons is a time series, starting in 1940, of annual layers of areas burned in each calendar year across Alaska, where the burn scar left by each fire event is represented by the best available delineation. The polygons represent perimeters of wildfires that occur naturally (e.g., lightning) or by humans accidentally (e.g., escaped campfire) or maliciously across Alaska. NOTE: Not all recorded wildland fires are associated with a perimeter polygon. For wildfires occurring before 1987, emphasis was placed on mapping perimeters of at least 1,000 acres. From 1987 to 2015, emphasis was placed on mapping wildfires with perimeters of at least 100 acres. From 2016 forward, fires over 10 acres should be associated with perimeters. The delineations range in quality from hand sketched perimeters drawn on topographic maps to heads-up interpretation of fine scale satellite imagery (e.g., Sentinel-2 imagery, 10 meter resolution).
+
+
+
+```{r warning=FALSE}
+#-----------------------------------------------------------------------------#
+# Load historical fire data (all of AK)
+#-----------------------------------------------------------------------------#
+if (on_ws) {
+histfire <- readOGR(dsn = "D:/workspace/Lora/permafrost/permafrost_param/iLand landscapes/landscape building/raw data/fire",
+                    layer = "AK_fire_location_polygons")
+} else {
+  histfire <- readOGR(dsn = "C:/Users/lora/Documents/Winslow/permafrost/iLand landscapes/landscape building/raw data/fire", 
+                      layer = "AK_fire_location_polygons")
+}
+histfire$area_ha <- histfire$Shape_Area / 10000
+histfire$FIREYEAR <- as.numeric(histfire$FIREYEAR)
+
+# Check on some variables of interest:
+nrow(histfire)
+
+table(histfire$PRESCRIBED)
+table(histfire$FIREYEAR)
+
+summ_fire <- histfire@data %>% group_by(FIREYEAR) %>% summarise(total_area = sum(area_ha))
+
+ggplot(summ_fire) +
+  geom_col(aes(x = FIREYEAR, y = total_area)) + 
+  theme_bw() +
+  labs(x = "Year", y = "Burned area ha", title = "All of AK")
+
+#plot(histfire)
+
+# Get the one clipped to our area as well
+if (on_ws) {
+  dsn = "D:/workspace/Lora/permafrost/permafrost_param/iLand landscapes/landscape building/raw data/fire"
+} else {
+  dsn = "C:/Users/lora/Documents/Winslow/permafrost/iLand landscapes/landscape building/raw data/fire"
+}
+histfire_clip <- readOGR(dsn = dsn, layer = "perimeters_clipped")
+histfire_clip$clip_area_ha <- raster::area(histfire_clip) / 10000
+
+```
+
+
+
+
+
+## Fire Rotation Period
+Fire rotation period: (FRP), defined as the time required to burn an area equal in size to the area of interest
+For a given period: time in years / (burned area / area sampled)
+
+```{r}
+# For most confidence in the data - omit from consideration fires prior to 1980
+first_year = 1980
+last_year  = max(histfire$FIREYEAR)
+frp_numyears = (last_year - first_year) + 1
+x <- which(histfire_clip$FIREYEAR >= first_year & 
+           histfire_clip$FIREYEAR <= last_year)
+histfire_clip <- histfire_clip[x,]
+```
+
+```{r results = 'asis', echo = FALSE}
+
+hist_frp = round(frp_numyears / (sum(histfire_clip$clip_area_ha) / cpcrw_area), 0)
+hist_firesize = mean(histfire_clip$clip_area_ha)
+sd_hist_firesize = sd(histfire_clip$clip_area_ha)
+hist_firefreq = length(histfire_clip) / frp_numyears
+
+cat("Historical FRP from the CPCRW,", first_year, "-", last_year, ":", hist_frp, "\n\n")
+
+cat("Length of historical fire period for CPCRW:", frp_numyears, "years\n\n")
+
+cat("Mean fire size for CPCRW:", round(hist_firesize, 0), "ha\n\n")
+
+cat("Fire frequency since 1980 for CPCRW:", round(hist_firefreq,2), "fires per year\n\n")
+
+cat("iLand area, from log: 25500x23900m, or", cpcrw_area, "ha\n\n")
+```
+Let's grid Alaska into areas about the same size as the CPCRW, and compare their FRPs. Make grid squares of 25.5 km east to west, and 23.9 km north to south, the same as the iLand plot size.
+
+```{r echo = FALSE, warning=FALSE}
+#-----------------------------------------------------------------------------#
+# Create a grid and calculate FRP for each. This is a time consuming process
+# so the results are saved and don't need to be rerun unless something
+# changes
+# 
+# For most confidence in the data - omit from consideration fires prior to 1980
+#-----------------------------------------------------------------------------#
+run_anew = F
+if (on_ws) {
+  raster_loc <- "D:/workspace/Lora/permafrost/permafrost_param/iLand landscapes/landscape building/cpcrw/model/fire"
+} else {
+  raster_loc <- "C:/users/Lora/documents/winslow/permafrost/iLand landscapes/landscape building/cpcrw/model/fire"
+}
+if (run_anew) {
+  first_year = 1980
+  last_year  = max(histfire$FIREYEAR)
+  frp_numyears = (last_year - first_year) + 1
+  x <- which(histfire$FIREYEAR >= first_year & 
+             histfire$FIREYEAR <= last_year)
+  histfire <- histfire[x,]
+
+
+  # Load up a polygon of the outline of Alaska
+  ak <- readOGR(dsn, layer="AK_polygon")
+  
+  # Reproject to match fire dataset (not least of which so we get our linear 
+  # unit to be meters)
+  ak <- spTransform(ak, proj4string(histfire))
+  
+  # Mark out the alaska area in a grid
+  xlength = 25500
+  ylength = 23900
+  
+  x_left = seq(from = histfire@bbox["x", "min"], 
+               to   = histfire@bbox["x", "max"],
+               by   = xlength)
+  x_right = x_left + xlength
+  
+  y_bottom = seq(from = histfire@bbox["y", "min"], 
+                 to   = histfire@bbox["y", "max"],
+                 by   = xlength)
+  y_top    = y_bottom + ylength
+  
+  # Build a list of Polygons-es
+  id = 1
+  poly_list <- list()
+  for (x in 1:length(x_left)) {
+    for (y in 1:length(y_bottom)) {
+      
+      # Make a coordinates matrix in clockwise order
+      coords <- rbind(c(x_left [x], y_bottom[y]), 
+                      c(x_left [x], y_top   [y]), 
+                      c(x_right[x], y_top   [y]),
+                      c(x_right[x], y_bottom[y]),
+                      c(x_left [x], y_bottom[y]))
+      
+      # Make a Polygon
+      p <- Polygon(coords, hole = F)
+      
+      # Make a Polygons - separate class
+      poly_list[[id]] <- Polygons(list(p), ID = id)
+      id = id + 1
+    }
+  }
+  
+  # Make our SpatialPolygons object
+  sp_poly <- SpatialPolygons(poly_list)
+  
+  # Make our SpatialPolygonsDataFrame and add the dataframe data that will be 
+  # part of the shapefile attributes table
+  ak_grid <- SpatialPolygonsDataFrame(sp_poly, 
+                                      data = data.frame(ID = 1:length(poly_list)))
+  
+  # Projection
+  proj4string(ak_grid) <- proj4string(histfire) 
+  
+  # Remove any that do not intersect with AK land area
+  int <- over(ak_grid, ak, returnList = T)
+  land_area <- sapply(int, function(x){length(x$STATE) > 0})
+  ak_grid <- ak_grid[land_area,]
+  
+  # Add area of each grid - might not all be standard
+  ak_grid$AREA <- raster::area(ak_grid)/10000
+  
+  ak_grid$FRP = NA
+  ak_grid$MEAN_FIRE_SIZE = 0
+  ak_grid$NUM_FIRES = 0
+  
+  
+  
+  # Fix fire polygons
+  histfire <- gBuffer(histfire, byid = T, width = 0)
+
+  # In order to have stats by year, take the historical fire polygons and merge
+  # them by year. That way, when we clip, each separate polygon *should* represent
+  # one year. (We do this because the method we use to clip polygons does not
+  # preserve attributes so we lose the year.)
+  histfire_oneyear <- unionSpatialPolygons(histfire, histfire@data$FIREYEAR)
+  
+  
+  # Fire stats for each polygon
+  for (i in 1:nrow(ak_grid)) {
+    one_grid <- ak_grid[i,]
+    hist_clip <- gIntersection(one_grid, histfire_oneyear, byid=T)
+    if (length(hist_clip) > 0) {
+  
+      # Compute FRP for each 
+      hist_clip$clip_area_ha <- raster::area(hist_clip) / 10000
+      ak_grid$FRP[i] <- round(frp_numyears / 
+                              (sum(hist_clip$clip_area_ha) / ak_grid$AREA[i]), 0)
+      
+      # Compute mean fire size per year; since each poly should be a year...
+      ak_grid$MEAN_FIRE_SIZE[i] <- mean(hist_clip$clip_area_ha)
+      
+      ak_grid$NUM_FIRES[i] <- length(hist_clip)
+    }
+  }
+  #writeOGR(ak_grid, ".", "ak_grid", "ESRI Shapefile", overwrite = T)
+  #save(ak_grid, file="ak_grid.Rdata")
+  
+  # Get rid of meaningless numbers
+  ak_grid$FRP[ak_grid$FRP > 10000] <- NA
+  
+  # Mean fire frequency - years between fires
+  ak_grid$FIRE_FREQ <- ifelse(ak_grid$NUM_FIRES == 0, NA,
+                              frp_numyears / ak_grid$NUM_FIRES)
+  
+  # Convert to raster
+  frpras <- raster(ncol=length(x_left), nrow=length(y_top), 
+                   crs = proj4string(ak_grid))
+  extent(frpras) <- extent(ak_grid)
+  frpras<-rasterize(ak_grid, frpras, "FRP")
+  writeRaster(frpras, paste0(raster_loc, "/frp_raster.tif"), format = "GTiff", overwrite=T)
+  
+  firesizeras <- raster(ncol=length(x_left), nrow=length(y_top), 
+                   crs = proj4string(ak_grid))
+  extent(firesizeras) <- extent(ak_grid)
+  firesizeras<-rasterize(ak_grid, firesizeras, "MEAN_FIRE_SIZE")
+  writeRaster(firesizeras, paste0(raster_loc, "/firesize_raster.tif"), format = "GTiff", overwrite=T)
+  
+  
+  firefreqras <- raster(ncol=length(x_left), nrow=length(y_top), 
+                   crs = proj4string(ak_grid))
+  extent(firefreqras) <- extent(ak_grid)
+  firefreqras<-rasterize(ak_grid, firefreqras, "FIRE_FREQ")
+  writeRaster(firefreqras, paste0(raster_loc, "/firefreq_raster.tif"), format = "GTiff", overwrite=T)
+  
+} else {
+  # The raster of FRP has already been done, just load it
+  frpras <- raster(paste0(raster_loc, "/frp_raster.tif"))
+  
+  firesizeras <- raster(paste0(raster_loc, "/firesize_raster.tif"))
+  
+  firefreqras <- raster(paste0(raster_loc, "/firefreq_raster.tif"))
+}
+```
+
+
+
+```{r fig.width=8}
+library(sf)
+ak=st_read("D:/workspace/Lora/permafrost/permafrost_param/iLand landscapes/landscape building/raw data/fire/AK_polygon.shp")
+ak
+if (on_ws) {
+  boreal <- readOGR(dsn = "D:/workspace/Lora/permafrost/permafrost_param/benchmarking data/raw_data",
+                  layer = "boreal_domain")
+} else {
+  boreal <- readOGR(dsn = "C:/users/lora/documents/winslow/permafrost/permafrost_param/benchmarking data/raw_data",
+                  layer = "boreal_domain")
+}
+# Clip FRP raster to boreal
+
+frpras2 <- raster::mask(frpras, spTransform(boreal, proj4string(frpras)))
+ak = st_transform(ak, st_crs(frpras))
+
+# Make a max FRP of 1000 so visualization is easier
+frpras2 <- reclassify(frpras2, cbind(1000, Inf, 1000), left=T)
+cuts = c(50, 100, 150, 200, 500, 1000)
+YlOrBr <- c("#FFFFD4", "#FED98E", "#FE9929", "#D95F0E", "#993404")
+pal <- colorRampPalette(YlOrBr,space="Lab")
+plot(frpras2, breaks=cuts, col=pal(7),
+     xlim=c(-1092148, 1042352),
+     ylim=c(1000809.9, 2248710),
+     main = paste("Fire Rotation Period, years\n(based on historical data for", 
+                  frp_numyears, "years; capped at 1000 years)"), axes=F)
+
+plot.df=as.data.frame(frpras2,xy=T)
+plot.df=plot.df %>% filter(!is.na(frp_raster))
+
+domain= st_read("D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/raw data/study_domain/caribou_pker_ck.shp")
+
+map=ggplot()+
+  geom_sf(data=ak, color="black")+
+  geom_tile(data=plot.df,aes(x=x,y=y))+
+  #scale_fill_viridis_c(option="plasma", direction=-1)+
+  geom_sf(data=domain, fill="red",color="red",size=1)+
+    coord_sf(xlim = c(-0880967,0801840))+
+  ggthemes::theme_map() +
+   theme( legend.position = "bottom",
+         panel.background = element_blank(),
+        plot.margin = unit(c(0, 0, 0, 0), "cm"))+
+  labs(fill="Fire rotation period (years)")
+map
+map2=cowplot::plot_grid(map,nrow=2,labels=c("C"))
+
+```
+
+
+Calculate a running yearly FRP for iLand, for the length of the historical period up to that point.
+
+```{r}
+#Look at how the replicates differ to pick the closest match
+iland.fire.summary = fire %>% filter(year>200) %>% group_by(replicate) %>% 
+    summarize(iland_firesize = mean(area_ha),
+    sd_fire_size = sd(area_ha),
+    iland_firefreq = length(area_ha)/100)
+iland.fire.summary = iland.fire.summary %>% mutate(fire.size.diff= (iland_firesize-3823)/3823,
+                                                   fire.num.diff = (iland_firefreq - 0.12)/0.12,
+                                                   total.diff = abs(fire.size.diff) + abs(fire.num.diff))
+iland.fire.summary
+# Calculate the first year to calculate the FRP: the first year of data
+# that we are using, plus the FRP period
+fire.analyze=fire %>%filter(replicate==6)
+first_ilandyear = min(fire.analyze$year)+frp_numyears
+iland_frp = rep(NA, (max(fire.analyze$year) - first_ilandyear+1))
+count = 1
+for (yr in (first_ilandyear:max(fire.analyze$year))) {
+  
+  # The iLand years to include in this calculation
+  years_to_eval <- (yr - (frp_numyears) + 1):yr
+  
+  # Get the sum of area burned during this time
+  area_burned <- sum(fire.analyze$area_ha[fire.analyze$year %in% years_to_eval])
+  
+  # FRP
+  iland_frp[count] <- round(frp_numyears / (area_burned / cpcrw_area), 0)
+  
+  count = count + 1
+}
+
+# iLand mean fire size and fire frequency
+#####
+#Edited for looking at the last 41 years!!!!!!!
+
+#######
+####
+#sd_fire_size=sd(fire$area_ha)
+#iland_firefreq = nrow(fire) / 300
+
+ggplot(data = data.frame(year=first_ilandyear:max(fire.analyze$year), 
+                         frp =iland_frp),
+       aes(x = year, y = frp))                                +
+  geom_line()                                                 +
+  geom_hline(aes(yintercept = hist_frp), color="red", size=2) +
+  labs(x = "Simulation Year", y = "FRP", 
+       title = "iLand Fire Simulation",
+       subtitle = paste("red line is historical FRP for", first_year, "-", last_year))      +
+  theme_bw()
+```
+
+```{r}
+###
+#EDITED TO LOOK AT THE LAST 41 years!!!!!!
+#####
+####
+#-----------------------------------------------------------------------------#
+# Density plots of the CPCRW-size blocks across the boreal region for FRP,
+# mean fire size, mean fire frequency.
+#-----------------------------------------------------------------------------#
+# Prepare a dataframe of our raster data
+# Cap fire size at 4000 ha
+firesizeras2 <- reclassify(firesizeras, cbind(4000, Inf, 4000), left=T)
+
+dat.orig <- data.frame(frp = getValues(frpras2),
+                       #firesize = getValues(firesizeras2), # capped version
+                       firesize = getValues(firesizeras),   # uncapped
+                       firefreq = 1/(getValues(firefreqras)))
+
+#-----------------------------------------------------------------------------#
+# FRP plot
+#-----------------------------------------------------------------------------#
+dat <- dat.orig[!is.na(dat.orig$frp),]
+
+# Data for mean lines to draw
+#linedat <- data.frame(vals = c(hist_frp, mean(iland_frp)),
+#                      labs = c("Historic CPCRW FRP", "Mean iLand FRP"),
+#                      yPos = max((density(dat$frp))$y))
+
+p1 <- ggplot(dat, aes(x = frp)) +
+  geom_density(fill="grey") +
+  theme_bw() +
+  geom_vline(xintercept = hist_frp       , col="#1b7837", size=2) +
+  geom_vline(xintercept = tail(iland_frp,n=1), col="#762a83", size=2)+
+   theme_bw()+
+   theme(    text  = element_text(color="black",  family="sans", size=10),
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+             axis.text.x=element_text(colour="black",size=10),
+             axis.text.y=element_text(colour="black",size=10),
+            legend.text = element_text(size=8),
+            plot.margin = unit(c(0.75, 0.75, 0.75, 0.75), "cm"))+
+  labs(x="Fire rotation period (years)", y= "Density")
+
+# hist(dat, breaks = seq(0, 1000, by=20), 
+#      main = "Histogram of boreal region FRP, 1980 - present",
+#      xlab="FRP (>1000 binned together)")
+# abline(v = hist_frp       , lwd = 2, col="red")
+# abline(v = mean(iland_frp), lwd = 2, col="blue")
+# text(x=hist_frp+20, y=100, labels = "Historic CPCRW FRP", adj=0, col="red")
+# text(x=hist_frp+20, y=80 , labels = "Mean iLand FRP"    , adj=0, col="blue")
+
+
+#-----------------------------------------------------------------------------#
+# Fire size
+#-----------------------------------------------------------------------------#
+library(scales)
+dat <- dat.orig[!is.na(dat.orig$firesize),]
+iland.fire.summary.plot=iland.fire.summary %>% filter(replicate==1)
+p2 <- ggplot(dat, aes(firesize)) +
+  geom_density(fill="grey") +
+  theme_bw() +
+  scale_x_log10(labels=comma) + 
+  #annotate("rect", xmin=min(iland.fire.summary$iland_firesize),xmax=max(iland.fire.summary$iland_firesize),ymin=-Inf,ymax=Inf,fill="#762a83",alpha=0.4)+
+  geom_vline(xintercept = hist_firesize, col="#1b7837", size=2) +
+  geom_vline(xintercept = iland.fire.summary.plot$iland_firesize, col="#762a83", size=2)+
+   theme_bw()+
+   theme(    text  = element_text(color="black",  family="sans", size=10),
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+             axis.text.x=element_text(colour="black",size=10),
+             axis.text.y=element_text(colour="black",size=10),
+            legend.text = element_text(size=8),
+            plot.margin = unit(c(0.75, 0.75, 0.75, 0.75), "cm"))+
+  labs(x="Mean burned patch size (ha)", y= "Density")
+
+
+
+
+
+#-----------------------------------------------------------------------------#
+# Plot a similar histogram for fire frequency, fires per year
+#-----------------------------------------------------------------------------#
+dat <- dat.orig[!is.na(dat$firefreq),]
+p3 <- ggplot(dat, aes(firefreq)) +
+  geom_density(fill="grey") +
+  theme_bw() +
+    #annotate("rect", xmin=min(iland.fire.summary$iland_firefreq),xmax=max(iland.fire.summary$iland_firefreq),ymin=-Inf,ymax=Inf,fill="#762a83",alpha=0.4)+
+  geom_vline(aes(xintercept = hist_firefreq ,col="#1b7837"), size=2, show.legend = T) +
+  geom_vline(aes(xintercept = iland.fire.summary.plot$iland_firefreq, col="#762a83"), size=2, show.legend = T) +
+  scale_colour_manual(name="",
+                      labels = c("CPCRW mean", "iLand mean"), 
+                      values=c("#1b7837", "#762a83")) +
+    theme_bw()+
+   theme(    text  = element_text(color="black",  family="sans", size=10),
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+             axis.text.x=element_text(colour="black",size=10),
+             axis.text.y=element_text(colour="black",size=10),
+            legend.text = element_text(size=8),
+     legend.position = c(.7, .8),
+     plot.margin = unit(c(0.75, 0.75, 0.75, 0.75), "cm"),
+     legend.background = element_rect(colour = "transparent", fill = 'transparent'),
+            legend.key = element_rect(colour = "transparent", fill = 'transparent'))+
+    labs(x="Annual fire probability", y= "Density")
+
+r1=cowplot::plot_grid(p3,p2,labels=c("A","B"), nrow=2)
+cowplot::plot_grid(r1,map2, ncol = 2)
+ggsave("D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/figures/fire.regime_final.jpg", height=8.5,width=7.5, units = "in", dpi=700)
+
+```
+
+
+
+
+```{r results = 'asis', echo = FALSE}
+
+cat("Time period of fires:", diff(range(fire$year))+1, "years\n\n")
+cat("Number of fires:", nrow(fire), "\n\n")
+
+summ_fire_iland <- fire %>%filter(replicate==6) %>% group_by(year) %>% 
+  summarise(total_area = sum(area_ha), prop_n_died = n_trees_died/n_trees,
+            prop_ba_died = basalArea_died / basalArea_total)
+summ_fire_iland$prop_ba_died[is.na(summ_fire_iland$prop_ba_died)] <- 0
+summ_fire_iland$prop_n_died [is.na(summ_fire_iland$prop_n_died )] <- 0
+
+ggplot(fire, aes(x = area_ha, y = n_trees_died)) +
+  geom_point() +
+  theme_bw() +
+  labs(x = "Burned area ha", y = "Number of trees killed")
+
+ggplot(fire, aes(x = area_ha, y = basalArea_died)) +
+  geom_point() +
+  theme_bw() +
+  labs(x = "Burned area ha", y = "Basal area of trees killed")
+
+ggplot(summ_fire_iland) +
+  geom_col(aes(x = year, y = total_area)) + 
+  theme_bw() +
+  labs(x = "Year", y = "Burned area ha")
+
+
+hist(summ_fire_iland$prop_n_died * 100,
+     breaks = seq(0, 100, 5),
+     main = paste0("Stems killed in fires. Mean: ", 
+                  round((mean(summ_fire_iland$prop_n_died)*100.0), 1), "%"),
+     xlab = "Percent of stems killed")
+
+hist(summ_fire_iland$prop_ba_died * 100,
+     breaks = seq(0, 100, 5),
+     main = paste0("Basal area killed in fires. Mean: ", 
+                  round((mean(summ_fire_iland$prop_ba_died)*100.0), 1), "%"),
+     xlab = "Percent of basal area killed")
+
+n=ggplot(summ_fire_iland, aes(prop_n_died*100))+
+  geom_density(fill="grey")+
+  scale_x_continuous(limits = c(0,100))+
+  theme_bw()+
+   theme(    text  = element_text(color="black",  family="sans", size=10),
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+             axis.text.x=element_text(colour="black",size=10),
+             axis.text.y=element_text(colour="black",size=10),
+            legend.text = element_text(size=10))+
+  labs(x="Stems killed (%)",y="Density")
+ba=ggplot(summ_fire_iland, aes(prop_ba_died*100))+
+  geom_density(fill="grey")+
+  scale_x_continuous(limits = c(0,100))+
+  theme_bw()+
+   theme(    text  = element_text(color="black",  family="sans", size=10),
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+             axis.text.x=element_text(colour="black",size=10),
+             axis.text.y=element_text(colour="black",size=10),
+            legend.text = element_text(size=10))+
+  labs(x="Basal area killed (%)",y="Density")
+cowplot::plot_grid(n,ba,nrow=1, labels="AUTO")
+ggsave("D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/figures/fire.severity.jpg", height=4.5,width=7.5, units = "in", dpi=700)
+
+
+summ_fire_iland %>%ungroup()%>% summarize(quantile.densdead=quantile(prop_n_died, c(0.25,0.5,0.75)),q=c(0.25,0.5,0.75),
+                                          quantile.badead=quantile(prop_ba_died, c(0.25,0.5,0.75)),q=c(0.25,0.5,0.75))
+```
+
+
+

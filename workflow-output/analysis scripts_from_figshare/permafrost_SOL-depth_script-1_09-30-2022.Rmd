@@ -1,0 +1,827 @@
+---
+title: "permafrost distribution"
+author: "Winslow"
+date: "11/3/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+library(terra)
+library(tidyverse)
+```
+
+
+
+
+
+```{r}
+
+db.conn <- DBI::dbConnect(RSQLite::SQLite(), dbname="D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/cpcrw/model/output/paper_run/CPCRW_sm_6.sqlite")
+water = tbl(db.conn, "water")  %>% filter(year>270) %>% collect()
+stand = tbl(db.conn, "stand")  %>% filter(year==271) %>% collect()
+reg.det = tbl(db.conn, "saplingdetail") %>% filter(year==271) %>% collect()
+  DBI::dbDisconnect(db.conn)
+```
+Processing regeneration to bind with stand
+```{r}
+reg.det=reg.det%>%mutate(ba=pi*((dbh/100)/2)^2)
+reg.det=reg.det%>%mutate(ba_all=ba*n_represented)
+reg.det.sum=reg.det%>%group_by(year,ru, species)%>%summarize(count_ha_sap=sum(n_represented),
+                                                             dbh_mean_sapling=weighted.mean(dbh,n_represented),
+                                                             ba_sum_sapling=sum(ba_all))
+
+
+```
+
+Merging stand and regenration together to calculate total density.
+
+```{r}
+stand = stand %>% dplyr::select(-cohort_count_ha,-cohort_basal_area)
+stand.t=full_join(stand,reg.det.sum,by = c("ru","year","species"))
+
+stand.t =stand.t %>% replace(is.na(.), 0)
+stand.t=stand.t%>%mutate(count.total.ad.sap = count_ha + count_ha_sap,
+                         ba.total.ad.sap = basal_area_m2+ba_sum_sapling)
+```
+Now pivoting wider to generate IV values
+```{r}
+stand.t2.select = stand.t %>% dplyr::select(ru,rid, year,species, count.total.ad.sap:ba.total.ad.sap)
+stand.t.wide = stand.t2.select %>% pivot_wider( names_from = species, values_from = c(count.total.ad.sap:ba.total.ad.sap), values_fill = 0)
+stand.t.wide=stand.t.wide %>% mutate(total.density.ad.sap = count.total.ad.sap_Potr + count.total.ad.sap_Pima + count.total.ad.sap_Bene + count.total.ad.sap_Pigl,
+                                     total.ba.ad.sap = ba.total.ad.sap_Potr + ba.total.ad.sap_Pima + ba.total.ad.sap_Bene + ba.total.ad.sap_Pigl)
+stand.t.wide=stand.t.wide%>%mutate(IV.ad.sap_Pima = ifelse(total.density.ad.sap !=0 & total.ba.ad.sap!=0, (count.total.ad.sap_Pima/total.density.ad.sap)+(ba.total.ad.sap_Pima/total.ba.ad.sap),0),
+                                   IV.ad.sap_Pigl = ifelse(total.density.ad.sap !=0 & total.ba.ad.sap!=0, (count.total.ad.sap_Pigl/total.density.ad.sap)+(ba.total.ad.sap_Pigl/total.ba.ad.sap),0),
+                                   IV.ad.sap_Potr = ifelse(total.density.ad.sap !=0 & total.ba.ad.sap!=0, (count.total.ad.sap_Potr/total.density.ad.sap)+(ba.total.ad.sap_Potr/total.ba.ad.sap), 0),
+                                   IV.ad.sap_Bene = ifelse(total.density.ad.sap !=0 & total.ba.ad.sap!=0,(count.total.ad.sap_Bene/total.density.ad.sap)+(ba.total.ad.sap_Bene/total.ba.ad.sap), 0))
+
+```
+
+read in the map to make the data spatial
+```{r}
+env.grid = rast("D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/cpcrw/materials/env/env.grid.tif")
+env.grid.df=as.data.frame(env.grid, xy=T)
+env.grid.df = env.grid.df %>% rename(rid = env.grid)
+```
+```{r}
+water= left_join(water, env.grid.df, by="rid")
+summary(water)
+```
+
+generate a raster from model results to compare to the Pastick product
+
+```{r}
+water.2=water%>%filter(year>1)
+water.2=water.2 %>% mutate(permafrost_Modeled.NS = ifelse(maxDepthThawed<=1, 1,0),
+                       permafrost_Modeled.Deep = ifelse(maxDepthThawed>1 & maxDepthThawed < 2, 1,0))
+water.subset = water.2 %>%group_by(x,y,rid)%>% summarize(sum.permafrost_Modeled.NS=sum(permafrost_Modeled.NS),
+                                           sum.permafrost_Modeled.Deep = sum(permafrost_Modeled.Deep))
+
+water.subset=water.subset %>%mutate(pf.ns =ifelse(sum.permafrost_Modeled.NS >=15,1,0),
+                                    pf.deep=ifelse(sum.permafrost_Modeled.Deep>=15,1,0))
+summary(water.subset)
+plot.df=water.subset%>%dplyr::select(x,y,pf.ns)
+plot.df=plot.df %>%filter(!is.na(x))
+pf.m.ras = rast(plot.df,type="xyz") 
+crs(pf.m.ras)=crs(env.grid)
+plot(pf.m.ras)
+water.subset2 =water.subset %>% dplyr::select(rid, "permafrost_Modeled.NS"=pf.ns, "permafrost_Modeled.Deep"=pf.deep)
+```
+
+
+Pastick et al. reprojected to 1ha
+```{r}
+pf.b=rast("D:/workspace/Winslow/permafrost/permafrost_param/benchmarking data/AK_PFProbability_1m/cpcrw-1ha-repr.tif")
+pf.b
+classify.f=function(data.set, val.1,val.2,val.3){
+m <- c(val.1, val.2, val.3)
+rclmat <- matrix(m, ncol=3, byrow=TRUE)
+rc1 <- classify(data.set, rclmat, include.lowest=TRUE)
+return(rc1)
+}
+step.1 = classify.f(pf.b, 0,50,0)
+hist(step.1)
+step.2=classify.f(step.1, 50,101,1)
+plot(step.1)
+```
+
+
+Read in aspect to link to the others
+```{r}
+aspect=rast("D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/raw data/DEM/aspect_repr.tif")
+aspect.repr= terra::project(aspect, env.grid, method="bilinear")
+
+```
+
+Now set the rid for the benchmarks and extract the datasets
+```{r}
+  points=as.points(env.grid)  #turn response raster into a points dataset in the middle of each raster cell.
+data=data.frame(terra::extract(aspect.repr, points,xy=T,method="simple"), terra::extract(step.2, points,method="simple"))
+data$ID.1 = NULL
+data = data %>% rename("rid" = ID,
+                       "aspect" = aspect_repr,
+                       "permafrost_Benchmark.NS"= Layer_1)
+```
+
+
+Link the two and pivot longer
+```{r}
+
+water.subset2 = left_join(water.subset2, data, by ="rid")
+summary(water.subset2)
+data.long = water.subset2 %>% pivot_longer(cols = c(permafrost_Modeled.NS:permafrost_Modeled.Deep,permafrost_Benchmark.NS),  names_to = "form", values_to = "permafrost", names_prefix = "permafrost_")
+
+```
+
+summarizing percent difference in permafrost distribution
+
+```{r}
+data.long.sum = data.long %>% group_by(form) %>% summarize(perc.pf = sum(permafrost,na.rm=T)/length(permafrost)*100)
+
+data.long.sum.wider = data.long.sum %>%pivot_wider(names_from = form, values_from = c(2))
+
+
+
+data.long.sum.wider = data.long.sum.wider %>% mutate(pf.ns.diff = abs(Benchmark.NS-Modeled.NS)/((Benchmark.NS+Modeled.NS)/2)*100)
+data.long.sum.wider
+
+```
+generate plots
+First generate a hillshade effect
+```{r}
+dem=rast("D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/raw data/DEM/dem_repr.tif")
+dem=crop(dem,env.grid)
+slope=terrain(dem,v="slope",unit="radians")
+aspect=terrain(dem, v="aspect",unit="radians")
+hill=shade(slope,aspect,40,270,normalize=T)
+hill.df =as.data.frame(hill,xy=T)
+colnames(hill.df) <- c( "x", "y", "value")
+
+```
+Read in water
+```{r}
+library(sf)
+m.river=st_read("D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/raw data/hydrology/export_1594471551598/hydro_63360_py_repr_cpcrw.shp")
+c.river=st_read("D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/raw data/hydrology/attachments/cpcrw_streams.shp")
+m.river2=st_transform(m.river,st_crs(c.river))
+```
+
+Generating dataset of modeled fires
+```{r}
+db.conn <- DBI::dbConnect(RSQLite::SQLite(), dbname="D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/cpcrw/model/output/paper_run/CPCRW_sm_6.sqlite")
+fire.model = tbl(db.conn, "fire")  %>% filter(year>=2) %>% collect()
+  DBI::dbDisconnect(db.conn)
+  summary(fire.model)
+min(fire.model$fireId)
+max(fire.model$fireId)  # these need to be updated each time  
+path = "D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/cpcrw/model/output/paper_run/spread_6"
+  files <- list.files(path=path, pattern = "[2][4-9]|[3][0-9]\\.txt$", full.names=T)
+  fire.maps=rast(files)
+  crs(fire.maps)=crs(env.grid)
+  fire.maps=terra::project(fire.maps,env.grid)
+fire.maps.final=sum(fire.maps)
+fire.maps.final.df = as.data.frame(fire.maps.final,xy=T)
+colnames(fire.maps.final.df) <- c( "x", "y", "value")
+fire.maps.final.df = fire.maps.final.df %>%mutate(value=ifelse(value>0,1,value))
+fire.maps.final.df = fire.maps.final.df %>%mutate(value=ifelse(value==0,NA,value))
+fire.maps.final.df = fire.maps.final.df %>% filter(!is.na(value))
+```
+
+
+```{r}
+plotting.fun=function(dataset,var,dataset.2, color){
+ plot= ggplot()+
+  geom_tile(data=hill.df, aes(x=x, y=y, fill=value),show.legend = F)+
+  scale_fill_gradient(low = "grey0", high = "grey100") +
+  ggnewscale::new_scale_fill() +
+  geom_tile(data =dataset, aes_string(x = "x.x", y = "y.x", fill =var ), alpha=0.6) +
+scale_fill_manual(values=color)+ 
+       labs(fill="")+
+      ggnewscale::new_scale_fill() +
+   ggthemes::theme_map() +
+  geom_sf(data=m.river2,color="cadetblue2",fill="cadetblue2")+
+  geom_sf(data=c.river, color="cadetblue2")+
+  theme( legend.position = "",
+         panel.background = element_blank(),
+        plot.margin = unit(c(0, 0, 0, 0), "cm"))+
+ labs(x="",y="")
+  print(plot)
+}
+
+
+plot.modeled=water.subset2 %>%mutate(pf=as.factor(ifelse(permafrost_Modeled.NS==1,"Present","Absent")))%>%filter(pf=="Present")
+plot.benchmark=water.subset2 %>%mutate(pf=as.factor(ifelse(permafrost_Benchmark.NS==1,"Present","Absent")))%>%filter(pf=="Present")
+
+pf.m=plotting.fun(plot.modeled, "pf",fire.maps.final.df, "#b35806")
+pf.b=plotting.fun(plot.benchmark, "pf",fire.df,"#542788")
+maps=cowplot::plot_grid(pf.b,pf.m,nrow=1)
+
+```
+join water and stand
+```{r}
+data.long=left_join(data.long, stand.t.wide, by="rid")
+
+```
+```{r}
+data.long= data.long %>% mutate(sp.dom = as.factor(ifelse(IV.ad.sap_Pima > 1,"Pima",
+                                      ifelse(IV.ad.sap_Potr > 1, "Potr",
+                                             ifelse(IV.ad.sap_Pigl > 1, "Pigl",
+                                                    ifelse(IV.ad.sap_Bene > 1, "Bene",
+                                                           ifelse(IV.ad.sap_Pima+IV.ad.sap_Pigl > 1, "Mixed spruce",
+                                                                  ifelse(IV.ad.sap_Potr+IV.ad.sap_Bene > 1, "Mixed deciduous", "Non forest"))))))))
+data.long=data.long %>%filter(!is.na(sp.dom))
+data.long%>%filter(sp.dom=="NA")
+summ.plot1 = data.long %>% group_by(form, sp.dom) %>% summarize(percent.pf = sum(permafrost,na.rm=T)/length(permafrost)*100)
+summ.plot1.wider = summ.plot1 %>%pivot_wider(names_from = form, values_from = c(3))
+
+
+
+summ.plot1.wider = summ.plot1.wider %>% mutate(pf.ns.diff = abs(Benchmark.NS-Modeled.NS)/((Benchmark.NS+Modeled.NS)/2)*100)
+
+
+summ.plot1 = summ.plot1 %>% mutate(form.final = ifelse(form == "Benchmark.NS", "Benchmark <= 1m", 
+                                                       ifelse(form == "Modeled.NS", "Modeled <=1m", "Modeled 1-2m")))
+summ.plot1$form= factor(summ.plot1$form, levels= c("Benchmark.NS", "Modeled.NS", "Modeled.Deep"))
+summ.plot1=summ.plot1 %>% filter(form=="Modeled.NS"|form=="Benchmark.NS")
+summ.plot1$sp.dom= factor(summ.plot1$sp.dom, levels= c("Pima", "Pigl", "Mixed spruce", "Bene", "Potr", "Mixed deciduous", "Non forest"))
+summ.plot1
+a=ggplot(summ.plot1, aes(x=as.factor(sp.dom), y=percent.pf, fill=form.final))+
+  geom_bar(stat="identity",position="dodge")+
+  scale_fill_manual(values=c("#542788","#b35806"))+
+  theme_bw()+
+  theme(    text  = element_text(color="black",  family="sans", size=10),
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+             axis.text.x=element_text(colour="black",size=10),
+             axis.text.y=element_text(colour="black",size=10),
+            legend.text = element_text(size=8),
+             legend.position= "bottom",
+            legend.background = element_rect(colour = "transparent", fill = 'transparent'),
+            legend.key = element_rect(colour = "transparent", fill = 'transparent'),
+            legend.key.size = unit(0.5, "cm"))+
+  labs(x="Dominant species", y="Area with permafrost (%)",fill="")
+
+```
+plot the percent of landscape by aspect for modeled and benchmark
+```{r}
+
+
+data.long=data.long %>% filter(!is.na(aspect))
+
+data.long=data.long%>%mutate(aspect.dir=as.factor(ifelse(aspect == -1, "Flat",
+                                       ifelse(aspect>-1&aspect<=45,"North",
+                                              ifelse(aspect>45&aspect<=135,"East",
+                                                     ifelse(aspect>135&aspect<=225,"South",
+                                                           ifelse(aspect>225&aspect<=315,"West","North")))))))
+
+summ.plot = data.long %>% group_by(form, aspect.dir) %>% summarize(percent.pf = sum(permafrost,na.rm=T)/length(permafrost)*100)
+
+sum.plot.wide = summ.plot %>%pivot_wider(names_from = form, values_from = c(3))
+
+sum.plot.wide = sum.plot.wide %>% mutate(pf.ns.diff = abs(Benchmark.NS-Modeled.NS)/((Benchmark.NS+Modeled.NS)/2)*100)
+
+summ.plot = summ.plot %>% mutate(form.final = ifelse(form == "Benchmark.NS", "Benchmark <= 1m", 
+                                                       ifelse(form == "Modeled.NS", "Modeled <=1m", "Modeled 1-2m")))
+summ.plot$form= factor(summ.plot$form, levels= c("Benchmark.NS", "Modeled.NS", "Modeled.Deep"))
+summ.plot$aspect.dir= factor(summ.plot$aspect.dir, levels= c("North", "East", "South", "West", "Flat"))
+summ.plot=summ.plot %>% filter(form=="Modeled.NS"|form=="Benchmark.NS")
+
+b=ggplot(summ.plot, aes(x=as.factor(aspect.dir), y=percent.pf, fill=form.final))+
+  geom_bar(stat="identity",position="dodge")+
+  scale_fill_manual(values=c("#542788","#b35806"))+
+  theme_bw()+
+  theme(    text  = element_text(color="black",  family="sans", size=10),
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+             axis.text.x=element_text(colour="black",size=10),
+             axis.text.y=element_text(colour="black",size=10),
+            legend.text = element_text(size=8),
+             legend.position= "bottom",
+            legend.background = element_rect(colour = "transparent", fill = 'transparent'),
+            legend.key = element_rect(colour = "transparent", fill = 'transparent'),
+            legend.key.size = unit(0.5, "cm"))+
+  labs(x="Aspect", y="Permafrost area (%)",fill="")
+cowplot::plot_grid(maps,b,labels="AUTO",nrow=2,label_size=10, label_fontface = "plain", label_fontfamily = "sans")
+ggsave("D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/figures/pf.benchmark.jpg", height=6,width=6.5, units = "in", dpi=700)
+
+```
+
+
+
+
+
+Plotting maps of SOL
+```{r}
+plotting.fun=function(dataset,var,label){
+ plot= ggplot()+
+  geom_tile(data=hill.df, aes(x=x, y=y, fill=value),show.legend = F)+
+  scale_fill_gradient(low = "grey0", high = "grey100") +
+  ggnewscale::new_scale_fill() +
+  geom_tile(data =dataset, aes_string(x = "x", y = "y", fill =var ), alpha=0.6) +
+scale_fill_gradientn(colours = rev(terrain.colors(10))) +  
+   ggthemes::theme_map() +
+  geom_sf(data=m.river2,color="cadetblue2",fill="cadetblue2")+
+  geom_sf(data=c.river, color="cadetblue2")+
+  theme( legend.position = "bottom",
+         panel.background = element_blank(),
+        plot.margin = unit(c(0, 0, 0, 0), "cm"))+
+    labs(fill=label)
+  print(plot)
+}
+
+ 
+  plot.df=water %>% filter(year==300) %>%dplyr::select(x,y,SOLLayer,mossLayer)
+plot.df=plot.df %>%filter(!is.na(x))
+plot.df=plot.df %>%mutate(SOLLayer=SOLLayer*100,
+                         mossLayer=mossLayer*100)
+summary(plot.df)
+
+plot.df %>% summarize(quantile.moss = quantile(mossLayer, c(0.25,0.5,0.75),q=c(0.25,0.5,0.75)),
+                      quantile.sol = quantile(SOLLayer, c(0.25,0.5,0.75),q=c(0.25,0.5,0.75)))
+s=plotting.fun(plot.df,"SOLLayer","Dead moss and \n tree litter depth (cm)")
+m=plotting.fun(plot.df,"mossLayer","Live moss \n depth (cm)")
+sol=cowplot::plot_grid(s,m,nrow=1)
+ggsave("D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/figures/sol.benchmark.jpg", height=3,width=6.5, units = "in", dpi=700)
+```
+
+Determining SOL depth as a function of dominant forest type
+
+Map raster
+```{r}
+map = rast("D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/cpcrw/model/temp/spinup_300.asc")
+map
+map.df=as.data.frame(map, xy=T)
+map.df = map.df %>% rename(ru = spinup_300)
+map.df %>% filter(ru!=-1) %>%summary(map.df)
+```
+
+
+Read in the produce a stand composition and regen dataset to check stand densities at the beginning and end of the simulation and then pair pare with the simulated carbon dataset
+```{r}
+
+db.conn <- DBI::dbConnect(RSQLite::SQLite(), dbname="D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/cpcrw/model/output/paper_run/CPCRW_sm_6.sqlite")
+stand = tbl(db.conn, "stand")  %>% filter(year==300) %>% collect()
+reg.det = tbl(db.conn, "saplingdetail") %>% filter(year==300)%>% collect ()
+water=tbl(db.conn, "water") %>% filter(rid>-1) %>% collect
+fire =  tbl(db.conn, "fire") %>% collect()
+  DBI::dbDisconnect(db.conn)
+```
+Processing regeneration to bind with stand
+```{r}
+reg.det=reg.det%>%mutate(ba=pi*((dbh/100)/2)^2)
+reg.det=reg.det%>%mutate(ba_all=ba*n_represented)
+reg.det.sum=reg.det%>%group_by(year,ru, species)%>%summarize(count_ha_sap=sum(n_represented),
+                                                             dbh_mean_sapling=weighted.mean(dbh,n_represented),
+                                                             ba_sum_sapling=sum(ba_all))
+
+
+```
+
+Merging stand and regenration together to calculate total density.
+
+```{r}
+stand = stand %>% dplyr::select(-cohort_count_ha,-cohort_basal_area)
+stand.t=full_join(stand,reg.det.sum,by = c("ru","year","species"))
+
+stand.t =stand.t %>% replace(is.na(.), 0)
+stand.t2=stand.t%>%mutate(count.total.ad.sap = count_ha + count_ha_sap,
+                         ba.total.ad.sap = basal_area_m2+ba_sum_sapling)
+summary(stand.t2)
+```
+Now pivoting wider to generate IV values
+```{r}
+stand.t2.select = stand.t2 %>% dplyr::select(ru,rid, year,species, count.total.ad.sap:ba.total.ad.sap, LAI)
+stand.t.wide = stand.t2.select %>% pivot_wider( names_from = species, values_from = c(count.total.ad.sap:LAI), values_fill = 0)
+stand.t.wide=stand.t.wide %>% mutate(total.density.ad.sap = count.total.ad.sap_Potr + count.total.ad.sap_Pima + count.total.ad.sap_Bene + count.total.ad.sap_Pigl,
+                                     total.ba.ad.sap = ba.total.ad.sap_Potr + ba.total.ad.sap_Pima + ba.total.ad.sap_Bene + ba.total.ad.sap_Pigl)
+stand.t.wide=stand.t.wide%>%mutate(IV.ad.sap_Pima = ifelse(total.density.ad.sap !=0 & total.ba.ad.sap!=0, (count.total.ad.sap_Pima/total.density.ad.sap)+(ba.total.ad.sap_Pima/total.ba.ad.sap),0),
+                                   IV.ad.sap_Pigl = ifelse(total.density.ad.sap !=0 & total.ba.ad.sap!=0, (count.total.ad.sap_Pigl/total.density.ad.sap)+(ba.total.ad.sap_Pigl/total.ba.ad.sap),0),
+                                   IV.ad.sap_Potr = ifelse(total.density.ad.sap !=0 & total.ba.ad.sap!=0, (count.total.ad.sap_Potr/total.density.ad.sap)+(ba.total.ad.sap_Potr/total.ba.ad.sap), 0),
+                                   IV.ad.sap_Bene = ifelse(total.density.ad.sap !=0 & total.ba.ad.sap!=0,(count.total.ad.sap_Bene/total.density.ad.sap)+(ba.total.ad.sap_Bene/total.ba.ad.sap), 0))
+summary(stand.t.wide)
+```
+
+Approach to identify time since fire for each grid cell in stand.t.wide
+```{r}
+# Let's get all the spread files (fire extents) as a raster stack
+path = "D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/cpcrw/model/output/paper_run/spread_6"
+fire_maps = rast(list.files(path, full.names = T))
+
+# Use the environment grid to get ids for each grid
+path = "D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/cpcrw/model/gis"
+env_grid <- rast(paste0(path, "/env.grid.txt"))
+crs(fire_maps)=crs(env_grid)
+
+#env_grid.2=crop(env_grid,fire_maps)
+env_grid.2=env_grid
+fire <- fire %>% mutate(prop.dens.killed = n_trees_died   / n_trees,
+                        prop.ba.killed   = basalArea_died / basalArea_total)
+fire$prop.ba.killed  [fire$basalArea_total == 0] <- 0
+fire$prop.dens.killed[fire$n_trees         == 0] <- 0
+
+fire_year_dat <- data.frame()
+
+for (i in 1:nrow(fire)) {
+  
+  # Skip fires that burned nothing
+  if (fire$area_m2[i] > 0) {
+    
+    # Take the fire map for this fire, and make everything but the fire cells NA
+    mask <- fire_maps[[paste0("spread_", fire$fireId[i])]]
+    mask[mask==0] <- NA
+    
+    # Use the mask to extract the rids for burned grids
+    burned_rids <- as.data.frame(raster::mask(env_grid.2, mask))
+burned_rids= burned_rids%>%filter(!is.na(env.grid))
+burned_rids$year=fire$year[i]
+  }
+  fire_year_dat=rbind(fire_year_dat,burned_rids)
+}
+fire_year_dat = fire_year_dat %>% rename("rid" = env.grid) %>% mutate(fire=1)
+summary(fire_year_dat)
+```
+
+Join together fire year and stand wide
+```{r}
+summary(stand.t.wide)
+stand.t.wide = left_join(stand.t.wide, fire_year_dat, by=c("rid","year"))  
+
+stand.t.wide =stand.t.wide %>% replace(is.na(.), 150)
+
+
+stand.t.wide=stand.t.wide%>%
+  group_by(rid) %>%
+  mutate(idx=cumsum(fire==1))%>%
+  group_by(rid,idx) %>%
+  mutate(time_since_fire=row_number())%>%
+  ungroup() %>% 
+    dplyr::select(-idx)
+
+test=stand.t.wide %>% filter(rid ==  50746)
+
+summary(test)
+```
+```{r}
+
+stand.t.final=left_join(stand.t.wide,water,by = c("rid","year"))
+summary(stand.t.final)
+stand.t.final %>% filter(IV.ad.sap_Pima>1)%>% summary()
+```
+```{r}
+library(scales)
+stand.t.final= stand.t.final %>% mutate(sp.dom = as.factor(ifelse(IV.ad.sap_Pima > 1,"Pima",
+                                      ifelse(IV.ad.sap_Potr > 1, "Potr",
+                                             ifelse(IV.ad.sap_Pigl > 1, "Pigl",
+                                                    ifelse(IV.ad.sap_Bene > 1, "Bene",
+                                                           ifelse(IV.ad.sap_Pima+IV.ad.sap_Pigl>1, "Mixed spruce",
+                                                                  ifelse(IV.ad.sap_Bene+IV.ad.sap_Potr, "Mixed deciduous","Non forest"))))))))
+stand.t.final$sp.dom <- factor(stand.t.final$sp.dom, levels = c("Pima", "Pigl",  "Potr", "Bene","Mixed spruce", "Mixed deciduous", "Non forest"))
+stand.t.final=stand.t.final %>% mutate(total=mossLayer*100+SOLLayer*100)
+
+stand.t.final %>%filter(year==300) %>% group_by(sp.dom)%>%filter(total>0) %>%summarise(quantile.total  = quantile(total, c(0.25,0.5,0.75)),q=c(0.25,0.5,0.75))
+stand.t.final = stand.t.final %>% filter(sp.dom!="Non forest")
+comparison.plot2=ggplot(stand.t.final, aes(x=total,y=sp.dom, height = ..ndensity..))+
+  ggridges::geom_density_ridges(alpha=0.5)+
+  theme_bw()+
+  scale_x_continuous(labels = comma)+
+  theme(    text  = element_text(color="black",  family="sans", size=10),
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+             axis.text.x=element_text(colour="black",size=10),
+             axis.text.y=element_text(colour="black",size=10),
+            legend.position = "bottom",
+            legend.background = element_rect(colour = "transparent", fill = 'transparent'),
+            legend.key = element_rect(colour = "transparent", fill = 'transparent'))+
+  labs(x=bquote(Surface~organic~layer~(cm)),y="Dominant species", fill="")
+ggsave("D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/figures/SOL.moss.depth.stand.jpg", height=4.25,width=8.5, units = "in", dpi=700)
+
+```
+
+```{r}
+# Whether we've saved the water and soil table or need to create it again
+data_saved <- F
+key <- "spec"
+tag <- "PIMA 0.1 decid 0.35"
+```
+
+```{r}
+output_file <- "D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/cpcrw/model/output/paper_run/CPCRW_sm_6.sqlite"
+#output_file <- "C:/Users/lora/Documents/Winslow/for_Lora/output.sqlite"
+#-----------------------------------------------------------------------------#
+# Load iLand fire table
+#-----------------------------------------------------------------------------#
+db.conn <- DBI::dbConnect(RSQLite::SQLite(), dbname=output_file)
+fire <- dbReadTable(db.conn, "fire")
+dbDisconnect(db.conn)
+fire$area_ha <- fire$area_m2 / 10000
+```
+
+# Assembling a dataset of burned stuff, one year pre-fire to 30 years post-fire:
+
+```{r}
+if (!data_saved) {
+  #---------------------------------------------------------------------------#
+  # Read in the water table, which has info on soil organic layer; get this 
+  # info for specific burned areas
+  #---------------------------------------------------------------------------#
+  db.conn <- DBI::dbConnect(RSQLite::SQLite(), dbname=output_file)
+  water <- tbl(db.conn, "water") %>% collect()
+  dbDisconnect(db.conn)
+  
+  # Let's get all the spread files (fire extents) as a raster stack
+  path = "D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/cpcrw/model/output/paper_run/spread_6"
+  #path = "E:/storage/Lora/from_winslow/output/spread"
+  fire_maps = stack(list.files(path, full.names = T))
+  # Use the environment grid to get ids for each grid
+  path = "D:/workspace/Winslow/permafrost/permafrost_param/iLand_landscapes/landscape_building/cpcrw/materials/env"
+  env_grid <- raster(paste0(path, "/env.grid.tif"))
+  crs(fire_maps)=crs(env_grid)
+  new.extent = extent(fire_maps)
+  
+#env_grid.2=crop(env_grid,new.extent)
+  env_grid.2=env_grid                  ###This is where you adjust for a subset of the landscape or whole landscape
+
+  fire <- fire %>% mutate(prop.dens.killed = n_trees_died   / n_trees,
+                          prop.ba.killed   = basalArea_died / basalArea_total)
+  fire$prop.ba.killed  [fire$basalArea_total == 0] <- 0
+  fire$prop.dens.killed[fire$n_trees         == 0] <- 0
+  
+  #-----------------------------------------------------------------------------#
+  # Build a dataset of SOL the year before a burn through 30 years after it. 
+  #-----------------------------------------------------------------------------#
+  fire_sol_dat <- NULL
+  for (i in 1:nrow(fire)) {
+    
+    # Skip fires that burned nothing
+    if (fire$area_m2[i] > 0) {
+      
+      # Take the fire map for this fire, and make everything but the fire cells NA
+      mask <- fire_maps[[paste0("spread_", fire$fireId[i])]]
+      mask[mask==0] <- NA
+      
+      # Use the mask to extract the rids for burned grids
+      burned_rids <- getValues(raster::mask(env_grid.2, mask))
+      burned_rids <- burned_rids[!is.na(burned_rids)]
+      
+      if (length(burned_rids) > 0) { # should never happen but...
+        
+        # Years we want info: year before the fire, through 30 years post-fire
+        fire_years <- (fire$year[i] - 1):(fire$year[i] + 30)
+        
+        firedat <- water %>% filter(year %in% fire_years  &
+                                      rid %in%  burned_rids)
+        firedat$prop.dens.killed <- fire$prop.dens.killed[i]
+        firedat$prop.ba.killed   <- fire$prop.ba.killed  [i]
+        
+        # Add the year of the record relative to the fire, and soil organic layer
+        # thickness (go from m to cm)
+        firedat <- firedat %>% 
+          mutate(rel.year  = year - fire$year[i],
+                 fireId    = fire$fireId[i],
+                 fire.year = fire$year[i],
+                 SOLLayer  = ifelse(is.na(SOLLayer) ,0,SOLLayer),
+                 mossLayer = ifelse(is.na(mossLayer),0,mossLayer),
+                 SOL.cm    = SOLLayer*100+mossLayer*100)
+        
+        fire_sol_dat <- rbind(fire_sol_dat,
+                              firedat %>% dplyr::select(year, ru, rid,
+                                                        fireId, rel.year, 
+                                                        fire.year, 
+                                                        SOLLayer, mossLayer,
+                                                        SOL.cm,
+                                                        prop.dens.killed,
+                                                        prop.ba.killed))
+        
+      } else {
+        stop("Better check on this...")
+      }
+      
+    }
+  }
+  
+  
+  #---------------------------------------------------------------------------#
+  # Also assemble a dataset of unburned pixels, for comparison
+  #---------------------------------------------------------------------------#
+  
+  # Determine where fires happened anywhere
+  fires <- sum(fire_maps) 
+  
+  # Flip around for the unburned pixels - this is where fires never happened
+  mask <- sum(fire_maps) 
+  mask[mask>0] <- NA
+  
+  # Use the mask to extract the rids for unburned grids
+  unburned_rids <- getValues(raster::mask(env_grid.2, mask))
+  unburned_rids <- unburned_rids[!is.na(unburned_rids)]
+  
+  nofire_sol_dat <- water                                                  %>% 
+    filter(rid %in% unburned_rids)                         %>%
+    mutate(SOLLayer  = ifelse(is.na(SOLLayer),0,SOLLayer),
+           SOL.cm    = SOLLayer*100+mossLayer*100)         %>%
+    dplyr::select(year, ru, rid, SOL.cm)
+  
+  rm(water)
+}
+```
+
+
+Now we calculate species importance value. This is the way to determine which species was/is dominant...
+Just do this for every resource unit, every year
+
+```{r}
+if (!data_saved) {
+  #---------------------------------------------------------------------------#
+  # Processing of sapling and stand tables. Sapling detail in the newest 
+  # version is far too large to load completely, even in the capacious memory
+  # of the workstation. So it is loaded and summarized in chunks.
+  #---------------------------------------------------------------------------#
+  
+  # Get the stand and sapling tables and chop them down some
+  db.conn <- DBI::dbConnect(RSQLite::SQLite(), dbname=output_file)
+  stand          <- tbl(db.conn, "stand")         %>% collect() %>% filter(ru != -1) %>%                          
+    dplyr::select(year, ru, rid, species, area_ha, count_ha, basal_area_m2)
+  sapling        <- tbl(db.conn, "sapling")       %>% collect() %>% filter(ru != -1) %>%
+    dplyr::select(ru, year, species, "sapling_count_ha"=count_ha, 
+                  "sapling_count_ha_small" = count_small_ha)
+  #sapling.detail <- tbl(db.conn, "saplingdetail") %>% filter(ru != -1) %>% collect()
+  sapling.detail <- tbl(db.conn, "saplingdetail") %>% filter(year %in% 1:10) %>% collect()
+  
+  
+  DBI::dbDisconnect(db.conn)
+  
+  # Add basal area to sapling.detail
+  sapling.detail    = sapling.detail %>% mutate(basal.area.ind   = pi*((dbh/100)/2)^2)
+  sapling.detail    = sapling.detail %>% mutate(basal.area.cohort= basal.area.ind*n_represented)
+  
+  # Group sapling info by year, location, species
+  sapling.detail.sum= sapling.detail %>% group_by(year,ru, species) %>%   
+    summarize(dbh_mean=weighted.mean(dbh,n_represented),
+              basal.area.total=sum(basal.area.cohort))
+  
+  start = 11
+  end = start + 9
+  while (start < 300) {
+    db.conn <- DBI::dbConnect(RSQLite::SQLite(), dbname=output_file)
+    sapling.detail <- tbl(db.conn, "saplingdetail") %>% filter(year %in% start:end) %>% collect()
+    DBI::dbDisconnect(db.conn)
+  
+  # Add basal area to sapling.detail
+  sapling.detail    = sapling.detail %>% mutate(basal.area.ind   = pi*((dbh/100)/2)^2)
+  sapling.detail    = sapling.detail %>% mutate(basal.area.cohort= basal.area.ind*n_represented)
+  
+  # Group sapling info by year, location, species
+  sapling.detail.sum= rbind(sapling.detail.sum, 
+                            sapling.detail %>% group_by(year,ru, species) %>%   
+                            summarize(dbh_mean=weighted.mean(dbh,n_represented),
+                            basal.area.total=sum(basal.area.cohort)))
+  start <- start + 10
+  end = start + 9
+  }
+  
+  # Join all this up
+  stand.sap.1=full_join(stand       ,sapling.detail.sum, by = c("ru","year","species"))
+  final.trees=full_join(stand.sap.1 ,sapling,            by = c("ru","year","species"))
+  final.trees=final.trees %>% replace(is.na(.), 0)
+  
+ # summary(final.trees)
+  
+  # Total density and basal area sums; this here will be by species
+  final.trees = final.trees %>%
+    mutate(count_total    = count_ha + sapling_count_ha + sapling_count_ha_small,
+           basal.area_sum = basal_area_m2 + basal.area.total)
+  
+  # Widen table so each record has all species in it
+  final.trees.wide = final.trees %>% 
+    pivot_wider(names_from  = species, 
+                names_sep   = ".", 
+                values_from = c(area_ha:basal.area_sum), 
+                values_fill = 0)
+  #summary(final.trees.wide)
+  
+  # Final sums across species
+  final.trees.wide = final.trees.wide %>% 
+    mutate(total_density = count_total.Potr + count_total.Pima + count_total.Bene + count_total.Pigl,
+           total_ba = basal.area_sum.Potr + basal.area_sum.Pima + basal.area_sum.Bene + basal.area_sum.Pigl)
+  
+  # Final importance value
+  final.trees.wide = final.trees.wide%>%
+    mutate(IV.Pima = ifelse(total_density !=0 & total_ba!=0, 
+                            (count_total.Pima/total_density)+(basal.area_sum.Pima/total_ba),0),
+           IV.Pigl = ifelse(total_density !=0 & total_ba!=0,
+                            (count_total.Pigl/total_density)+(basal.area_sum.Pigl/total_ba),0),
+           IV.Potr = ifelse(total_density !=0 & total_ba!=0,
+                            (count_total.Potr/total_density)+(basal.area_sum.Potr/total_ba), 0),
+           IV.Bene = ifelse(total_density !=0 &total_ba!=0,
+                            (count_total.Bene/total_density)+(basal.area_sum.Bene/total_ba), 0))
+  
+  # Smallen the dataset a bit
+  #final.trees.wide2 = final.trees.wide %>% dplyr::select(year, ru, count_total.Pima:IV.Bene) 
+  #summary(final.trees.wide2)
+  
+  # Assign a stand type by whatever is the species with the highest IV
+  iv_cols <- grep("IV", names(final.trees.wide))
+  spp <- sapply(names(final.trees.wide)[iv_cols], function(x){strsplit(x, ".", fixed=T)[[1]][2]})
+  ind <- apply(final.trees.wide[,iv_cols], MARGIN = 1, FUN = which.max)
+  final.trees.wide$stand.type <- as.factor(spp[ind])
+  
+  rm(final.trees, #final.trees.wide, 
+     stand, sapling, sapling.detail, stand.sap.1)
+}
+```
+
+Join it up to our fire dataset and get some info by stand type
+
+```{r}
+if (!data_saved) {
+  # We want to make sure we are looking at stand type at the right time. This will
+  # give us the stand info along each year.
+  fire_dat <- left_join(fire_sol_dat, final.trees.wide, by=c("ru","year"))
+  
+  # But we also want to know the stand type at the time of the fire, so we can
+  # see if it changes. Add that as a separate variable.
+  fire.dat.2 <- fire_dat %>% filter(rel.year == 0) %>% 
+    rename(starting.stand.type = stand.type) %>%
+    dplyr::select(ru, fire.year, starting.stand.type)
+  ind <- match(paste0(fire_dat  $ru, fire_dat  $fire.year, sep="."), 
+               paste0(fire.dat.2$ru, fire.dat.2$fire.year, sep="."))
+  fire_dat$starting.stand.type <- fire.dat.2$starting.stand.type[ind]
+  fire_dat$rel.year <- as.factor(fire_dat$rel.year)
+  rm(fire.dat.2)
+  
+  
+  nofire_dat <- left_join(nofire_sol_dat, final.trees.wide, by=c("ru", "year"))
+  
+  # Save these datasets for later
+  saveRDS(fire_dat, file="E:/storage/Winslow/for_Lora/fire_dat_spec.rds")
+  saveRDS(nofire_dat, file="E:/storage/Winslow/for_Lora/nofire_dat_spec.rds")
+} else {
+  fire_dat <- readRDS("E:/storage/Winslow/for_Lora/fire_dat_spec.rds")
+  nofire_dat <- readRDS("E:/storage/Winslow/for_Lora/nofire_dat_spec.rds")
+}
+
+# Histogram of never-burned pixels, by stand type
+#ggplot(nofire_dat[!is.na(nofire_dat$stand.type),], aes(x=SOL.cm, after_stat(density))) + 
+#  geom_histogram() +
+#  theme_bw() + 
+#  labs(title="Soil organic layer thickness for never-burned areas, all years",
+#       x = "SOL (cm)") +
+#  facet_wrap(~stand.type)
+
+# Repeat for only the final 50 years of a run
+ggplot(nofire_dat[(!is.na(nofire_dat$stand.type) & nofire_dat$year > 90),], aes(x=SOL.cm, after_stat(density))) + 
+  geom_histogram() +
+  theme_bw() + 
+  labs(title=paste("Soil organic layer thickness for never-burned areas, years 260-300\n", tag),
+       x = "SOL (cm)") +
+  facet_wrap(~stand.type)
+
+summary(fire_dat)
+s=fire_dat %>% filter(starting.stand.type=="Pima" |starting.stand.type == "Pigl") %>% group_by(rel.year) %>% summarize(quantile.SOL =  quantile(SOL.cm, c(0.25,0.5,0.75)),q=c(0.25,0.5,0.75))
+s.wide= s %>% pivot_wider(names_from = c(rel.year, q), values_from = quantile.SOL)
+10.7 - 5.0
+16.2 - 7.3
+20.3-8.3
+
+s=fire_dat %>% filter(starting.stand.type=="Potr" |starting.stand.type == "Bene") %>% group_by(rel.year) %>% summarize(quantile.SOL =  quantile(SOL.cm, c(0.25,0.5,0.75)),q=c(0.25,0.5,0.75))
+s.wide= s %>% pivot_wider(names_from = c(rel.year, q), values_from = quantile.SOL)
+3.1-2.9
+3.6 - 3.3
+4.1 - 3.8
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
