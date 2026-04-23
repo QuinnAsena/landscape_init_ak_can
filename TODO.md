@@ -4,8 +4,7 @@
 
 ### Local Testing
 - [ ] Single-site validation: run `cpcrw_test.r` (Caribou-Poker Creeks) end-to-end
-- [ ] Verify per-landscape output structure (`gis/`, `init/`, `databases/`)
-- [ ] Confirm iLand XML project files are valid
+- [ ] include post-run processing scripts in bash?
 
 ### HPC Deployment (NCAR Derecho)
 - [ ] Upload pipeline outputs to Derecho
@@ -17,4 +16,6 @@
 
 ## Backlog
 
-- Address Priority 1 correctness issues from `issues-codex5.3.md` when relevant
+- Address Priority 1 correctness issues from `issues-codex5.3.md` when relevant. Most of the defensive checks are unnecessary at the moment.
+- clean up scripts 01 and 10. They will source but are not tidy functions like the other scripts!
+- Create master sourcing script to run the workflow from a central script. Low importance since this only needs to be done once if everything works!

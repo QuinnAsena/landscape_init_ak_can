@@ -43,69 +43,100 @@ project working directory. Processing is parallelised across landscapes using
 
 # File structure
 
-Each landscape is stored in its own directory at the project root, named
+Landscapes are stored in per-landscape directories at the project root, named
 `landscape_alaska_01`, `landscape_alaska_02`, ..., `landscape_canada_01`, etc.
-Within each landscape directory the following structure is produced by the
-pipeline:
+The full per-landscape structure produced by the pipeline is shown below, with
+the step that writes each file noted in brackets.
 
 ```
-landscape_name/
-├── <landscape_name>_spinup.xml       # iLand project file (step 13)
-├── gis/
-│   ├── env.grid.txt                  # RU grid in ASCII format for iLand
-│   ├── env.grid.tif                  # RU grid as GeoTIFF
-│   ├── env.file_yr<n>.txt            # Environment file (interpolated climate)
-│   ├── env.file_link_yr<n>.txt       # Environment file (linked climate)
-│   ├── stand_grid_yr<n>.txt          # Stand ID grid in ASCII format for iLand
-│   ├── stand_grid_yr<n>.tif          # Stand ID grid as GeoTIFF
-│   ├── DEM_processed.txt             # DEM in ASCII format for iLand
-│   └── DEM_processed.tif             # DEM as GeoTIFF
+landscape_<region>_<nn>/
+│
+│   # iLand project file — name encodes climate years and run type (step 13)
+├── <landscape_name>_<start>-<end><run_type>.xml
+│
+├── gis/                              # iLand-ready input files
+│   ├── env.grid.txt                  # RU grid, ASCII format for iLand     [02]
+│   ├── env.grid.tif                  # RU grid, GeoTIFF                    [02]
+│   ├── DEM_processed.txt             # DEM, ASCII format for iLand         [06]
+│   ├── DEM_processed.tif             # DEM, GeoTIFF                        [06]
+│   ├── stand_grid_yr<n>.txt          # Stand ID grid, ASCII for iLand      [11]
+│   ├── stand_grid_yr<n>.tif          # Stand ID grid, GeoTIFF              [11]
+│   └── env.file_link_yr_<n>.txt      # Environment file (linked climate)   [12]
+│
 ├── init/
-│   └── landscape_model_init.txt      # Sapling initialisation table (step 10)
+│   └── landscape_model_init.txt      # Sapling initialisation table        [10]
+│
 ├── databases/
-│   ├── <gcm><ssp>.sqlite             # Climate database for iLand
-│   └── spp_param.sqlite              # Species parameters (step 13)
-├── lip/                              # Light influence patterns (step 13)
+│   ├── <gcm>-<ssp>.sqlite            # Climate database                    [04]
+│   └── spp_param.sqlite              # Species parameters (copied)         [13]
+│
+├── lip/                              # Light influence patterns (copied)    [13]
 ├── scripts/
-│   └── saveWorkflow.js               # iLand workflow script (step 13)
-├── output/                           # iLand simulation outputs (step 13)
-├── snapshot/                         # iLand snapshots (step 13)
-├── temp/                             # iLand temporary files (step 13)
-├── log/                              # iLand log files (step 13)
-└── supporting_data/
-    ├── ABoVE_LandCover/      # Cropped annual land cover tiles
-    ├── ABoVE_Water/          # Cropped decadal surface water tiles
-    ├── climate_link/         # Per-variable climate text files (linked version)
-    │   ├── env.grid-climate.grid-link.txt
+│   └── saveWorkflow.js               # iLand JavaScript workflow (copied)  [13]
+├── output/                           # iLand simulation outputs             [13]
+├── snapshot/                         # iLand snapshots                     [13]
+├── temp/                             # iLand temporary files               [13]
+├── log/                              # iLand log files                     [13]
+│
+└── supporting_data/                  # Intermediate files not read by iLand
+    │
+    ├── ABoVE_LandCover/
+    │   └── ABoVE_LandCover.tif       # Cropped land cover, 31 layers       [01]
+    │
+    ├── ABoVE_Water/
+    │   └── ABoVE_Water.tif           # Cropped surface water, 3 layers     [01]
+    │
+    ├── climate_link/                 # Climate files for linked approach    [03]
+    │   ├── env.grid-climate.grid-link.txt   # RU → climate cell lookup
     │   └── <gcm>/<ssp>/<var>/
+    │       └── <gcm>-<ssp>-<var>-<year>.txt
+    │
+    ├── dem/                          # Raw ArcticDEM tiles                  [05]
+    │   └── arcticdem/mosaics/v4.1/10m/
+    │
     ├── gis/
-    │   ├── env.grid.png              # Diagnostic plot of the RU grid
-    │   ├── env.grid_disagg_10.tif    # 10m land cover grid
-    │   ├── dem_lcp10.tif             # DEM projected to landscape grid
-    │   ├── aspect_lcp10.tif          # Aspect (degrees)
-    │   ├── hillshade_lcp10.tif       # Hillshade
-    │   ├── permafrost_lcp10.tif      # Permafrost presence/absence
+    │   ├── env.grid.png              # Diagnostic plot of the RU grid      [02]
+    │   ├── env.grid_disagg_10.tif    # 10m land cover, aligned to env.grid [02]
+    │   ├── dem_lcp10.tif             # DEM reprojected to landscape grid    [06]
+    │   ├── aspect_lcp10.tif          # Aspect (degrees)                    [06]
+    │   ├── hillshade_lcp10.tif       # Hillshade                           [06]
+    │   ├── permafrost_lcp10.tif      # Permafrost presence/absence         [06]
     │   └── init/
-    │       └── forest_species_init_lc_yr<n>.tif  # Species codes per RU
-    ├── soils/
+    │       └── forest_species_init_lc_yr<n>.tif  # Species codes per cell  [09]
+    │
+    ├── soils/                        # Raw SoilGrids tiles                  [07]
     │   ├── sand/  sand_0-5cm_mean.tif ... sand_100-200cm_mean.tif
     │   ├── silt/  silt_0-5cm_mean.tif ... silt_100-200cm_mean.tif
     │   ├── clay/  clay_0-5cm_mean.tif ... clay_100-200cm_mean.tif
     │   └── depth/ bdticm.tif
-    └── soils_processed/
-        ├── sand.tif    # Depth-weighted mean %, reprojected to env.grid
-        ├── silt.tif    # Depth-weighted mean %, reprojected to env.grid
-        ├── clay.tif    # Depth-weighted mean %, reprojected to env.grid
-        └── depth.tif   # Depth to bedrock (cm), capped at 200cm
+    │
+    └── soils_processed/              # Depth-weighted means at env.grid res [08]
+        ├── sand.tif
+        ├── silt.tif
+        ├── clay.tif
+        └── depth.tif
 ```
 
-Shared input data (e.g., `\lip`, species databases, empirical data...) lives
-outside the landscape directories. Empirical standdata and the 
-stand dictionary (`sapinit_dict.txt`) produced by step 10 are
-stored in `data/empirical/`. The sapling initialisation table
-(`landscape_model_init.txt`) is written per-landscape to `init/`. The
-selected landscape polygons are in `data/`. Scripts without a numbered
-prefix are test scripts or other scripts not necessary to the workflow.
+Shared input data lives outside the landscape directories:
+
+```
+data/
+├── landscape_selection/
+│   └── final_plots_above_proj.shp    # Landscape polygons (Lora Murphy)
+├── cpcrw/
+│   └── env.grid.tif                  # CPCRW extent raster
+├── empirical/
+│   ├── <Johnstone and Walker source data>
+│   └── sapinit_dict.txt              # Stand dictionary, forest class → stand_id range  [10]
+└── shared-xml-create/
+    ├── landscape_master.xml          # Master iLand project file template   [13]
+    ├── spp_param.sqlite              # Species parameters database          [13]
+    ├── saveWorkflow.js               # iLand JavaScript workflow            [13]
+    └── lip/                          # Light influence patterns             [13]
+```
+
+Scripts without a numbered prefix are test or utility scripts not part of the
+main workflow.
 
 ---
 

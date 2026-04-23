@@ -23,8 +23,9 @@ Full spatial methodology is in `description.qmd`.
 - Direct CRS reassignment after `disagg()` caused misalignment; solution uses explicit reprojection.
 - Details: `description.qmd`, scripts `02` and `10–11`.
 
-### Landscape buffering
-- Landscapes are buffered during selection/processing to avoid edge effects; see `00_landscape_selection.r`.
+### Landscape buffering for climate and DEM
+- in order to create the climate link file, the climate data are buffered to a larger area than the environment grid and then extracted against the grid points. The alternative of interpolating the climate to the resources unit grain works but creates files that are 100 times larger.
+- DEM data are also downloaded to a buffered area in order to calculate aspect without edge pixels becoming NA.
 
 ### terra quirks
 - Various `terra` version-specific behaviours encountered and resolved; specifics documented inline in scripts.
@@ -36,7 +37,6 @@ Full spatial methodology is in `description.qmd`.
 Not urgent for controlled pipeline runs, but worth awareness:
 
 - **Script 00/01:** Column name inconsistency (`Propforested` vs `Propforest`, `Suppression` spelling)
-- **Script 02:** CRS reassignment after `disagg()` should be explicit reprojection (already addressed via snap grid approach)
 - **Script 10:** `sapinit_dict` written to empirical input folder — should go to output folder
 - **Script 12:** Climate table-name contract (RU-keyed vs climate-grid-keyed) needs locking
 - **Scripts 05/06/11/12:** Missing input validation (optional hardening)

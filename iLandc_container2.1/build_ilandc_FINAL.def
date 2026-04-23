@@ -1,0 +1,38 @@
+Bootstrap: localimage
+
+From: fakeroot.sif
+
+%post
+	FAKEROOTDONTTRYCHOWN=1 fakeroot bash -c '
+	export DEBIAN_FRONTEND=noninteractive
+
+	apt-get -y update
+	apt-get -y install git-all
+	
+	cd /usr/local/Qt-6.5.0/bin
+	git clone https://github.com/edfm-tum/iland-model.git
+	cd iland-model
+	mkdir build
+
+	cd build
+	mkdir plugins
+	mkdir ilandc
+	
+	cd plugins
+	qmake6 ../../src/plugins/plugins.pro
+	make
+	cd ..
+
+	cd ilandc
+	qmake6 ../../src/ilandc/ilandc.pro
+	make
+	cp ilandc /usr/local/Qt-6.5.0/bin
+	chmod +x ilandc
+	cd ../..
+
+
+	'
+%environment
+	export  QTDIR=/usr/local/Qt-6.5.0/bin
+	PATH=$QTDIR:$PATH
+	export PATH

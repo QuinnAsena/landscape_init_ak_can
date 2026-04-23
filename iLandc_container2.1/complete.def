@@ -1,0 +1,72 @@
+Bootstrap: docker
+
+From: ubuntu:22.04
+
+ 
+
+%post
+
+	apt-get -y update
+        apt-get -y install debianutils
+        apt-get -y install clang
+        apt-get -y install libclang-dev
+        apt-get -y install cmake
+        apt-get -y install wget
+        apt-get -y install ninja-build
+        apt-get -y install xz-utils
+        apt-get -y install libglx-dev
+	apt-get -y install libfontconfig1-dev \
+	libfreetype-dev \
+	libgtk-3-dev \
+	libx11-dev \
+	libx11-xcb-dev \
+	libxcb-cursor-dev \
+	libxcb-glx0-dev \
+	libxcb-icccm4-dev \
+	libxcb-image0-dev \
+	libxcb-keysyms1-dev \
+	libxcb-randr0-dev \
+	libxcb-render-util0-dev \
+	libxcb-shape0-dev \
+	libxcb-shm0-dev \
+	libxcb-sync-dev \
+	libxcb-util-dev \
+	libxcb-xfixes0-dev \
+	libxcb-xkb-dev \
+	libxcb1-dev \
+	libxext-dev \
+	libxfixes-dev \
+	libxi-dev \
+	libxkbcommon-dev \
+	libxkbcommon-x11-dev \
+	libxrender-dev
+	apt-get -y install build-essential libgl1-mesa-dev
+	apt-get -y install libfreeimage3 libfreeimage-dev
+
+        apt -y install gcc
+        apt -y install g++
+
+        apt-get -y install python3
+
+        wget https://download.qt.io/archive/qt/6.5/6.5.0/single/qt-everywhere-src-6.5.0.tar.xz
+
+        cd /
+        
+        tar xf qt-everywhere-src-6.5.0.tar.xz
+
+        cd /qt-everywhere-src-6.5.0
+
+        ./configure
+
+        cmake --build . --parallel
+        cmake --install .
+
+%environment
+
+	export LLVM_INSTALL_DIR=/usr/local/llvm
+
+        export QT_SELECT=qt6
+
+        PATH=/usr/local/Qt-6.5.0/bin:$PATH
+
+        export PATH
