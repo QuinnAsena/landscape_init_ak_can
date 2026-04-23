@@ -60,9 +60,17 @@ Run R pipeline (scripts 00–13)   →   Upload outputs   →   Run iLand model
 
 ---
 
-## Output Structure
+## Repository Structure
 
-Each landscape gets a directory:
+```
+scripts/            # 13-step initialization pipeline (00–13_*.r)
+data/               # empirical reference data + shared iLand XML templates
+anaysis-scripts/    # post-processing R scripts (area dominance, basal area, seed density)
+workflow-output/    # Quarto analysis notebooks for iLand output analysis
+  workflow-data/    #   data consumed by the analysis notebooks
+```
+
+**Pipeline outputs** (git-ignored, per-landscape):
 ```
 <landscape_id>/
   gis/          # spatial grids (ASCII + GeoTIFF)
