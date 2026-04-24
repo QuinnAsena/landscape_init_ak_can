@@ -309,7 +309,7 @@ sapinit_pigl <- sapinit |>
     forest_type = "pigl",
     height_from = height_from + 1,
     height_to = height_to + 1,
-    age = as.numeric(age) + 15,
+    age = as.numeric(age) + 11,
     stand_id = stand_id + max(sapinit$stand_id)
   )
 

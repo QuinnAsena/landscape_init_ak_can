@@ -156,10 +156,22 @@ construction (step 02) and species initialisation (step 09).
 
 Decadal surface water maps from the ABoVE project
 ([ORNL DAAC](https://www.earthdata.nasa.gov/data/catalog/ornl-cloud-decadal-water-maps-1324-1.1)),
-covering three decades (1991, 2001, 2011). Used in step 09 to mask water-covered
+covering three epochs (1991, 2001, 2011). Used in step 09 to mask water-covered
 cells from the species initialisation. This product was preferred over the water
 class in the land cover data on the basis that it avoids erroneous overlap
 between forested and water pixels.
+
+Cell values in the map files: 0 = land, 1 = water, 2 = probable water (Alaska
+1991 tiles only), 255 = no data / outside study domain. Value 2 arises from
+the Alaska 1991 fill procedure applied to tiles h00v00, h00v01, and h01v00,
+where Landsat data density was too low to produce reliable classifications; missing
+cells were filled using 2001 and 2011 observations. These tiles are documented as
+low-quality for change analysis.
+
+**Known data artefact:** For some landscapes overlapping the affected Alaska tiles,
+one or more decades may contain only value 1 (all-water), which is not a valid
+classification. Step 09 checks for this and selects the nearest valid decade
+instead (see step 09 description).
 
 ## ABoVE study domain
 
@@ -470,18 +482,25 @@ Cells with NA aspect (border cells where terrain calculation lacks full
 neighbourhood) fall through to the class-only rules rather than remaining
 unclassified.
 
-Before classification, a 50m water proximity buffer is applied using the ABoVE
-surface water product: cells within 50m of open water are masked out. This
-avoids initialising forest on pixels that sit within or immediately adjacent
-to water bodies. The water raster (30m) is aligned to the snapped 10m landscape
-grid by projecting the 1000m-buffered version (saved in step 01) using
-nearest-neighbour interpolation, ensuring it shares the same origin and
-dimensions as `env.grid_disagg_10.tif`.
+Before classification, a 50m water proximity buffer is applied to mask cells
+within or immediately adjacent to open water. All three surface water decades
+are loaded and projected to the 10m landscape grid at once using
+nearest-neighbour interpolation. Each decade is validated: a valid decade must
+contain both land (value 0) and water (value 1 or 2) cells. Decades with only
+value 1 (all-water artefact, see ABoVE surface water section) are rejected. The
+decade whose index is nearest to the land cover year's decade is used; if that
+decade is invalid, the nearest valid decade is substituted with a diagnostic
+message. If all three decades are invalid, the script falls back to ABoVE land
+cover class 15 (water) as the source for the buffer mask.
 
-Species are encoded as integers (1–6) and written as a GeoTIFF for use in
-steps 11 and 12. Choose the land cover year in this script, e.g., land
-cover year 1 = 1984 and 31 = 2014. This can be aligned with surface water
-decade where 1, 2, 3 = 1991, 2001, 2011.
+The script is run for all 31 land cover years (1984–2014). The surface water
+decade is assigned automatically: years 1–10 → decade 1 (1991), years 11–20 →
+decade 2 (2001), years 21–31 → decade 3 (2011).
+
+Species are encoded as integers (1–6) and written as
+`forest_species_init_lc_yr<n>.tif` for use in steps 11 and 12. An alternative
+script `09a_species_init.r` uses only land cover class 15 for water masking,
+omitting the surface water product entirely.
 
 ## Step 10 — Generate stand initialisation data
 

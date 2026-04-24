@@ -99,7 +99,7 @@ crop_lcp <- function(lcp_vrt, poly) {
   lcp <- file.path(paste0("landscape_", poly$landscape_id), "supporting_data")
   nm <- sub("_\\d+$", "", names(lcp_vrt)[1])
   out <- file.path(here(), lcp, nm)
-  dir.create(out, recursive = TRUE)
+  dir.create(out, recursive = TRUE, showWarnings = FALSE)
 
   if (!same.crs(lcp_vrt, poly)) {
     warning("Check on crs in: ", lcp, "\nprojecting to ", crs(lcp_vrt))

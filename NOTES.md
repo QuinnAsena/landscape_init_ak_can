@@ -32,6 +32,28 @@ Full spatial methodology is in `description.qmd`.
 
 ---
 
+## ABoVE surface water data artefacts (script 09)
+
+### 2026-04-24 — All-water epochs in ABoVE surface water tiles
+**Context:** Running `09_species_init.r` across all 31 land cover years revealed that
+certain landscape/decade combinations produce a surface water raster where every cell
+equals 1 (all-water), rather than the expected classes: 0 = land, 1 = Water,
+2 = probable water in Alaska1991 tiles, 255 = No data.
+**Decision/Finding:** This is a documented data quality issue. The ABoVE Water Map
+Alaska 1991 fill procedure (applied to tiles h00v00, h00v01, h01v00) can propagate
+water values (value 2 = probable water) across areas with no 1991 observations. For
+some landscapes this results in an all-water epoch for one or more decades.
+Map file cell values: 0 = land, 1 = water, 2 = probable water (Alaska 1991 tiles
+only), 255 = no data. Value 2 is treated as water in the masking step.
+**Why:** A decade where all cells equal 1 produces a mask that eliminates the entire
+landscape, which is incorrect. The fix (in `09_species_init.r`) validates each decade
+before use: a valid decade must have both land (0) and water (1/2) cells. If the
+nominated decade is invalid, the nearest valid decade is used instead. If all three
+decades are invalid, the script falls back to ABoVE land cover class 15 (water) to
+derive the 50m buffer mask.
+
+---
+
 ## Known Fragilities (from `issues-codex5.3.md`)
 
 Not urgent for controlled pipeline runs, but worth awareness:
