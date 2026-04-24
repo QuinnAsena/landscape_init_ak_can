@@ -105,7 +105,7 @@ param_grid <- expand.grid(
 )
 
 # I get memory issues running in parallel, setting workers = 1 for now.
-plan(multisession, workers = 1)
+plan(multisession, workers = 2)
 
 future_lapply(
   seq_len(nrow(param_grid)),

@@ -1,0 +1,131 @@
+---
+title: "Land cover comparison"
+author: "FFL"
+date: today
+---
+
+```{r}
+#| label: setup
+#| message: false
+library(here)
+library(terra)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(purrr)
+
+species_labels <- c(
+  "1" = "Black spruce", "2" = "White spruce", "3" = "Aspen",
+  "4" = "Birch",        "5" = "Mixed",         "6" = "Potential forest"
+)
+species_colours <- c(
+  "Black spruce"     = "#1b4f72",
+  "White spruce"     = "#2980b9",
+  "Aspen"            = "#f0b27a",
+  "Birch"            = "#e67e22",
+  "Mixed"            = "#7dcea0",
+  "Potential forest" = "#aab7b8"
+)
+
+# list.files returns alphabetical order which mis-sorts yr1, yr10, yr11 before
+# yr2 — extract the integer year and reorder before stacking.
+load_species_stack <- function(landscape) {
+  files <- list.files(
+    here(landscape, "supporting_data", "gis", "init"),
+    pattern = "forest_species_init_lc_yr\\d+\\.tif$",
+    full.names = TRUE
+  )
+  yr_nums <- as.integer(gsub(".*lc_yr(\\d+)\\.tif$", "\\1", basename(files)))
+  rast(files[order(yr_nums)])
+}
+
+landscapes <- c("landscape_alaska_01", "landscape_alaska_02")
+landscape_labels <- c(
+  landscape_alaska_01 = "Alaska 01",
+  landscape_alaska_02 = "Alaska 02"
+)
+```
+
+## Species area over time
+
+```{r}
+#| label: area-time-series
+#| fig-height: 6
+area_df <- map_dfr(landscapes, function(lname) {
+  r <- load_species_stack(lname)
+  map_dfr(seq_len(nlyr(r)), function(i) {
+    freq(r[[i]]) |>
+      as.data.frame() |>
+      transmute(
+        landscape = lname,
+        year      = 1983L + i,
+        species   = species_labels[as.character(value)],
+        area_ha   = count * 100 / 10000  # 10 m cells → ha
+      )
+  })
+}) |>
+  filter(!is.na(species))
+
+ggplot(area_df, aes(year, area_ha, colour = species)) +
+  geom_line(linewidth = 0.8) +
+  scale_colour_manual(values = species_colours) +
+  facet_wrap(
+    ~landscape, ncol = 1, scales = "free_y",
+    labeller = labeller(landscape = landscape_labels)
+  ) +
+  labs(x = NULL, y = "Area (ha)", colour = NULL,
+       title = "Forest species area 1984–2014") +
+  theme_minimal(base_size = 11) +
+  theme(legend.position = "bottom")
+```
+
+## Spatial distribution at three decades
+
+Black spruce and white spruce presence at 1984, 1999, and 2014.
+
+```{r}
+#| label: decade-maps
+decade_yrs  <- c(1L, 16L, 31L)
+decade_labs <- c("1984", "1999", "2014")
+
+map_df <- map_dfr(landscapes, function(lname) {
+  r <- load_species_stack(lname)
+  map_dfr(seq_along(decade_yrs), function(j) {
+    as.data.frame(r[[decade_yrs[j]]], xy = TRUE) |>
+      rename(code = 3) |>
+      mutate(landscape = lname, year = decade_labs[j])
+  })
+}) |>
+  mutate(
+    `Black spruce` = if_else(code == 1L, "Black spruce", NA_character_),
+    `White spruce` = if_else(code == 2L, "White spruce", NA_character_)
+  ) |>
+  pivot_longer(c(`Black spruce`, `White spruce`),
+               names_to = "species", values_to = "label") |>
+  filter(!is.na(label)) |>
+  mutate(year = factor(year, levels = decade_labs))
+
+walk(landscapes, function(lname) {
+  p <- ggplot(
+    filter(map_df, landscape == lname),
+    aes(x, y, fill = label)
+  ) +
+    geom_raster() +
+    scale_fill_manual(values = c(
+      "Black spruce" = "#1b4f72",
+      "White spruce" = "#2980b9"
+    )) +
+    facet_wrap(~year, nrow = 1) +
+    coord_equal() +
+    labs(x = NULL, y = NULL, fill = NULL,
+         title = paste("Black & white spruce —", landscape_labels[lname])) +
+    theme_minimal(base_size = 10) +
+    theme(
+      axis.text       = element_blank(),
+      axis.ticks      = element_blank(),
+      panel.grid      = element_blank(),
+      legend.position = "bottom"
+    )
+  print(p)
+})
+```

@@ -1,5 +1,6 @@
 project:
   type: default
+  output-dir: htmls
   render:
 #    - area_dominated.qmd
 #    - seedling_density.qmd
@@ -7,10 +8,11 @@ project:
 #    - debug_summaries.qmd
 #    - water_daily_resp_debug.qmd
 #    - spatial_tests.qmd
-    - spinup_seeddens.qmd
-    - spinup_area_dom.qmd
-    - spinup_basal_area.qmd
-    - spinup_prop_dom.qmd
+#    - spinup_seeddens.qmd
+#    - spinup_area_dom.qmd
+#    - spinup_basal_area.qmd
+#    - spinup_prop_dom.qmd
+    - landcover_years.qmd
     
 embed-resources: true
 format:
