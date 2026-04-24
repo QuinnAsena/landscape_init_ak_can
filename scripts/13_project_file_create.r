@@ -112,6 +112,8 @@ gen_project_file(
     seed = 1984)
 
 
+#--------------- Generate project files for all landscapes ---------------#
+
 for (i in seq_along(landscape_names)) {
   gen_project_file(
     landscape_name = landscape_names[i],
