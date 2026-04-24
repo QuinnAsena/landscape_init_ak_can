@@ -36,17 +36,10 @@ above_water_files <- list.files(
 # Filter out Quality Assurance (QA) files; keep only the water data tiles
 above_water_files <- above_water_files[!grepl(pattern = "QA", above_water_files)]
 
-# Load up Lora's selected landscapes
+# Load up Lora's selected landscapes (now generated from 00_landscape_selection.r)
 landscapes_poly <- vect(here("data", "landscape_selection", "final_plots_above_proj.shp"))
 plot(above_study_domain)
 plot(landscapes_poly, add = TRUE, col = "red")
-# ---------- check crs ---------- #
-
-r_lc <- rast(above_lc_files[1])
-r_sw <- rast(above_water_files[1])
-same.crs(r_lc, r_sw)
-same.crs(r_lc, landscapes_poly)
-same.crs(r_lc, above_study_domain)
 
 # Stitch cpcrw on
 cpcrw <- rast(here("data", "cpcrw", "env.grid.tif"))

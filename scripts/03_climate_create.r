@@ -155,7 +155,7 @@ write_climate_link <- function(landscape_dir, gcm, ssp, var, year) {
   if (all(is.na(values(crop(ak_climate_var[[1]], env_ext_clim_crs))))) {
     ak_climate_var <- rast(cpcrw_clim_in)
   }
-
+  # Thanks to Sam Flake for helping me sort this extraction out!
   env_poly_buffer   <- terra::buffer(as.polygons(env_rast, extent = TRUE), width = 4000)
   pol_buffer_clim   <- project(env_poly_buffer, ak_climate_var)
   var_buffer_albers <- crop(ak_climate_var, pol_buffer_clim) |>

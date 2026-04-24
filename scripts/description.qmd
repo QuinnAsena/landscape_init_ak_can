@@ -16,7 +16,14 @@ theme:
 # Introduction
 
 Full discloser: this document was written by Claude as an experiment. I have
-included some edits.
+done some editing but it doesn't have my voice! Acknowledgements to:
+
+- Lora Murphy who did the original landscape selection and downscaling of the climate data
+- Winslow Hansen for the original landscape initialisation process
+- Sam Flake for help with the climate data extraction
+- Miriam Johnston and Kristin Braziunas for the master project file and edit xml workflow
+- Sofia Saenz Kruszka for containerizing iLand2.1 for linux
+- Arielle Biro for her initial work on the project
 
 This project constructs the spatial and ecological initialisation files required
 to run the individual-based forest landscape model
