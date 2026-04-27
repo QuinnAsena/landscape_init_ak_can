@@ -7,10 +7,17 @@ xml=$1
 start_rep=$2
 end_rep=$3
 simulation_years=$4
+system=${5:-derecho}   # derecho (default) or casper
 
 # Set variables
 # Override ILANDC_BIN and ILANDC_OUTPUT_ROOT for local testing; defaults are HPC paths.
-path="${ILANDC_BIN:-/glade/work/qasena/iLand2.0/iland-model/build/ilandc/ilandc}"
+case "$system" in
+  casper)
+    default_bin="/glade/work/qasena/iLand2.0-casper/iland-model/build/ilandc/ilandc" ;;
+  *)
+    default_bin="/glade/work/qasena/iLand2.0/iland-model/build/ilandc/ilandc" ;;
+esac
+path="${ILANDC_BIN:-${default_bin}}"
 xml_path=$(dirname "$xml")
 landscape_name=$(basename "$xml" .xml)
 output_path="$(realpath -m "${ILANDC_OUTPUT_ROOT:-/glade/derecho/scratch/qasena/output_auto/${landscape_name}}")"
