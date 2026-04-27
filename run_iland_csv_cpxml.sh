@@ -20,7 +20,7 @@ esac
 path="${ILANDC_BIN:-${default_bin}}"
 xml_path=$(dirname "$xml")
 landscape_name=$(basename "$xml" .xml)
-output_path="$(realpath -m "${ILANDC_OUTPUT_ROOT:-/glade/derecho/scratch/qasena/output_auto/${landscape_name}}")"
+output_path="$(realpath -m "${ILANDC_OUTPUT_ROOT:-/glade/derecho/scratch/qasena/output_ak_can/${landscape_name}}")"
 # On Windows (Git Bash / MSYS2) realpath converts Z:/... to /z/... but iLand
 # is a native Windows binary and cannot resolve POSIX-style drive paths.
 # cygpath -m gives a Windows path with forward slashes (Z:/...) — iLand can
