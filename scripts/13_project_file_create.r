@@ -72,7 +72,8 @@ gen_project_file <- function(landscape_name, master_xml, run_type,
   editxml(x, "//climate/filter", climate_settings$climate_filter)
   editxml(x, "//climate/randomSamplingList", paste0('"', climate_settings$random_sample_list, '"'))
   editxml(x, "//climate/batchYears", as.character(climate_settings$batch_years))
-
+  # leave 'file' blank include a blank entry in scenario csv.
+  # iLand might print a warning, that no file is found but that's fine.
   if (run_type == "spinup") {
     mode <- "standgrid"
     type <- "distribution"
@@ -89,27 +90,30 @@ gen_project_file <- function(landscape_name, master_xml, run_type,
   editxml(x,"//initialization/mode", mode)
   editxml(x,"//initialization/type", type)
   editxml(x,"//initialization/file", file)
-  
-  save_filter <- paste0("year >= ", mod_years - filt_cond, " and year <= ", mod_years)
-  # Set save conditions
-  editxml(x,"//output/tree/filter", save_filter)
-  editxml(x,"//output/stand/condition", save_filter)
-  editxml(x,"//output/sapling/condition", save_filter)
-  editxml(x,"//output/saplingdetail/condition", save_filter)
-  editxml(x,"//output/carbon/condition", save_filter)
-  editxml(x,"//output/water/condition", save_filter)
+  # This defines the filter for which years to save in the following tags
+  # use -1 to set filter to blank
+  if (filt_cond != -1) {
+    save_filter <- paste0("year >= ", filt_cond, " and year <= ", mod_years)
+    # Set filter for followin tags
+    editxml(x, "//output/tree/filter", save_filter)
+    editxml(x, "//output/stand/condition", save_filter)
+    editxml(x, "//output/sapling/condition", save_filter)
+    editxml(x, "//output/saplingdetail/condition", save_filter)
+    editxml(x, "//output/carbon/condition", save_filter)
+    editxml(x, "//output/water/condition", save_filter)
+  }
 
   write_xml(x, out_xml)
 }
 
 gen_project_file(
-    landscape_name = landscape_names,
-    master_xml = master_xml,
-    run_type = "spinup",
-    desired_years = 1950:1980,
-    mod_years = 300,
-    filt_cond = 260,
-    seed = 1984)
+  landscape_name = landscape_names,
+  master_xml = master_xml,
+  run_type = "spinup",
+  desired_years = 1950:1980,
+  mod_years = 300,
+  filt_cond = 260,
+  seed = 1984)
 
 
 #--------------- Generate project files for all landscapes ---------------#
@@ -122,7 +126,7 @@ for (i in seq_along(landscape_names)) {
     desired_years  = 1950:1980,
     mod_years      = 300,
     filt_cond      = 260,
-    seed           = 1984 + i)   # unique per landscape
+    seed           = 1984 + i)
 }
 
 

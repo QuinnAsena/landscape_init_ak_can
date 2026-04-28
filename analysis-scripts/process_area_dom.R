@@ -11,7 +11,7 @@ treatment <- args[2]
 replicate <- as.numeric(args[3])
 
 
-data_path <- paste0("/glade/derecho/scratch/", user, "/output_auto/CPCRW_hist_spinup/")
+data_path <- paste0("/glade/derecho/scratch/", user, "/output_ak_can/landscape_alaska_01_1950-1980spinup/")
 
 if (length(list.files(data_path)) == 0) {
   stop("No files in data path: ", data_path)
