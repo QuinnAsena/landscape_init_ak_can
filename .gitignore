@@ -48,8 +48,9 @@ po/*~
 # RStudio Connect folder
 rsconnect/
 
-# Ignore all the directories containing large files
-/landscape_*/
+# Ignore all contents of landscape directories except XML project files at their root
+/landscape_*/**
+!/landscape_*/*.xml
 /data/landscape_selection/
 /data/lora_proj_temp/
 
