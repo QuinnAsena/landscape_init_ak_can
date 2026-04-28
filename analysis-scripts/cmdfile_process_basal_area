@@ -1,5 +1,12 @@
-#launch_cf -A UCIE0002 -l walltime=4:00:00 --ppn 128 --mem 50GB -l job_priority=economy ./cmdfile_process_areaDom
-#/glade/work/benkirk/repos/NCAR-pbstools/bin/launch_cf -A UCIE0001 -l walltime=6:00:00 --ppn 128 --steps-per-node 1 --mem 235GB -l job_priority=economy /glade/work/qasena/landscape_init_ak_can/analysis-scripts/cmdfile_process_basal_area
+# -A UCIE0001 -l
+# walltime=6:00:00
+# --ppn 128
+# --steps-per-node 3 # number of jobs run on a single node
+# --mem 235GB
+# -l job_priority=economy
+# --nthreads 36 #  multiplied across threads 36 = 108 total threads between three steps
+# launch_cf -A UCIE0002 -l walltime=4:00:00 --ppn 128 --mem 50GB -l job_priority=economy ./cmdfile_process_areaDom
+# /glade/work/benkirk/repos/NCAR-pbstools/bin/launch_cf -A UCIE0001 -l walltime=6:00:00 --ppn 128 --steps-per-node 1 --mem 235GB -l job_priority=economy /glade/work/qasena/landscape_init_ak_can/analysis-scripts/cmdfile_process_basal_area
 module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_basal_area.R "qasena" "landscape_alaska_01_1950-1980spinup" 1
 module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_basal_area.R "qasena" "landscape_alaska_01_1950-1980spinup" 2
 module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_basal_area.R "qasena" "landscape_alaska_01_1950-1980spinup" 3

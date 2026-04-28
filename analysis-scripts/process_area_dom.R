@@ -6,12 +6,12 @@ library(future.apply)
 library(arrow)
 
 args <- commandArgs(TRUE)
-user <- args[1]
+landscape <- args[1]
 treatment <- args[2]
 replicate <- as.numeric(args[3])
 
-
-data_path <- paste0("/glade/derecho/scratch/", user, "/output_ak_can/landscape_alaska_01_1950-1980spinup/")
+user <- "qasena"
+data_path <- paste0("/glade/derecho/scratch/", user, "/output_ak_can/", landscape, "/")
 
 if (length(list.files(data_path)) == 0) {
   stop("No files in data path: ", data_path)
@@ -21,7 +21,7 @@ input_file <- paste0(data_path, treatment, "/rep_",
                      replicate, "/", treatment, "_",
                      replicate, ".sqlite")
 
-output_dir <- file.path(data_path, "processed", "areaDom", treatment, paste0("rep_", replicate))
+output_dir <- file.path(data_path, "processed", "area_dom", treatment, paste0("rep_", replicate))
 
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -143,6 +143,7 @@ process_chunk <- function(start, end) {
           ~ "Mixed.deciduous",
         TRUE ~ "Not forested"
       )),
+      landscape = landscape,
       treatment = treatment,
       replicate = replicate
     )
