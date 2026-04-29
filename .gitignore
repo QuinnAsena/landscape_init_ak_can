@@ -56,4 +56,4 @@ rsconnect/
 
 # Claude Code internal files (worktrees, local session settings)
 .claude/
-iLandc_container2.1/ilandc.sif
+/iLandc_container2.1/

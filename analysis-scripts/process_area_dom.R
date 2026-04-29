@@ -13,9 +13,8 @@ replicate <- as.numeric(args[3])
 user <- "qasena"
 data_path <- paste0("/glade/derecho/scratch/", user, "/output_ak_can/", landscape, "/")
 
-if (length(list.files(data_path)) == 0) {
-  stop("No files in data path: ", data_path)
-}
+if (!file.exists(input_file)) stop("Input file not found: ", input_file)
+
 
 input_file <- paste0(data_path, treatment, "/rep_",
                      replicate, "/", treatment, "_",
@@ -35,11 +34,29 @@ cat(
   "input_file: ", input_file, "\n\n"
 )
 
+
+dbconn <- DBI::dbConnect(
+  RSQLite::SQLite(),
+  dbname = input_file)
+
+
+# sap <- tbl(dbconn, "sapling") |>
+#   select(year) |>
+#   summarise(min_yr = min(year),
+#             max_yr = max(year)) |>
+#   collect()
+
+
+year_range <- tbl(dbconn, "stand") |>
+  select(year) |>
+  summarise(min_yr = min(year),
+            max_yr = max(year)) |>
+  collect()
+dbDisconnect(dbconn)
+
+
+
 process_chunk <- function(start, end) {
-
-  # end <- start + (span -1)
-  # end <- min(start + (span - 1), max_year)
-
 
   dbconn <- DBI::dbConnect(
     RSQLite::SQLite(),
@@ -50,7 +67,7 @@ process_chunk <- function(start, end) {
     dplyr::select(year, ru, rid, species, area_ha, count_ha, basal_area_m2) |>
     collect()
 
-# Can include a select() here before collect
+  # including dbh weighted mean from original code, but not necessary in this pipeline.
   saplingdetail <- tbl(dbconn, "saplingdetail") |>
     filter(year %in% start:end) |>
     select(dbh, n_represented, rid, year, ru, species) |>
@@ -60,13 +77,15 @@ process_chunk <- function(start, end) {
     group_by(rid, year, ru, species) |>
     summarize(
       count_ha_sap = sum(n_represented),
-      dbh_mean_sapling = sum(dbh * n_represented) / sum(n_represented),
+      # dbh_mean_sapling = sum(dbh * n_represented) / sum(n_represented),
       ba_sum_sapling = sum(ba_all)) |>
     collect()
 
   cat("*Object sizes:* \n\n",
       "saplingdetail: ", format(object.size(saplingdetail), units = "Mb"), "\n\n",
       "stand: ", format(object.size(stand), units = "Mb"), "\n\n")
+
+  dbDisconnect(dbconn)
 
   stand.t <- full_join(stand, saplingdetail, by = c("rid", "ru", "year", "species")) |>
     mutate(
@@ -170,7 +189,7 @@ start_time_par <- Sys.time()
 
 # Define range of years
 span <- 10
-years <- 0:300
+years <- year_range$min_yr:year_range$max_yr
 
 year_chunks <- seq(from = min(years), to = max(years), by = span)
 chunk_ends <- pmin(year_chunks + span - 1, max(years))
@@ -181,7 +200,12 @@ print(chunks)
 
 # Set up parallel processing (adjust workers as needed)
 # REMEMBER TO USE plan(multisession, workers = 4) ON WINDOWS
-plan(multicore, workers = 10)
+if (nrow(chunks) > 10) {
+  cpus <- 10
+} else {
+  cpus <- nrow(chunks)
+}
+plan(multicore, workers = cpus)
 options(future.globals.maxSize = 1 * 1024^3)
 
 future.apply::future_lapply(1:nrow(chunks), function(i) {

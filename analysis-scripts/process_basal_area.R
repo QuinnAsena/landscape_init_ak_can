@@ -5,25 +5,25 @@ library(dplyr)
 library(tidyr)
 
 args <- commandArgs(TRUE)
-user <- args[1]
+landscape <- args[1]
 treatment <- args[2]
 replicate <- as.numeric(args[3])
 
-data_path <- paste0("/glade/derecho/scratch/", user, "/output_auto/CPCRW_hist_spinup/")
-
-if (length(list.files(data_path)) == 0) {
-  stop("No files in data path: ", data_path)
-}
+user <- "qasena"
+data_path <- paste0("/glade/derecho/scratch/", user, "/output_ak_can/", landscape, "/")
 
 input_file <- paste0(data_path, treatment, "/rep_",
                      replicate, "/", treatment, "_",
                      replicate, ".sqlite")
 
+if (!file.exists(input_file)) stop("Input file not found: ", input_file)
+
 output_dir <- file.path(data_path, "processed", "basal_area", treatment, paste0("rep_", replicate))
 
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
-env_path <- "/glade/work/qasena/CPCRW_fecund/gis/env.grid.tif"
+landscape_dir <- sub("^(landscape_[^_]+_\\d+)_.*", "\\1", landscape)
+env_path <- paste0("/glade/work/qasena/landscape_init_ak_can/", landscape_dir, "/gis/env.grid.tif")
 
 # Check if there are crownkill files to process
 fire_files <- list.files(paste0(data_path, treatment,
@@ -33,6 +33,18 @@ fire_files <- list.files(paste0(data_path, treatment,
 if (length(fire_files) < 1) {
   stop("no crownkill files!")
 }
+
+dbconn <- DBI::dbConnect(
+  RSQLite::SQLite(),
+  dbname = input_file)
+
+max_year <- tbl(dbconn, "stand") |>
+  select(year) |>
+  summarise(max_yr = max(year)) |>
+  collect()
+dbDisconnect(dbconn)
+
+
 
 basal_area_processing_func <- function(input_file, fire_files, env_path) {
   dbconn <- DBI::dbConnect(
@@ -72,7 +84,7 @@ basal_area_processing_func <- function(input_file, fire_files, env_path) {
     fire_year_dat <- rbind(fire_year_dat,burned_rids)
   }
   fire_year_dat <- fire_year_dat |>
-    rename("rid" = env.grid, "fire.year"=year)
+    rename("rid" = env.grid, "fire.year" = year)
 
   fire_year_dat <- fire_year_dat |>
     group_by(rid) |>
@@ -80,7 +92,7 @@ basal_area_processing_func <- function(input_file, fire_files, env_path) {
 
 
   stand <- tbl(dbconn, "stand") |>
-    filter(ru != -1, year == 300) |>
+    filter(ru != -1, year == max_year) |>
     dplyr::select(year, ru, rid, species, area_ha, count_ha, basal_area_m2) |>
     collect()
 
@@ -89,7 +101,7 @@ basal_area_processing_func <- function(input_file, fire_files, env_path) {
 # But it took ages to add the index, so this is commented-out
 
   saplingdetail <- tbl(dbconn, "saplingdetail") |>
-    filter(year == 300) |>
+    filter(year == max_year) |>
     select(dbh, n_represented, rid, year, ru, species) |>
     mutate(
       ba = pi * ((dbh / 100) / 2)^2,
@@ -97,7 +109,7 @@ basal_area_processing_func <- function(input_file, fire_files, env_path) {
     group_by(rid, year, ru, species) |>
     summarize(
       count_ha_sap = sum(n_represented),
-      dbh_mean_sapling = sum(dbh * n_represented) / sum(n_represented),
+      # dbh_mean_sapling = sum(dbh * n_represented) / sum(n_represented),
       ba_sum_sapling = sum(ba_all)) |>
     collect()
 
@@ -182,17 +194,18 @@ basal_area_processing_func <- function(input_file, fire_files, env_path) {
           ~ "Mixed.deciduous",
         TRUE ~ "Not forested"
       )),
+      landscape = landscape,
       treatment = treatment,
       replicate = replicate
     )
 
   stand.t.wide <- left_join(stand.t.wide, fire_year_dat, by = "rid") |>
     mutate(across(where(is.numeric), \(x) replace(x, is.na(x), 0))) |>
-    mutate(stand.age = 300 - last.fire.year)
+    mutate(stand.age = max_year - last.fire.year)
 
   arrow::write_parquet(
     stand.t.wide,
-    file.path(output_dir, "basal_area300.parquet"),
+    file.path(output_dir, paste0("basal_area_", max_year, ".parquet")),
     use_dictionary = FALSE
   )
   gc()

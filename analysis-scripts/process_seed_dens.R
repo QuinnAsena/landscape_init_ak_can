@@ -7,18 +7,18 @@ library(future.apply)
 library(arrow)
 
 args <- commandArgs(TRUE)
-user <- args[1]
+landscape <- args[1]
 treatment <- args[2]
 replicate <- as.numeric(args[3])
 
-data_path <- paste0("/glade/derecho/scratch/", user, "/output_auto/CPCRW_hist_spinup/")
-if (length(list.files(data_path)) == 0) {
-  stop("No files in data path: ", data_path)
-}
+user <- "qasena"
+data_path <- paste0("/glade/derecho/scratch/", user, "/output_ak_can/", landscape, "/")
 
 input_file <- paste0(data_path, treatment, "/rep_",
                      replicate, "/", treatment, "_",
                      replicate, ".sqlite")
+
+if (!file.exists(input_file)) stop("Input file not found: ", input_file)
 
 # Check the existence of output directory.
 # Will only print a warning if directory exists.
@@ -26,8 +26,8 @@ input_file <- paste0(data_path, treatment, "/rep_",
 output_dir <- file.path(data_path, "processed", "seeddens", treatment, paste0("rep_", replicate))
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
-
-env_path <- "/glade/work/qasena/CPCRW_fecund/gis/env.grid.tif"
+landscape_dir <- sub("^(landscape_[^_]+_\\d+)_.*", "\\1", landscape)
+env_path <- paste0("/glade/work/qasena/landscape_init_ak_can/", landscape_dir, "/gis/env.grid.tif")
 
 # Check if there are crownkill files to process
 fire_files <- list.files(paste0(data_path, treatment,
@@ -71,6 +71,12 @@ water <- tbl(dbconn, "water") |>
   select(year, ru, rid, SOLLayer, mossLayer) |>
   collect()
 
+year_range <- tbl(dbconn, "stand") |>
+  select(year) |>
+  summarise(min_yr = min(year),
+            max_yr = max(year)) |>
+  collect()
+
 # disconnect
 dbDisconnect(dbconn)
 
@@ -97,19 +103,19 @@ unburned_rids_sum <- terra::values(terra::mask(env_grid, unburned_sum))
 unburned_rids_sum <- unburned_rids_sum[!is.na(unburned_rids_sum)]
 
 nfire <- terra::mosaic(burnedSRC, fun = "sum")
-burn1x <- terra::subst(nfire, 1, 1, others = NA)
+# burn1x <- terra::subst(nfire, 1, 1, others = NA)
 # plot(burn1x)
 
-burn1x_inv <- terra::subst(nfire, 1, NA, others = 1)
+# burn1x_inv <- terra::subst(nfire, 1, NA, others = 1)
 # plot(nfire)
 
 # One way to get rids of burn overlap
 reburned_sum <- terra::subst(nfire, c(NA, 1), NA, others = 1)
 reburned_rids_sum <- terra::values(terra::mask(env_grid, reburned_sum))
-reburned_rids_sum <- reburned_rids_sum[!is.na(reburned_rids_sum), , drop = F]
+reburned_rids_sum <- reburned_rids_sum[!is.na(reburned_rids_sum), , drop = FALSE]
 
 fire_sol_dat <- NULL
-for (i in 1:nrow(fire)) {
+for (i in seq_len(nrow(fire))) {
 
   # Skip fires that burned nothing
   if (fire$area_m2[i] > 0) {
@@ -170,8 +176,10 @@ for (i in 1:nrow(fire)) {
 #   ) |>
 #   dplyr::select(year, ru, rid, SOL.cm)
 
+years <- year_range$min_yr:year_range$max_yr
+
 keep <- c("fire_sol_dat", "input_file", "burned_rids_sum",
-          "reburned_rids_sum", "treatment", "replicate", "output_dir")
+          "reburned_rids_sum", "landscape", "treatment", "replicate", "output_dir", "years")
 rm(list = setdiff(ls(), keep))
 gc()
 
@@ -211,7 +219,7 @@ process_chunk <- function(start, end) {
            basal.area.cohort = basal.area.ind * n_represented) |>
     group_by(year, ru, rid, species) |>
     summarize(
-      dbh_mean = sum(dbh * n_represented) / sum(n_represented),
+      # dbh_mean = sum(dbh * n_represented) / sum(n_represented),
       basal.area.total = sum(basal.area.cohort),
       .groups = "drop") |>
      collect()
@@ -225,7 +233,7 @@ process_chunk <- function(start, end) {
   final.trees <- full_join(stand.sap.1, sapling, by = c("rid",  "ru", "year", "species"))
   final.trees <- final.trees |> 
     mutate(across(everything(), \(x) replace(x, is.na(x), 0)))
-  
+
   rm(stand, sapling.detail, stand.sap.1, sapling)
   gc()
   # Total density and basal area sums; this here will be by species
@@ -234,14 +242,14 @@ process_chunk <- function(start, end) {
       count_total = count_ha + sapling_count_ha + sapling_count_ha_small,
       basal.area_sum = basal_area_m2 + basal.area.total
     )
-  
+
   # Widen table so each record has all species in it
   final.trees.wide <- final.trees |>
     tidyr::pivot_wider(
       names_from = species, names_sep = ".",
       values_from = c(count_ha:basal.area_sum), values_fill = 0
     )
-  
+
   # Final sums across species
   final.trees.wide <- final.trees.wide |>
     mutate(
@@ -252,7 +260,7 @@ process_chunk <- function(start, end) {
         basal.area_sum.Potr + basal.area_sum.Pima +
         basal.area_sum.Bene + basal.area_sum.Pigl
     )
-  
+
     # Final importance value
       final.trees.wide <- final.trees.wide |>
         mutate(
@@ -303,10 +311,11 @@ process_chunk <- function(start, end) {
   # Append rids that burned more than once for later filtering
   fire_sol_trees <- fire_sol_trees |>
     left_join(as_tibble(reburned_rids_sum) |>
-    mutate(reburned_rid = env.grid), by = c("rid" = "env.grid"))
+    mutate(reburned_rid = ru), by = c("rid" = "ru"))
 
   fire_sol_trees <- fire_sol_trees |>
-    mutate(treatment = treatment,
+    mutate(landscape = landscape,
+           treatment = treatment,
            replicate = replicate)
 
   arrow::write_parquet(
@@ -319,7 +328,6 @@ process_chunk <- function(start, end) {
 start_time_par <- Sys.time()
 # Define range of years
 span <- 10
-years <- 0:300
 year_chunks <- seq(from = min(years), to = max(years), by = span)
 chunk_ends <- pmin(year_chunks + span - 1, max(years))
 chunks <- data.frame(start = year_chunks, end = chunk_ends)
@@ -328,7 +336,13 @@ cat("Processing year chunks: \n")
 print(chunks)
 # Function to process each chunk
 # Set up parallel processing (adjust workers as needed)
-plan(multicore, workers = 5)
+if (nrow(chunks) > 5) {
+  cpus <- 5
+} else {
+  cpus <- nrow(chunks)
+}
+
+plan(multicore, workers = cpus)
 options(future.globals.maxSize = 1 * 1024^3)
 # Run the processing in parallel for each chunk
 sapling.detail.sum <- future.apply::future_lapply(1:nrow(chunks), function(i) {
