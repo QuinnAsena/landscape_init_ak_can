@@ -1,6 +1,7 @@
 date_run_ymd,id,job_id,project_file,project_details,time_taken_h,walltime_reqested_h,nodes_requested,threads_requested,mem_used,output_filesize_kb,climate_conditions,rep,landscape,notes,git_head,system
-20260428,5,3311778,landscape_alaska_01_spinup,filt > 260,,,,,,,historic,3,alaska_01,300-yr test,f4db0d7ebba0a444afa2cb3638d8bc0c1fe88ec1,casper
-20260428,4,3311778,landscape_alaska_01_spinup,filt > 260,,,,,,,historic,2,alaska_01,300-yr test,f4db0d7ebba0a444afa2cb3638d8bc0c1fe88ec1,casper
-20260428,3,3311778,landscape_alaska_01_spinup,filt > 260,,,,,,,historic,1,alaska_01,300-yr test,f4db0d7ebba0a444afa2cb3638d8bc0c1fe88ec1,casper
+20260428,6,3320729,landscape_alaska_01_spinup,filt > 260,9.2,12,1,36,63.56,646048340,historic,4,alaska_01,300-yr test,1b76478483fe72a97372293fad9730ceb376adab,casper
+20260428,5,3320729,landscape_alaska_01_spinup,filt > 260,7.81,12,1,36,69.47,509074976,historic,3,alaska_01,300-yr test,1b76478483fe72a97372293fad9730ceb376adab,casper
+20260428,4,3320729,landscape_alaska_01_spinup,filt > 260,7.6,12,1,36,61.92,489368588,historic,2,alaska_01,300-yr test,1b76478483fe72a97372293fad9730ceb376adab,casper
+20260428,3,3311778,landscape_alaska_01_spinup,filt > 260,7.9,8,1,36,59.47,560483316,historic,1,alaska_01,300-yr test,f4db0d7ebba0a444afa2cb3638d8bc0c1fe88ec1,casper
 20260427,2,3299133,landscape_alaska_01_spinup_test,test,0.16,1,1,36,30.09,14229524,historic,2,alaska_01,5-yr test,3ad075911c86db7e41ba894580d7a7c01b62cc80,casper
 20260427,1,3299133,landscape_alaska_01_spinup_test,test,0.13,1,1,36,30.16,11301936,historic,1,alaska_01,5-yr test,3ad075911c86db7e41ba894580d7a7c01b62cc80,casper
