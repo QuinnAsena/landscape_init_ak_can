@@ -47,7 +47,7 @@ do
         [ -n "${snapshot_file}" ] && extra_args+=("model.initialization.file=${snapshot_file}")
 
         # Run iLand model via Apptainer container
-        apptainer exec /glade/work/qasena/iLandc_container/ilandv2p1.sif ilandc \
+        apptainer exec --bind /glade/derecho/scratch /glade/work/qasena/iLandc_container/ilandv2p1.sif ilandc \
             "$tmp_xml" "$simulation_years" \
             system.database.out=${gcm}_dbh${dbh}_${id}_${rep}.sqlite \
             system.logging.logFile=${scenario_dir}/log/log.txt \
