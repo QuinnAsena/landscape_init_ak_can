@@ -1,7 +1,7 @@
 date_run_ymd,id,job_id,project_file,project_details,time_taken_h,walltime_reqested_h,nodes_requested,ppn_requested,mem_used,output_filesize_kb,climate_conditions,rep,landscape,notes,git_head,system,iLand_version
-20260429,9,3336795,landscape_alaska_01_spinup,filt > 260; init yr 31,,12,1,36,,,,,,,4611c6f8816fb887166e9a2911f95e841126d956,casper,2.0
-20260429,8,3336795,landscape_alaska_01_spinup,filt > 260; init yr 31,,12,1,36,,,,,,,4611c6f8816fb887166e9a2911f95e841126d956,casper,2.0
-20260429,7,3336795,landscape_alaska_01_spinup,filt > 260; init yr 31,,12,1,36,,,,,,,4611c6f8816fb887166e9a2911f95e841126d956,casper,2.0
+20260429,9,3336795,landscape_alaska_01_spinup,filt > 260; init yr 31,7.6,12,1,36,193.51,356931704,historic,3,alaska_01,300-yr test,4611c6f8816fb887166e9a2911f95e841126d956,casper,2.0
+20260429,8,3336795,landscape_alaska_01_spinup,filt > 260; init yr 31,7.81,12,1,36,235,448311452,historic,2,alaska_01,300-yr test,4611c6f8816fb887166e9a2911f95e841126d956,casper,2.0
+20260429,7,3336795,landscape_alaska_01_spinup,filt > 260; init yr 31,9.2,12,1,36,235,429730336,historic,1,alaska_01,300-yr test,4611c6f8816fb887166e9a2911f95e841126d956,casper,2.0
 20260428,6,3320729,landscape_alaska_01_spinup,filt > 260; init yr 1,9.2,12,1,36,63.56,646048340,historic,4,alaska_01,300-yr test,1b76478483fe72a97372293fad9730ceb376adab,casper,2.0
 20260428,5,3320729,landscape_alaska_01_spinup,filt > 260; init yr 1,7.81,12,1,36,69.47,509074976,historic,3,alaska_01,300-yr test,1b76478483fe72a97372293fad9730ceb376adab,casper,2.0
 20260428,4,3320729,landscape_alaska_01_spinup,filt > 260; init yr 1,7.6,12,1,36,61.92,489368588,historic,2,alaska_01,300-yr test,1b76478483fe72a97372293fad9730ceb376adab,casper,2.0
