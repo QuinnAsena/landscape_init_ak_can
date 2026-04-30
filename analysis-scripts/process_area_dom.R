@@ -13,12 +13,11 @@ replicate <- as.numeric(args[3])
 user <- "qasena"
 data_path <- paste0("/glade/derecho/scratch/", user, "/output_ak_can/", landscape, "/")
 
-if (!file.exists(input_file)) stop("Input file not found: ", input_file)
-
-
 input_file <- paste0(data_path, treatment, "/rep_",
                      replicate, "/", treatment, "_",
                      replicate, ".sqlite")
+
+if (!file.exists(input_file)) stop("Input file not found: ", input_file)
 
 output_dir <- file.path(data_path, "processed", "area_dom", treatment, paste0("rep_", replicate))
 
