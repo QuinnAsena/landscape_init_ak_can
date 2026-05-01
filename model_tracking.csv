@@ -1,13 +1,13 @@
 date_run_ymd,id,job_id,project_file,project_details,walltime_reqested_h,nodes_requested,ppn_requested,time_taken_h,mem_used,output_filesize_kb,climate_conditions,rep,landscape,notes,git_head,system,iLand_version
-20260430,12,3389800,landscape_alaska_01_spinup,filt > 260; init yr 1,12,1,36,,,,historic,3,alaska_01,300-yr test,d6768cbfedfbd03921b8dd20e8ee6f87d40b23dc,casper,2.1
-20260430,11,3389800,landscape_alaska_01_spinup,filt > 260; init yr 1,12,1,36,,,,historic,2,alaska_01,300-yr test,d6768cbfedfbd03921b8dd20e8ee6f87d40b23dc,casper,2.1
-20260430,10,3389800,landscape_alaska_01_spinup,filt > 260; init yr 1,12,1,36,,,,historic,1,alaska_01,300-yr test,d6768cbfedfbd03921b8dd20e8ee6f87d40b23dc,casper,2.1
-20260429,9,3336795,landscape_alaska_01_spinup,filt > 260; init yr 31,12,1,36,7.6,193.51,356931704,historic,3,alaska_01,300-yr test,4611c6f8816fb887166e9a2911f95e841126d956,casper,2.0
-20260429,8,3336795,landscape_alaska_01_spinup,filt > 260; init yr 31,12,1,36,7.81,235,448311452,historic,2,alaska_01,300-yr test,4611c6f8816fb887166e9a2911f95e841126d956,casper,2.0
-20260429,7,3336795,landscape_alaska_01_spinup,filt > 260; init yr 31,12,1,36,9.2,235,429730336,historic,1,alaska_01,300-yr test,4611c6f8816fb887166e9a2911f95e841126d956,casper,2.0
-20260428,6,3320729,landscape_alaska_01_spinup,filt > 260; init yr 1,12,1,36,9.2,63.56,646048340,historic,4,alaska_01,300-yr test,1b76478483fe72a97372293fad9730ceb376adab,casper,2.0
-20260428,5,3320729,landscape_alaska_01_spinup,filt > 260; init yr 1,12,1,36,7.81,69.47,509074976,historic,3,alaska_01,300-yr test,1b76478483fe72a97372293fad9730ceb376adab,casper,2.0
-20260428,4,3320729,landscape_alaska_01_spinup,filt > 260; init yr 1,12,1,36,7.6,61.92,489368588,historic,2,alaska_01,300-yr test,1b76478483fe72a97372293fad9730ceb376adab,casper,2.0
-20260428,3,3311778,landscape_alaska_01_spinup,filt > 260; init yr 1,8,1,36,7.9,59.47,560483316,historic,1,alaska_01,300-yr test,f4db0d7ebba0a444afa2cb3638d8bc0c1fe88ec1,casper,2.0
-20260427,2,3299133,landscape_alaska_01_spinup_test,test,1,1,36,0.16,30.09,14229524,historic,2,alaska_01,5-yr test,3ad075911c86db7e41ba894580d7a7c01b62cc80,casper,2.0
-20260427,1,3299133,landscape_alaska_01_spinup_test,test,1,1,36,0.13,30.16,11301936,historic,1,alaska_01,5-yr test,3ad075911c86db7e41ba894580d7a7c01b62cc80,casper,2.0
+20260430,12,3392955,landscape_alaska_01_spinup,filt > 260; init yr 1,12,1,36,9.7,235,453233388,historic,3,alaska_01,300-yr test,8e12c41c69aedcbe5fd71f6399ac0a5c21fa81a2,casper,2.1
+20260430,11,3392955,landscape_alaska_01_spinup,filt > 260; init yr 1,12,1,36,9.7,235,583929692,historic,2,alaska_01,300-yr test,8e12c41c69aedcbe5fd71f6399ac0a5c21fa81a2,casper,2.1
+20260430,10,3392955,landscape_alaska_01_spinup,filt > 260; init yr 1,12,1,36,9.7,235,643729764,historic,1,alaska_01,300-yr test,8e12c41c69aedcbe5fd71f6399ac0a5c21fa81a2,casper,2.1
+20260429,9,3336795,landscape_alaska_01_spinup,filt > 260; init yr 31,12,1,36,7.6,193.51,356931704,historic,3,alaska_01,300-yr test,4611c6f8816fb887166e9a2911f95e841126d956,casper,2
+20260429,8,3336795,landscape_alaska_01_spinup,filt > 260; init yr 31,12,1,36,7.81,235,448311452,historic,2,alaska_01,300-yr test,4611c6f8816fb887166e9a2911f95e841126d956,casper,2
+20260429,7,3336795,landscape_alaska_01_spinup,filt > 260; init yr 31,12,1,36,9.2,235,429730336,historic,1,alaska_01,300-yr test,4611c6f8816fb887166e9a2911f95e841126d956,casper,2
+20260428,6,3320729,landscape_alaska_01_spinup,filt > 260; init yr 1,12,1,36,9.2,63.56,646048340,historic,4,alaska_01,300-yr test,1b76478483fe72a97372293fad9730ceb376adab,casper,2
+20260428,5,3320729,landscape_alaska_01_spinup,filt > 260; init yr 1,12,1,36,7.81,69.47,509074976,historic,3,alaska_01,300-yr test,1b76478483fe72a97372293fad9730ceb376adab,casper,2
+20260428,4,3320729,landscape_alaska_01_spinup,filt > 260; init yr 1,12,1,36,7.6,61.92,489368588,historic,2,alaska_01,300-yr test,1b76478483fe72a97372293fad9730ceb376adab,casper,2
+20260428,3,3311778,landscape_alaska_01_spinup,filt > 260; init yr 1,8,1,36,7.9,59.47,560483316,historic,1,alaska_01,300-yr test,f4db0d7ebba0a444afa2cb3638d8bc0c1fe88ec1,casper,2
+20260427,2,3299133,landscape_alaska_01_spinup_test,test,1,1,36,0.16,30.09,14229524,historic,2,alaska_01,5-yr test,3ad075911c86db7e41ba894580d7a7c01b62cc80,casper,2
+20260427,1,3299133,landscape_alaska_01_spinup_test,test,1,1,36,0.13,30.16,11301936,historic,1,alaska_01,5-yr test,3ad075911c86db7e41ba894580d7a7c01b62cc80,casper,2
