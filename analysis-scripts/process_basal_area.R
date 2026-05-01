@@ -70,24 +70,25 @@ basal_area_processing_func <- function(input_file, fire_files, env_path) {
   terra::crs(fire_maps) <- terra::crs(env_grid)
 
   fire_year_dat <- data.frame()
-  for (i in 1:nrow(fire)) {
+  for (i in seq_len(nrow(fire))) {
     # Skip fires that burned nothing
     if (fire$area_m2[i] > 0) {
       # Take the fire map for this fire, and make everything but the fire cells NA
       fire_mask <- fire_maps[[paste0("crownkill_", fire$fireId[i], "_", fire$year[i])]]
       fire_mask <- ifel(fire_mask == 0, NA, fire_mask)
-      # Use the mask to extract the RUs for burned grids
-      burned_rus <- as.data.frame(mask(env_grid, fire_mask))
-      burned_rus <- burned_rus |> filter(!is.na(ru))
-      burned_rus$year=fire$year[i]
+      # Extract env_grid values (these are rid, not ru)
+      burned_rids <- as.data.frame(mask(env_grid, fire_mask))
+      names(burned_rids)[1] <- "rid"
+      burned_rids <- burned_rids |> filter(!is.na(rid))
+      burned_rids$year=fire$year[i]
     }
-    fire_year_dat <- rbind(fire_year_dat, burned_rus)
+    fire_year_dat <- rbind(fire_year_dat, burned_rids)
   }
   fire_year_dat <- fire_year_dat |>
     rename("fire.year" = year)
 
   fire_year_dat <- fire_year_dat |>
-    group_by(ru) |>
+    group_by(rid) |>
     summarize(last.fire.year = max(fire.year))
 
 
@@ -199,7 +200,7 @@ basal_area_processing_func <- function(input_file, fire_files, env_path) {
       replicate = replicate
     )
 
-  stand.t.wide <- left_join(stand.t.wide, fire_year_dat, by = "ru") |>
+  stand.t.wide <- left_join(stand.t.wide, fire_year_dat, by = "rid") |>
     mutate(across(where(is.numeric), \(x) replace(x, is.na(x), 0))) |>
     mutate(stand.age = max_year - last.fire.year)
 

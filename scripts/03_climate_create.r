@@ -89,7 +89,7 @@ process_climate_link <- function(gcm, ssp, var, year, landscape_dir) {
     }
   }
 
-  # Create the RU-to-climate-cell lookup: one row per RU, mapped to its climate cell
+  # Create the RID-to-climate-cell lookup: one row per RID, mapped to its climate cell
   climate_link <- terra::cells(var_buffer_albers, env_points) |>
     as.data.frame() |>
     rename(env.grid = "ID", climate.grid = "cell")
@@ -124,7 +124,7 @@ process_climate_link <- function(gcm, ssp, var, year, landscape_dir) {
 # --------------------------------------------------------- #
 # ----  Write climate-link file once per landscape  ------- #
 # --------------------------------------------------------- #
-# The link file maps each RU cell (env.grid) to its climate grid cell and is
+# The link file maps each RID cell (env.grid) to its climate grid cell and is
 # purely spatial — it does not vary by variable or year. Writing it inside the
 # parallel loop would cause multiple workers to overwrite the same file path
 # simultaneously for a given landscape (race condition). Instead it is written
@@ -199,7 +199,7 @@ plan(sequential)
 
 
 # --------------------------------------------------------- #
-# ------------  Interpolate climate to RU scale ----------- #
+# ------------  Interpolate climate to RID scale ----------- #
 # --------------------------------------------------------- #
 # Will result in very large amounts of data, this function is unused for now.
 
@@ -244,7 +244,7 @@ process_climate <- function(gcm, ssp, var, year, landscape_dir) {
   }
 
   ak_climate_var_df <- as.data.frame(terra::extract(ak_climate_var_proj, env_grid_sp, bind = TRUE)) |>
-    rename("climate.grid" = ru)
+    rename("climate.grid" = rid)
 
   ak_climate_var_df <- ak_climate_var_df |>
     tidyr::pivot_longer(

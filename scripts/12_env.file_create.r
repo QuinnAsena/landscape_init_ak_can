@@ -152,7 +152,7 @@ lapply(landscape_names, build_env_file_link, lc_yr = 31)
 
 
 # --------------------------------------------------------- #
-# ---------------  Process env file with ru  -------------- #
+# ---------------  Process env file with rid  ------------- #
 # --------------------------------------------------------- #
 
 # function not used
@@ -193,7 +193,7 @@ build_env_file <- function(landscape_name, lc_yr = 1) {
   # (not per RU), these table names will not match the database and iLand will
   # fail to find climate data. Check once climate files are rebuilt.
   env.grid.df <- as.data.frame(env.grid) |>
-    rename(env.grid = ru) |>
+    rename(env.grid = rid) |>
     mutate(add = landscape_name) |>
     tidyr::unite("model.climate.tableName", c(add, env.grid), remove = FALSE) |>
     dplyr::select(env.grid, model.climate.tableName)

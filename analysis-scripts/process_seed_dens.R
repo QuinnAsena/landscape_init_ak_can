@@ -95,12 +95,12 @@ burnedSRC <- terra::sprc(split(burnedArea, 1:nlyr(burnedArea)))
 
 # All fire through time in single raster
 fire_sum <- terra::mosaic(burnedSRC, fun = "min")
-burned_rus_sum <- terra::values(terra::mask(env_grid, fire_sum))
-burned_rus_sum <- burned_rus_sum[!is.na(burned_rus_sum), , drop = FALSE]
+burned_rids_sum <- terra::values(terra::mask(env_grid, fire_sum))
+burned_rids_sum <- burned_rids_sum[!is.na(burned_rids_sum)]
 
 unburned_sum <- subst(fire_sum, 1, NA, others = 1)
-unburned_rus_sum <- terra::values(terra::mask(env_grid, unburned_sum))
-unburned_rus_sum <- unburned_rus_sum[!is.na(unburned_rus_sum)]
+unburned_rids_sum <- terra::values(terra::mask(env_grid, unburned_sum))
+unburned_rids_sum <- unburned_rids_sum[!is.na(unburned_rids_sum)]
 
 nfire <- terra::mosaic(burnedSRC, fun = "sum")
 # burn1x <- terra::subst(nfire, 1, 1, others = NA)
@@ -111,8 +111,9 @@ nfire <- terra::mosaic(burnedSRC, fun = "sum")
 
 # One way to get rids of burn overlap
 reburned_sum <- terra::subst(nfire, c(NA, 1), NA, others = 1)
-reburned_rus_sum <- terra::values(terra::mask(env_grid, reburned_sum))
-reburned_rus_sum <- reburned_rus_sum[!is.na(reburned_rus_sum), , drop = FALSE]
+reburned_rids_sum <- terra::values(terra::mask(env_grid, reburned_sum))
+reburned_rids_sum <- reburned_rids_sum[!is.na(reburned_rids_sum), , drop = FALSE]
+colnames(reburned_rids_sum)[1] <- "rid"
 
 fire_sol_dat <- NULL
 for (i in seq_len(nrow(fire))) {
@@ -169,7 +170,7 @@ for (i in seq_len(nrow(fire))) {
 
 # For now we do not need unburned area
 # nofire_sol_dat <- water |> 
-#   filter(rid %in% unburned_rus_sum) |> 
+#   filter(rid %in% unburned_rids_sum) |> 
 #   mutate(
 #     SOLLayer = ifelse(is.na(SOLLayer), 0, SOLLayer),
 #     SOL.cm = SOLLayer * 100 + mossLayer * 100
@@ -178,8 +179,8 @@ for (i in seq_len(nrow(fire))) {
 
 years <- year_range$min_yr:year_range$max_yr
 
-keep <- c("fire_sol_dat", "input_file", "burned_rus_sum",
-          "reburned_rus_sum", "landscape", "treatment", "replicate", "output_dir", "years")
+keep <- c("fire_sol_dat", "input_file", "burned_rids_sum",
+          "reburned_rids_sum", "landscape", "treatment", "replicate", "output_dir", "years")
 rm(list = setdiff(ls(), keep))
 gc()
 
@@ -195,13 +196,13 @@ process_chunk <- function(start, end) {
   # Filtering by burned rid. Lora's original script keeps both burned and unburned
   stand <- tbl(dbconn, "stand") |>
     dplyr::filter(year %in% start:end,
-                  ru %in% burned_rus_sum) |>
+                  rid %in% burned_rids_sum) |>
     dplyr::select(year, ru, rid, species, area_ha, count_ha, basal_area_m2) |>
     collect()
 
   sapling <- tbl(dbconn, "sapling") |>
     filter(year %in% start:end,
-           ru %in% burned_rus_sum) |>
+           rid %in% burned_rids_sum) |>
     dplyr::select(
       ru, year, species, rid,
       "sapling_count_ha" = count_ha,
@@ -211,7 +212,7 @@ process_chunk <- function(start, end) {
 
   # Query the database
   sapling.detail <- tbl(dbconn, "saplingdetail") |>
-    filter(year %in% start:end, ru %in% burned_rus_sum) |>
+    filter(year %in% start:end, rid %in% burned_rids_sum) |>
     select(dbh, n_represented, rid, year, ru, species) |>
     mutate(basal.area.ind = pi * ((dbh / 100) / 2)^2,
            basal.area.cohort = basal.area.ind * n_represented) |>
@@ -311,7 +312,7 @@ process_chunk <- function(start, end) {
     left_join(final.trees.wide, by = c("rid", "ru", "year"))
   # Append rids that burned more than once for later filtering
   fire_sol_trees <- fire_sol_trees |>
-    left_join(as_tibble(reburned_rus_sum))
+    left_join(as_tibble(reburned_rids_sum))
 
   fire_sol_trees <- fire_sol_trees |>
     mutate(landscape = landscape,

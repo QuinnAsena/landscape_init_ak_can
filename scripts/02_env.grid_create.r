@@ -95,7 +95,7 @@ process_env_grid <- function(landscape_name) {
   png(file.path(out_sup, "env.grid.png"), width = 1200, height = 1000, res = 150)
   plot(above_100)
   dev.off()
-  names(above_100) <- "ru"
+  names(above_100) <- "rid"
   # ASCII grid format required by iLand
   writeRaster(above_100, file.path(out, "env.grid.txt"),
               overwrite = TRUE, filetype = "AAIGrid", datatype = "INT4S", NAflag = -1)
