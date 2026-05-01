@@ -41,7 +41,7 @@ dbconn <- DBI::dbConnect(
 max_year <- tbl(dbconn, "stand") |>
   select(year) |>
   summarise(max_yr = max(year)) |>
-  collect()
+  pull(max_yr)
 dbDisconnect(dbconn)
 
 
@@ -76,12 +76,12 @@ basal_area_processing_func <- function(input_file, fire_files, env_path) {
       # Take the fire map for this fire, and make everything but the fire cells NA
       fire_mask <- fire_maps[[paste0("crownkill_", fire$fireId[i], "_", fire$year[i])]]
       fire_mask <- ifel(fire_mask == 0, NA, fire_mask)
-      # Use the mask to extract the rids for burned grids
+      # Use the mask to extract the RUs for burned grids
       burned_rus <- as.data.frame(mask(env_grid, fire_mask))
       burned_rus <- burned_rus |> filter(!is.na(ru))
       burned_rus$year=fire$year[i]
     }
-    fire_year_dat <- rbind(fire_year_dat,burned_rus)
+    fire_year_dat <- rbind(fire_year_dat, burned_rus)
   }
   fire_year_dat <- fire_year_dat |>
     rename("fire.year" = year)
