@@ -18,7 +18,7 @@ input_file <- paste0(data_path, treatment, "/rep_",
 
 if (!file.exists(input_file)) stop("Input file not found: ", input_file)
 
-output_dir <- file.path(data_path, "processed", "basal_area", treatment, paste0("rep_", replicate))
+output_dir <- file.path(data_path, "processed", treatment, paste0("rep_", replicate), "basal_area")
 
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -44,7 +44,18 @@ max_year <- tbl(dbconn, "stand") |>
   pull(max_yr)
 dbDisconnect(dbconn)
 
+cat(
+  "--- process_basal_area ---\n",
+  "landscape:  ", landscape, "\n",
+  "treatment:  ", treatment, "\n",
+  "replicate:  ", replicate, "\n",
+  "input_file: ", input_file, "\n",
+  "output_dir: ", output_dir, "\n",
+  "max_year:   ", max_year, "\n",
+  "start time: ", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n\n"
+)
 
+start_time <- Sys.time()
 
 basal_area_processing_func <- function(input_file, fire_files, env_path) {
   dbconn <- DBI::dbConnect(
@@ -117,9 +128,8 @@ basal_area_processing_func <- function(input_file, fire_files, env_path) {
   # disconnect
   dbDisconnect(dbconn)
 
-  cat("*Object sizes:* \n\n",
-      "saplingdetail: ", format(object.size(saplingdetail), units = "Mb"), "\n\n",
-      "stand: ", format(object.size(stand), units = "Mb"), "\n\n")
+  cat("[basal_area] stand:", format(object.size(stand), units = "MB"),
+      "| saplingdetail:", format(object.size(saplingdetail), units = "MB"), "\n")
 
   stand.t <- full_join(stand, saplingdetail, 
                        by = c("rid", "ru", "year", "species")) |>
@@ -204,6 +214,7 @@ basal_area_processing_func <- function(input_file, fire_files, env_path) {
     mutate(across(where(is.numeric), \(x) replace(x, is.na(x), 0))) |>
     mutate(stand.age = max_year - last.fire.year)
 
+  cat(paste0("[basal_area] saving: basal_area_", max_year, ".parquet\n"))
   arrow::write_parquet(
     stand.t.wide,
     file.path(output_dir, paste0("basal_area_", max_year, ".parquet")),
@@ -212,5 +223,12 @@ basal_area_processing_func <- function(input_file, fire_files, env_path) {
   gc()
 }
 
-basal_area_processed <- basal_area_processing_func(
+basal_area_processing_func(
     input_file = input_file, fire_files = fire_files, env_path = env_path)
+
+cat(
+  "\n--- Done ---\n",
+  "elapsed:    ", format(Sys.time() - start_time), "\n",
+  "output_dir: ", output_dir, "\n",
+  "end time:   ", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n"
+)

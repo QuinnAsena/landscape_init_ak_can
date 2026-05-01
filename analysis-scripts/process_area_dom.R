@@ -19,25 +19,23 @@ input_file <- paste0(data_path, treatment, "/rep_",
 
 if (!file.exists(input_file)) stop("Input file not found: ", input_file)
 
-output_dir <- file.path(data_path, "processed", "area_dom", treatment, paste0("rep_", replicate))
+output_dir <- file.path(data_path, "processed", treatment, paste0("rep_", replicate), "area_dom")
 
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
 cat(
-  "*Processing:* \n\n",
-  "treatment: ", treatment, "\n\n",
-  "replicate: ", replicate, "\n\n",
-  "Input data path: ", data_path, "\n\n",
-  "output data path: ", output_dir, "\n\n",
-  "current time: ", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n\n",
-  "input_file: ", input_file, "\n\n"
+  "--- process_area_dom ---\n",
+  "landscape:  ", landscape, "\n",
+  "treatment:  ", treatment, "\n",
+  "replicate:  ", replicate, "\n",
+  "input_file: ", input_file, "\n",
+  "output_dir: ", output_dir, "\n",
+  "start time: ", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n\n"
 )
-
 
 dbconn <- DBI::dbConnect(
   RSQLite::SQLite(),
   dbname = input_file)
-
 
 # sap <- tbl(dbconn, "sapling") |>
 #   select(year) |>
@@ -80,9 +78,8 @@ process_chunk <- function(start, end) {
       ba_sum_sapling = sum(ba_all)) |>
     collect()
 
-  cat("*Object sizes:* \n\n",
-      "saplingdetail: ", format(object.size(saplingdetail), units = "Mb"), "\n\n",
-      "stand: ", format(object.size(stand), units = "Mb"), "\n\n")
+  cat(paste0("[", start, "-", end, "] stand: ", format(object.size(stand), units = "MB"),
+             " | saplingdetail: ", format(object.size(saplingdetail), units = "MB"), "\n"))
 
   dbDisconnect(dbconn)
 
@@ -166,15 +163,8 @@ process_chunk <- function(start, end) {
       replicate = replicate
     )
 
-  cat(
-    "*Object sizes:* \n\n",
-    "stand.t.wide: ", format(object.size(stand.t.wide), units = "MB"), "\n\n"
-  )
-
-  cat(
-    "Saving output to: \n",
-    file.path(output_dir, paste0("chunk_", start, "_area_dom.parquet")), "\n\n"
-  )
+  cat(paste0("[", start, "-", end, "] stand.t.wide: ", format(object.size(stand.t.wide), units = "MB"), "\n"))
+  cat(paste0("[", start, "-", end, "] saving: chunk_", start, "_area_dom.parquet\n"))
 
   arrow::write_parquet(
     stand.t.wide,
@@ -194,9 +184,6 @@ year_chunks <- seq(from = min(years), to = max(years), by = span)
 chunk_ends <- pmin(year_chunks + span - 1, max(years))
 chunks <- data.frame(start = year_chunks, end = chunk_ends)
 
-cat("Processing year chunks: \n")
-print(chunks)
-
 # Set up parallel processing (adjust workers as needed)
 # REMEMBER TO USE plan(multisession, workers = 4) ON WINDOWS
 if (nrow(chunks) > 10) {
@@ -204,6 +191,10 @@ if (nrow(chunks) > 10) {
 } else {
   cpus <- nrow(chunks)
 }
+
+cat("Processing", nrow(chunks), "year chunks with", cpus, "workers:\n")
+print(chunks)
+
 plan(multicore, workers = cpus)
 options(future.globals.maxSize = 1 * 1024^3)
 
@@ -219,6 +210,8 @@ gc()
 end_time_par <- Sys.time()
 
 cat(
-  "Finished parallel processing in: ", end_time_par - start_time_par, "\n\n",
-  "current time: ", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n\n"
+  "\n--- Done ---\n",
+  "elapsed:    ", format(end_time_par - start_time_par), "\n",
+  "output_dir: ", output_dir, "\n",
+  "end time:   ", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n"
 )

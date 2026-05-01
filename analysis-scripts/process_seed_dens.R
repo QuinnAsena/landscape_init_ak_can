@@ -23,7 +23,7 @@ if (!file.exists(input_file)) stop("Input file not found: ", input_file)
 # Check the existence of output directory.
 # Will only print a warning if directory exists.
 
-output_dir <- file.path(data_path, "processed", "seeddens", treatment, paste0("rep_", replicate))
+output_dir <- file.path(data_path, "processed", treatment, paste0("rep_", replicate), "seeddens")
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
 landscape_dir <- sub("^(landscape_[^_]+_\\d+)_.*", "\\1", landscape)
@@ -39,13 +39,13 @@ if (length(fire_files) < 1) {
 }
 
 cat(
-  "*Processing:* \n\n",
-  "treatment: ", treatment, "\n\n",
-  "replicate: ", replicate, "\n\n",
-  "Input data path: ", data_path, "\n\n",
-  "output data path: ", output_dir, "\n\n",
-  "current time: ", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n\n",
-  "input file: ", input_file, "\n\n"
+  "--- process_seed_dens ---\n",
+  "landscape:  ", landscape, "\n",
+  "treatment:  ", treatment, "\n",
+  "replicate:  ", replicate, "\n",
+  "input_file: ", input_file, "\n",
+  "output_dir: ", output_dir, "\n",
+  "start time: ", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n\n"
 )
 
 # reading data -----------------------------------------------------------
@@ -226,9 +226,9 @@ process_chunk <- function(start, end) {
   # Disconnect from the database
   DBI::dbDisconnect(dbconn)
 
-  cat(
-    "sapling.detail: ", format(object.size(sapling.detail), units = "MB"), "\n\n"
-  )
+  cat(paste0("[", start, "-", end, "] stand: ", format(object.size(stand), units = "MB"),
+             " | sapling: ", format(object.size(sapling), units = "MB"),
+             " | sapling.detail: ", format(object.size(sapling.detail), units = "MB"), "\n"))
 
   # Join all this up
   stand.sap.1 <- full_join(stand, sapling.detail, by = c("rid", "ru", "year", "species"))
@@ -294,14 +294,8 @@ process_chunk <- function(start, end) {
   ind <- apply(final.trees.wide[,iv_cols], MARGIN = 1, FUN = which.max)
   final.trees.wide$stand.type <- as.factor(spp[ind])
 
-  cat(
-    "*Object sizes:* \n\n",
-    "final.trees.wide: ", format(object.size(final.trees.wide), units = "MB"), "\n\n"
-  )
-
-  cat(
-    "Saving output to: \n", output_dir, "/chunk_", start, ".parquet", "\n\n"
-  )
+  cat(paste0("[", start, "-", end, "] final.trees.wide: ", format(object.size(final.trees.wide), units = "MB"), "\n"))
+  cat(paste0("[", start, "-", end, "] saving: chunk_", start, "_fire_sol_trees.parquet\n"))
 
   rm(final.trees)
   gc()
@@ -333,15 +327,15 @@ year_chunks <- seq(from = min(years), to = max(years), by = span)
 chunk_ends <- pmin(year_chunks + span - 1, max(years))
 chunks <- data.frame(start = year_chunks, end = chunk_ends)
 
-cat("Processing year chunks: \n")
-print(chunks)
-# Function to process each chunk
 # Set up parallel processing (adjust workers as needed)
 if (nrow(chunks) > 5) {
   cpus <- 5
 } else {
   cpus <- nrow(chunks)
 }
+
+cat("Processing", nrow(chunks), "year chunks with", cpus, "workers:\n")
+print(chunks)
 
 plan(multicore, workers = cpus)
 options(future.globals.maxSize = 1 * 1024^3)
@@ -356,11 +350,9 @@ plan(sequential)
 gc()
 
 end_time_par <- Sys.time()
-cat("Finished parallel processing in: ", end_time_par - start_time_par)
-
 cat(
-  "Saved output to: \n", output_dir, "\n\n",
-  "current time: ", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n\n"
+  "\n--- Done ---\n",
+  "elapsed:    ", format(end_time_par - start_time_par), "\n",
+  "output_dir: ", output_dir, "\n",
+  "end time:   ", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n"
 )
-
-cat("The end")
