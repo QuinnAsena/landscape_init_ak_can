@@ -5,7 +5,7 @@
 # --mem 235GB
 # -l job_priority=economy
 # --nthreads 36 #  multiplied across nodes threads 36 = 108 total threads across three steps
-# Launch with /glade/work/benkirk/repos/NCAR-pbstools/bin/launch_cf -A UCIE0001 -l walltime=12:00:00 --steps-per-node 3 --ppn 40 --mem 235GB --queue casper -l job_priority=economy /glade/work/qasena/landscape_init_ak_can/cmdfile_runreplicates_csv_CASPER
+# Launch with /glade/work/benkirk/repos/NCAR-pbstools/bin/launch_cf -A UCIE0001 -l walltime=12:00:00 --steps-per-node 3 --ppn 40 --mem 235GB --queue casper -l job_priority=economy /glade/work/qasena/landscape_init_ak_can/cmdfile_runreplicates_csv_CASPER.sh
 bash /glade/work/qasena/landscape_init_ak_can/run_iland_csv_cpxml.sh /glade/work/qasena/landscape_init_ak_can/landscape_alaska_01/landscape_alaska_01_1950-1980spinup.xml 1 1 300 casper
 bash /glade/work/qasena/landscape_init_ak_can/run_iland_csv_cpxml.sh /glade/work/qasena/landscape_init_ak_can/landscape_alaska_01/landscape_alaska_01_1950-1980spinup.xml 2 2 300 casper
 bash /glade/work/qasena/landscape_init_ak_can/run_iland_csv_cpxml.sh /glade/work/qasena/landscape_init_ak_can/landscape_alaska_01/landscape_alaska_01_1950-1980spinup.xml 3 3 300 casper

@@ -1,4 +1,4 @@
-# Launch with /glade/work/benkirk/repos/NCAR-pbstools/bin/launch_cf -A UCIE0001 -l walltime=12:00:00 --nthreads 40 --steps-per-node 3 --mem 235GB -l job_priority=economy /glade/work/qasena/landscape_init_ak_can/cmdfile_runreplicates_csv
+# Launch with /glade/work/benkirk/repos/NCAR-pbstools/bin/launch_cf -A UCIE0001 -l walltime=12:00:00 --nthreads 40 --steps-per-node 3 --mem 235GB -l job_priority=economy /glade/work/qasena/landscape_init_ak_can/cmdfile_runreplicates_csv.sh
 bash /glade/work/qasena/landscape_init_ak_can/run_iland_csv_cpxml.sh /glade/work/qasena/landscape_init_ak_can/landscape_alaska_01/landscape_alaska_01_1950-1980spinup_test.xml 1 1 300 derecho
 bash /glade/work/qasena/landscape_init_ak_can/run_iland_csv_cpxml.sh /glade/work/qasena/landscape_init_ak_can/landscape_alaska_01/landscape_alaska_01_1950-1980spinup_test.xml 2 2 300 derecho
 bash /glade/work/qasena/landscape_init_ak_can/run_iland_csv_cpxml.sh /glade/work/qasena/landscape_init_ak_can/landscape_alaska_01/landscape_alaska_01_1950-1980spinup_test.xml 3 3 300 derecho

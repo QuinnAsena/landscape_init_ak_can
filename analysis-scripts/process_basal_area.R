@@ -41,7 +41,7 @@ dbconn <- DBI::dbConnect(
 max_year <- tbl(dbconn, "stand") |>
   select(year) |>
   summarise(max_yr = max(year)) |>
-  pull(max_yr)
+  pull(max_yr, as_vector = TRUE)
 dbDisconnect(dbconn)
 
 cat(
@@ -209,7 +209,7 @@ basal_area_processing_func <- function(input_file, fire_files, env_path) {
       treatment = treatment,
       replicate = replicate
     )
-
+  # Winslow's original script filters for stand age > 34, I will do this in post.
   stand.t.wide <- left_join(stand.t.wide, fire_year_dat, by = "rid") |>
     mutate(across(where(is.numeric), \(x) replace(x, is.na(x), 0))) |>
     mutate(stand.age = max_year - last.fire.year)

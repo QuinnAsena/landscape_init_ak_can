@@ -126,3 +126,6 @@ lapply(
   seq_len(nrow(landscapes_poly)),
   \(i) crop_lcp(water_vrt, landscapes_poly[i, ])
 )
+
+# landscapes_poly <- landscapes_poly[grepl("ALASKA", landscapes_poly$ecoregion), ]
+# landscapes_poly <- landscapes_poly[-c(1:2), ]
