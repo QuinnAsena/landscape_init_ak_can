@@ -41,7 +41,7 @@ dbconn <- DBI::dbConnect(
 max_year <- tbl(dbconn, "stand") |>
   select(year) |>
   summarise(max_yr = max(year)) |>
-  pull(max_yr, as_vector = TRUE)
+  pull(max_yr)
 dbDisconnect(dbconn)
 
 cat(
