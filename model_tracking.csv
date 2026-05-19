@@ -1,4 +1,5 @@
 date_run_ymd,id,job_id,project_file,project_details,walltime_reqested_h,nodes_requested,ppn_requested,time_taken_h,mem_used,output_filesize_kb,climate_conditions,rep,landscape,notes,git_head,system,iLand_version
+20260519,13,6191224,,filt > 260; init yr 0,12,24,128,,,,historic,,,,,derecho,2.1
 20260430,12,3392955,landscape_alaska_01_spinup,filt > 260; init yr 1,12,1,36,9.7,235,453233388,historic,3,alaska_01,300-yr test,8e12c41c69aedcbe5fd71f6399ac0a5c21fa81a2,casper,2.1
 20260430,11,3392955,landscape_alaska_01_spinup,filt > 260; init yr 1,12,1,36,9.7,235,583929692,historic,2,alaska_01,300-yr test,8e12c41c69aedcbe5fd71f6399ac0a5c21fa81a2,casper,2.1
 20260430,10,3392955,landscape_alaska_01_spinup,filt > 260; init yr 1,12,1,36,9.7,235,643729764,historic,1,alaska_01,300-yr test,8e12c41c69aedcbe5fd71f6399ac0a5c21fa81a2,casper,2.1
