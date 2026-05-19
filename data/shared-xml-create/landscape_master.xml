@@ -7,7 +7,7 @@
       <home/>
       <database>databases</database> <!-- Defines the input databases directory e.g., the location of species parameters and climate data. Sec 3.2 iLand book -->
       <lip>lip</lip> <!-- Every tree species needs to have a light influence pattern (LIP) sec 9.3 iLand book. -->
-      <output>/glade/derecho/scratch/qasena/output_auto/CPCRW_hist</output> <!-- result are written to this directory. -->
+      <output>overwritten_by_bash</output> <!-- result are written to this directory. -->
       <temp>temp</temp> <!-- Debug outputs are written to this directory -->
       <script>scripts</script> <!-- additional scripts e.g., custom javascripts (e.g., fire module script) are stored here. -->
       <init>init</init> <!-- Directory containing files of initial landscape vegetation set-up, sec 8.3 iLand book -->
@@ -506,7 +506,7 @@
         <speedMax>30</speedMax> <!-- maximum wind speed (m/s). The wind speed is randomly selected between speedMin and speedMax for each fire event. Different values are used for iLand in different regions. -->
         <direction>225</direction> <!-- the main wind direction (in degrees). North=0, East=90, South=180, West=270. For each fire event the wind direction is calculated as direction +- 45°. Different values are used for iLand in different regions. -->
       </wind>
-      <onlySimulation>false</onlySimulation> <!-- only if value is false real effects of fire (on trees, snags, soil pools) are simulated (default: false). A value of true can be useful for testing purposes. -->
+      <onlySimulation>overwritten_by_csv</onlySimulation> <!-- only if value is false real effects of fire (on trees, snags, soil pools) are simulated (default: false). A value of true can be useful for testing purposes. -->
       <crownKill1>0.03</crownKill1> <!-- parameter kCK1 to calculate fraction of crown kill. (default: 0.21111). Different values are used for iLand in different regions. -->
       <crownKill2>-0.00185</crownKill2> <!-- parameter kCK2 to calculate fraction of crown kill. (default: -0.00445). Different values are used for iLand in different regions. -->
       <crownKillDbh>15</crownKillDbh> <!-- Dbh-threshold (cm) dbh_thres used in crown kill calculations. (default: 40). Different values are used for iLand in different regions. -->

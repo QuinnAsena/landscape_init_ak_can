@@ -40,14 +40,14 @@ mkdir -p "${output_path}"
 trap 'rm -f "${tmp_xml:-}"' EXIT
 
 # Read CSV and loop through lines
-sed '1d' "$csv_name" | while IFS=, read -r sp_param gcm fri epsilon dbh stand_grid env_file id snapshot_file
+sed '1d' "$csv_name" | while IFS=, read -r sp_param gcm fri epsilon dbh stand_grid env_file id snapshot_file onlysim
 do
     for rep in $(seq "$start_rep" "$end_rep")
     do
-        echo "running gcm $gcm, id $id, rep $rep, $stand_grid, $env_file"
+        echo "running gcm $gcm, id $id, rep $rep, $stand_grid, $env_file, $onlysim"
 
-        scenario_dir="${output_path}/${gcm}_dbh${dbh}_${id}/rep_${rep}"
-        tmp_xml="${xml_path}/${gcm}_dbh${dbh}_${id}_${rep}.xml"
+        scenario_dir="${output_path}/${gcm}_dbh${dbh}_onlysim${onlysim}_${id}/rep_${rep}"
+        tmp_xml="${xml_path}/${gcm}_dbh${dbh}_onlysim${onlysim}_${id}_${rep}.xml"
 
         mkdir -p "${scenario_dir}/crownkill"
         mkdir -p "${scenario_dir}/nFire"
@@ -63,11 +63,12 @@ do
 
         # Run iLand model
         "${path}" "$tmp_xml" "$simulation_years" \
-            system.database.out=${gcm}_dbh${dbh}_${id}_${rep}.sqlite \
+            system.database.out=${gcm}_dbh${dbh}_onlysim${onlysim}_${id}_${rep}.sqlite \
             system.logging.logFile=${scenario_dir}/log/log.txt \
             system.database.climate=${gcm}.sqlite \
             system.database.in=${sp_param}.sqlite \
             modules.fire.fireReturnInterval=${fri} \
+            modules.fire.onlySimulation=${onlysim} \
             model.settings.epsilon=${epsilon} \
             output.saplingdetail.minDbh=${dbh} \
             model.world.standGrid.fileName=${stand_grid}.txt \
