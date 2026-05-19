@@ -9,7 +9,7 @@
       <!-- Defines the input databases directory e.g., the location of species parameters and climate data. Sec 3.2 iLand book -->
       <lip>lip</lip>
       <!-- Every tree species needs to have a light influence pattern (LIP) sec 9.3 iLand book. -->
-      <output>/glade/derecho/scratch/qasena/output_auto/CPCRW_hist</output>
+      <output>overwritten_by_bash</output>
       <!-- result are written to this directory. -->
       <temp>temp</temp>
       <!-- Debug outputs are written to this directory -->
@@ -799,7 +799,7 @@
         <direction>225</direction>
         <!-- the main wind direction (in degrees). North=0, East=90, South=180, West=270. For each fire event the wind direction is calculated as direction +- 45°. Different values are used for iLand in different regions. -->
       </wind>
-      <onlySimulation>false</onlySimulation>
+      <onlySimulation>overwritten_by_csv</onlySimulation>
       <!-- only if value is false real effects of fire (on trees, snags, soil pools) are simulated (default: false). A value of true can be useful for testing purposes. -->
       <crownKill1>0.03</crownKill1>
       <!-- parameter kCK1 to calculate fraction of crown kill. (default: 0.21111). Different values are used for iLand in different regions. -->

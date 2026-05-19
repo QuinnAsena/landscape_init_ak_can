@@ -106,14 +106,14 @@ gen_project_file <- function(landscape_name, master_xml, run_type,
   write_xml(x, out_xml)
 }
 
-gen_project_file(
-  landscape_name = landscape_names,
-  master_xml = master_xml,
-  run_type = "spinup",
-  desired_years = 1950:1980,
-  mod_years = 300,
-  filt_cond = 260,
-  seed = 1984)
+# gen_project_file(
+#   landscape_name = landscape_names,
+#   master_xml = master_xml,
+#   run_type = "spinup",
+#   desired_years = 1950:1980,
+#   mod_years = 300,
+#   filt_cond = 260,
+#   seed = 1984)
 
 
 #--------------- Generate project files for all landscapes ---------------#

@@ -9,7 +9,7 @@
       <!-- Defines the input databases directory e.g., the location of species parameters and climate data. Sec 3.2 iLand book -->
       <lip>lip</lip>
       <!-- Every tree species needs to have a light influence pattern (LIP) sec 9.3 iLand book. -->
-      <output>/glade/derecho/scratch/qasena/output_auto/CPCRW_hist</output>
+      <output>overwritten_by_bash</output>
       <!-- result are written to this directory. -->
       <temp>temp</temp>
       <!-- Debug outputs are written to this directory -->
@@ -410,7 +410,7 @@
       <randomSamplingEnabled>true</randomSamplingEnabled>
       <!-- if true, only the first batchYears of the climate file are loaded (but see filter). The actual climate for each year is the sampled from this climate data. See also randomSamplingList. (default=false) -->
       <!-- if this key (<randomSamplingList></randomSamplingList>) contains a list of 0-based indices (e.g. "3, 12, 14, 0, 3, 14", the random sampling (if enabled) uses this sequence of years. Note: the index is 0-based (in the example the 4th year would be used first). Use any non-word characters as delimiters. The list will be recycled if more years are simulated than present in the list. The index values are to be between 0 and batchYears-1. If invalid indices are in the list, an error is reported. If the key is empty or not present, each year a climate year is selected randomly from the list of loaded years. default=empty -->
-      <randomSamplingList>"7,25,26,2,21,13,0,17,15,11,2,21,28,12,21,25,0,6,14,23,24,15,15,16,14,8,9,27,26,10,16,29,5,7,9,20,0,17,11,18,3,10,16,4,30,20,7,10,16,24,13,25,27,30,22,17,25,27,1,17,26,10,30,18,20,8,7,4,23,30,2,23,3,15,20,6,10,10,25,1,15,3,20,7,16,3,14,19,18,17,19,23,1,21,13,26,14,27,5,15,10,16,21,7,19,25,30,2,0,7,26,22,25,4,26,30,8,19,10,23,6,0,27,29,28,19,4,6,24,4,16,20,30,16,22,3,24,14,12,28,6,28,3,9,15,29,18,16,30,29,12,2,3,16,30,5,5,16,23,14,19,9,26,21,23,4,9,16,30,16,10,0,8,12,19,14,4,28,26,27,16,15,27,19,6,10,1,10,24,26,26,9,0,0,11,13,29,7,1,14,29,14,16,19,23,3,2,3,11,3,19,28,3,16,27,17,20,12,26,8,22,14,9,30,30,28,1,20,10,11,15,19,24,25,24,19,19,7,11,30,29,26,7,0,18,30,3,26,19,25,25,21,19,4,29,9,25,29,6,1,17,4,24,26,10,23,18,9,20,20,19,0,4,22,4,26,26,16,9,0,13,28,20,10,21,23,15,28,17,28,1,17,30,29,6,10,8,27,7,24"</randomSamplingList>
+      <randomSamplingList>"17,9,1,18,1,5,18,19,11,22,6,17,14,15,15,11,24,23,7,18,19,24,0,27,25,2,27,29,8,8,4,8,10,26,19,24,0,14,22,12,14,25,3,27,22,3,5,14,7,17,30,16,22,19,21,21,20,23,0,21,30,3,26,9,18,29,30,12,25,17,16,23,7,9,1,16,22,13,2,8,15,3,11,27,28,6,30,18,19,3,26,13,20,10,30,10,24,3,28,3,7,21,3,17,13,1,14,13,9,29,1,0,30,26,13,15,25,11,9,1,22,26,16,25,1,19,22,6,27,15,25,12,2,1,7,19,21,7,18,27,8,2,15,26,21,16,24,13,28,24,3,13,21,5,29,24,21,9,28,5,13,14,26,6,17,23,22,0,10,11,5,18,15,19,14,12,3,2,26,13,15,20,0,2,9,18,12,16,1,25,25,14,8,20,29,0,24,21,22,28,6,25,22,27,10,11,26,20,0,13,15,18,14,27,26,11,2,17,26,7,5,15,20,17,29,10,23,17,1,23,27,3,15,12,18,13,14,5,16,11,19,30,5,14,6,19,1,26,18,26,11,23,3,0,22,6,29,11,4,9,3,3,28,18,18,13,15,14,27,21,22,30,22,12,7,21,27,17,13,17,11,17,8,20,18,23,8,22,14,9,14,8,30,14,7,6,2,28,10,21"</randomSamplingList>
       <filter>year &gt;= 1950 and year &lt;= 1980</filter>
       <!-- an optional filter criterion that is added to the where clause of the SQL for reading the climate data. This can be useful e.g. for skipping parts of the climate records. Example: 'year>2000 and year<2010' limits used climate data to the years 2001 to 2009. See also randomSamplingEnabled. -->
       <microclimate>
@@ -799,7 +799,7 @@
         <direction>225</direction>
         <!-- the main wind direction (in degrees). North=0, East=90, South=180, West=270. For each fire event the wind direction is calculated as direction +- 45°. Different values are used for iLand in different regions. -->
       </wind>
-      <onlySimulation>false</onlySimulation>
+      <onlySimulation>overwritten_by_csv</onlySimulation>
       <!-- only if value is false real effects of fire (on trees, snags, soil pools) are simulated (default: false). A value of true can be useful for testing purposes. -->
       <crownKill1>0.03</crownKill1>
       <!-- parameter kCK1 to calculate fraction of crown kill. (default: 0.21111). Different values are used for iLand in different regions. -->
