@@ -58,3 +58,6 @@ rsconnect/
 .claude/
 iLandc_container/ilandc.sif
 iLandc_container/ilandv2p1.sif
+
+# Ignore temporary climate logs:
+/logs/

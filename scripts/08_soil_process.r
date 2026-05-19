@@ -32,7 +32,7 @@ process_soil <- function(landscape_name) {
 
   out_dir <- here(landscape_name, "supporting_data", "soils_processed")
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
-
+  
   # --- sand / silt / clay ---
   processed <- lapply(soil_vars, function(var) {
     # Build file paths in explicit depth order
@@ -50,15 +50,22 @@ process_soil <- function(landscape_name) {
     result <- project(soil_wmean, env_grid, method = "bilinear") |>
       crop(env_grid) |>
       mask(env_grid)
-    result <- round(result)
+    # result <- round(result)
   })
   names(processed) <- soil_vars
+
+  # Fill cells where all three textures are 0 (areas with no SoilGrids data)
+  # by interpolating from the surrounding valid cells.
+  zero_mask <- (processed$sand + processed$silt + processed$clay) == 0
+  for (v in soil_vars) {
+    r <- ifel(zero_mask, NA, processed[[v]])
+    processed[[v]] <- terra::focal(r, w = 3, fun = "mean", na.rm = TRUE, na.policy = "only")
+  }
 
   # Normalise to proportions of the actual total, then derive silt as the exact
   # residual. This guarantees sand + silt + clay = 100 regardless of how far the
   # depth-weighted sum deviates from 100 before rounding.
-  # ifel(total > 0, ...) guards against cells where all three values are 0
-  # (no soil data, filled by subst above) — avoids 0/0 = NaN.
+  # ifel(total > 0, ...) guards against any remaining cells with no neighbour data.
   total <- processed$sand + processed$silt + processed$clay
   processed$sand <- ifel(total > 0, round(processed$sand / total * 100), 0)
   processed$clay <- ifel(total > 0, round(processed$clay / total * 100), 0)

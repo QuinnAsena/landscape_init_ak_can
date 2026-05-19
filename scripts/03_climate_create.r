@@ -12,7 +12,8 @@ landscape_names <- basename(dirs[grepl("landscape_", basename(dirs))])
 # ssp <- c("ssp126", "ssp245", "ssp370", "ssp585")
 
 gcm <- "NorEsm2-MM"
-ssp <- "ssp126"
+# ssp <- "ssp126"
+ssp <- c("ssp245", "ssp370")
 # var <- c("tasmax", "hurs", "pr", "rsds", "tasmin", "vp")
 var <- c("tasmax", "pr", "rsds", "tasmin", "vp")
 year <- 1950:2100
@@ -42,82 +43,113 @@ param_grid <- expand.grid(
 # to its corresponding climate grid cell. This avoids reprojecting the full
 # climate dataset and preserves the native climate resolution.
 
-process_climate_link <- function(gcm, ssp, var, year, landscape_dir) {
+process_climate_link <- function(gcm, ssp, var, year, landscape_dir, logs = FALSE) {
 
-  out_dir <- here(landscape_dir, "supporting_data", "climate_link", gcm, ssp, var)
-  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
-  
-  clim_in <- file.path("//10.60.2.10/FF_Lab/project_data/downscaling/Landscapes",
-    paste0("Downscaled ", gcm), ssp, var,
-    paste0(gcm, "-", ssp, "-", var, "-", year, ".nc"))
-  cpcrw_clim_in <- file.path("//10.60.2.10/FF_Lab/project_data/downscaling/CPCRW",
-    paste0("Downscaled ", gcm), ssp, var,
-    paste0(gcm, "-", ssp, "-", var, "-", year, ".nc"))
-
-  env_files <- list.files(path = here(landscape_dir, "gis"),
-                        pattern = "env.grid.tif$", full.names = TRUE, recursive = TRUE)
-
-  env_rast <- rast(env_files)
-  ak_climate_var <- rast(clim_in)
-  # Fall back to the CPCRW climate dataset if the landscape lies outside the
-  # standard regional domain (e.g. CPCRW is not covered by the Landscapes files)
-  env_ext_clim_crs <- project(ext(env_rast), from = crs(env_rast), to = crs(ak_climate_var))
-  if (all(is.na(values(crop(ak_climate_var[[1]], env_ext_clim_crs))))) {
-    ak_climate_var <- rast(cpcrw_clim_in)
-  }
-  # Convert landscape raster to polygon (extent) and point geometries
-  env_poly <- as.polygons(env_rast, extent = TRUE)
-  env_points <- as.points(env_rast)
-  # Buffer the landscape extent to ensure full coverage of bordering climate cells
-  env_poly_buffer <- terra::buffer(env_poly, width = 4000)
-  # Project buffer to the climate CRS to avoid reprojecting the full climate dataset
-  pol_buffer_daymetcrs <- project(env_poly_buffer, ak_climate_var)
-  # Crop and mask climate data to the buffered landscape area
-  pol_buffer_daymetcrs_crop <- crop(ak_climate_var, pol_buffer_daymetcrs) |>
-    mask(pol_buffer_daymetcrs)
-  # Reproject cropped climate data back to the landscape CRS (equal-area Albers)
-  var_buffer_albers <- project(pol_buffer_daymetcrs_crop, crs(env_rast))
-
-  if (all(grepl("rsds", names(var_buffer_albers)))) {
-    var_buffer_albers <- (var_buffer_albers * 86400) / 1000000
-  }
-
-  if (all(grepl("vp", names(var_buffer_albers)))) {
-    vp_names <- paste0("vp_", seq_len(nlyr(var_buffer_albers)))
-    if (!identical(names(var_buffer_albers), vp_names)) {
-      names(var_buffer_albers) <- vp_names
+  if (logs) {
+    log_file <- here("logs", paste0(landscape_dir, "-", gcm, "-", ssp, "-", var, "-", year, ".log"))
+    dir.create(here("logs"), showWarnings = FALSE)
+    log_msg <- function(stage, detail = "") {
+      line <- paste0(
+        format(Sys.time(), "%Y-%m-%dT%H:%M:%S"), "\t",
+        landscape_dir, "\t", gcm, "\t", ssp, "\t", var, "\t", year, "\t",
+        stage, "\t", detail, "\n"
+      )
+      cat(line, file = log_file, append = TRUE)
     }
+  } else {
+    log_msg <- function(stage, detail = "") invisible(NULL)
   }
 
-  # Create the RID-to-climate-cell lookup: one row per RID, mapped to its climate cell
-  climate_link <- terra::cells(var_buffer_albers, env_points) |>
-    as.data.frame() |>
-    rename(env.grid = "ID", climate.grid = "cell")
+  tryCatch({
 
-  # Create data of climate.grid cell ID with values
-  climate_extract <- as.data.frame(var_buffer_albers, cells = TRUE) |>
-    dplyr::rename(climate.grid = "cell") |>
-    right_join(climate_link, by = "climate.grid") |>
-    distinct(climate.grid, .keep_all = TRUE) |>
-    select(-env.grid)
+    log_msg("START")
+    out_dir <- here(landscape_dir, "supporting_data", "climate_link", gcm, ssp, var)
+    dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
-  ak_climate_var_df <- climate_extract |>
-    tidyr::pivot_longer(
-      cols = -climate.grid,
-      names_to = "y_day",
-      values_to = "value") |>
-    dplyr::mutate(
-      y_day = as.numeric(sub(paste0(var, "_"), "", y_day)),
-      day_of_year = ifelse(lubridate::leap_year(year) & y_day >= 60, y_day + 1, y_day),
-      date = lubridate::make_date(year) + lubridate::days(day_of_year - 1),
-      value = round(value, 3),
-      gcm = gcm,
-      ssp = ssp,
-      landscape = landscape_dir) |>
-    dplyr::select(climate.grid, value, date, gcm, ssp, landscape) |>
-    dplyr::rename(!!var := value)
-    # names(df)[names(df) == "value"] <- var # for base R rename. no tidy evaluation. 
-  write.table(ak_climate_var_df, file.path(out_dir, paste0(gcm, "-", ssp, "-", var, "-", year, ".txt")), row.names = FALSE, sep = "\t")
+    clim_in <- file.path("//10.60.2.10/FF_Lab/project_data/downscaling/Landscapes",
+      paste0("Downscaled ", gcm), ssp, var,
+      paste0(gcm, "-", ssp, "-", var, "-", year, ".nc"))
+    cpcrw_clim_in <- file.path("//10.60.2.10/FF_Lab/project_data/downscaling/CPCRW",
+      paste0("Downscaled ", gcm), ssp, var,
+      paste0(gcm, "-", ssp, "-", var, "-", year, ".nc"))
+
+    env_files <- list.files(path = here(landscape_dir, "gis"),
+                          pattern = "env.grid.tif$", full.names = TRUE, recursive = TRUE)
+
+    env_rast <- rast(env_files)
+    ak_climate_var <- rast(clim_in)
+    log_msg("raster_loaded", paste("CRS:", substr(crs(ak_climate_var), 1, 80)))
+
+    # Fall back to the CPCRW climate dataset if the landscape lies outside the
+    # standard regional domain (e.g. CPCRW is not covered by the Landscapes files)
+    env_ext_clim_crs <- project(ext(env_rast), from = crs(env_rast), to = crs(ak_climate_var))
+    log_msg("extent_projected")
+    if (all(is.na(values(crop(ak_climate_var[[1]], env_ext_clim_crs))))) {
+      ak_climate_var <- rast(cpcrw_clim_in)
+      log_msg("fallback_triggered", paste("CRS:", substr(crs(ak_climate_var), 1, 80)))
+    }
+    # Convert landscape raster to polygon (extent) and point geometries
+    env_poly <- as.polygons(env_rast, extent = TRUE)
+    env_points <- as.points(env_rast)
+    # Buffer the landscape extent to ensure full coverage of bordering climate cells
+    env_poly_buffer <- terra::buffer(env_poly, width = 4000)
+    # Project buffer to the climate CRS to avoid reprojecting the full climate dataset
+    pol_buffer_daymetcrs <- project(env_poly_buffer, ak_climate_var)
+    log_msg("buffer_projected")
+    # Crop and mask climate data to the buffered landscape area
+    pol_buffer_daymetcrs_crop <- crop(ak_climate_var, pol_buffer_daymetcrs) |>
+      mask(pol_buffer_daymetcrs)
+    # Reproject cropped climate data back to the landscape CRS (equal-area Albers)
+    var_buffer_albers <- project(pol_buffer_daymetcrs_crop, crs(env_rast))
+    log_msg("climate_projected_to_albers")
+
+    if (all(grepl("rsds", names(var_buffer_albers)))) {
+      var_buffer_albers <- (var_buffer_albers * 86400) / 1000000
+    }
+
+    if (all(grepl("vp", names(var_buffer_albers)))) {
+      vp_names <- paste0("vp_", seq_len(nlyr(var_buffer_albers)))
+      if (!identical(names(var_buffer_albers), vp_names)) {
+        names(var_buffer_albers) <- vp_names
+      }
+    }
+    log_msg("units_converted")
+
+    # Create the RID-to-climate-cell lookup: one row per RID, mapped to its climate cell
+    climate_link <- terra::cells(var_buffer_albers, env_points) |>
+      as.data.frame() |>
+      rename(env.grid = "ID", climate.grid = "cell")
+    log_msg("link_built")
+
+    # Create data of climate.grid cell ID with values
+    climate_extract <- as.data.frame(var_buffer_albers, cells = TRUE) |>
+      dplyr::rename(climate.grid = "cell") |>
+      right_join(climate_link, by = "climate.grid") |>
+      distinct(climate.grid, .keep_all = TRUE) |>
+      select(-env.grid)
+
+    ak_climate_var_df <- climate_extract |>
+      tidyr::pivot_longer(
+        cols = -climate.grid,
+        names_to = "y_day",
+        values_to = "value") |>
+      dplyr::mutate(
+        y_day = as.numeric(sub(paste0(var, "_"), "", y_day)),
+        day_of_year = ifelse(lubridate::leap_year(year) & y_day >= 60, y_day + 1, y_day),
+        date = lubridate::make_date(year) + lubridate::days(day_of_year - 1),
+        value = round(value, 3),
+        gcm = gcm,
+        ssp = ssp,
+        landscape = landscape_dir) |>
+      dplyr::select(climate.grid, value, date, gcm, ssp, landscape) |>
+      dplyr::rename(!!var := value)
+      # names(df)[names(df) == "value"] <- var # for base R rename. no tidy evaluation.
+    write.table(ak_climate_var_df, file.path(out_dir, paste0(gcm, "-", ssp, "-", var, "-", year, ".txt")), row.names = FALSE, sep = "\t")
+    log_msg("DONE")
+
+  }, error = function(e) {
+    log_msg("ERROR", conditionMessage(e))
+  })
 }
 
 
@@ -186,7 +218,8 @@ future_lapply(
       ssp  = param_grid$ssp[i],
       var  = param_grid$var[i],
       year = param_grid$year[i],
-      landscape_dir = param_grid$landscape_dir[i]
+      landscape_dir = param_grid$landscape_dir[i],
+      logs = FALSE
     )
   },
   future.seed = TRUE
