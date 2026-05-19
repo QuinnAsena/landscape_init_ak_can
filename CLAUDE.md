@@ -81,6 +81,8 @@ The same misalignment affects the 30m water raster in script 09 — fixed by `pr
 ### Soil normalisation (script 08)
 Sand and clay are rounded as proportions of the true depth-weighted total; silt is the exact residual (100 − sand − clay). This guarantees sand + silt + clay = 100 for every cell regardless of rounding.
 
+Rocky/unforested areas in some landscapes (03, 05) have genuine all-zero SoilGrids values. These are caught by a `terra::focal(w=3, na.policy="only")` fill block inserted before normalisation: zero-texture cells are temporarily set to NA, then filled from their 3×3 neighbours. The early `round()` on line 53 was removed (commented out) because it converted bilinear-blended near-zero values to exact zeros before the fill could act on them.
+
 ### iLand on Windows — bash path handling
 `run_iland_csv_cpxml.sh` uses `cygpath -m` (not `-w`) to convert POSIX paths to Windows format after `realpath`. `-w` produces backslashes which sed interprets as escape sequences (`\l` = lowercase next char, etc.), mangling paths like `\landscape_*` → `andscape_*`. `-m` gives forward-slash Windows paths (`Z:/...`) safe for both sed and native Windows iLand.
 
