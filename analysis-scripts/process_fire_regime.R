@@ -60,6 +60,14 @@ fire <- dplyr::bind_rows(lapply(rep_nums, function(rep) {
   df
 }))
 
+# Temporary files for testing
+fire <- DBI::dbConnect(RSQLite::SQLite(), 
+    dbname = "Z:/personal_storage/quinn_storage/NorEsm2-MMssp126_dbh2.5_yr_31_iLand2.0/rep_3/NorEsm2-MMssp126_dbh2.5_yr_31_iLand2.0_3.sqlite") |>
+  DBI::dbReadTable("fire")
+env_grid <-terra::rast("Z:/personal_storage/quinn_storage/landscape_init_ak_can/landscape_alaska_01/gis/env.grid.tif")
+
+
+
 # Drop events where nothing burned (area_m2 == 0 rows are iLand no-fire records)
 fire <- fire[fire$area_m2 > 0, ]
 fire$area_ha <- fire$area_m2 / 10000
@@ -79,16 +87,23 @@ histfire <- terra::vect(file.path(dsn, "AK_fire_location_polygons.shp"))
 histfire$area_ha  <- histfire$Shape_Area / 10000
 histfire$FIREYEAR <- as.numeric(histfire$FIREYEAR)
 
+# Reproject to env_grid CRS so all subsequent spatial operations share one CRS.
+histfire <- terra::project(histfire, terra::crs(env_grid))
+
 cat("Historical fire polygons loaded:", nrow(histfire), "\n")
 cat("Fire year range:", paste(range(histfire$FIREYEAR, na.rm = TRUE), collapse = " – "), "\n\n")
 
 # Clip historical perimeters to the landscape spatial extent.
-# Project the env.grid bounding box into the fire dataset CRS, then intersect.
-landscape_poly      <- terra::as.polygons(terra::ext(env_grid))
-terra::crs(landscape_poly) <- terra::crs(env_grid)
-landscape_poly_fireproj    <- terra::project(landscape_poly, histfire)
+# histfire is already in env_grid CRS so no intermediate reprojection is needed.
 
-histfire_clip          <- terra::intersect(histfire, landscape_poly_fireproj)
+# Possible mismatch here because landscape footprint could be irregular (i.e., landscape 01 is a diamond within the square area)
+landscape_poly <- terra::as.polygons(
+  terra::ifel(!is.na(env_grid), 1L, NA),
+  dissolve = TRUE
+)
+terra::crs(landscape_poly) <- terra::crs(env_grid)
+
+histfire_clip              <- terra::intersect(histfire, landscape_poly)
 histfire_clip$clip_area_ha <- terra::expanse(histfire_clip, unit = "ha")
 
 cat("Fire polygons clipped to landscape:", nrow(histfire_clip), "\n\n")
@@ -113,10 +128,12 @@ if (nrow(histfire_clip) == 0) {
           ". hist_frp will be NA.")
   hist_frp      <- NA_real_
   hist_firesize <- NA_real_
+  sd_hist_firesize <- NA_real_
   hist_firefreq <- NA_real_
 } else {
   hist_frp      <- round(frp_numyears / (sum(histfire_clip$clip_area_ha) / landscape_area_ha), 0)
   hist_firesize <- mean(histfire_clip$clip_area_ha)
+  sd_hist_firesize <- sd(histfire_clip$clip_area_ha)
   hist_firefreq <- nrow(histfire_clip) / frp_numyears
 }
 
@@ -176,8 +193,8 @@ run_anew <- !file.exists(file.path(ak_grid_dir, "frp_raster.tif"))
 if (run_anew) {
   cat("Computing AK grid FRP (run_anew = TRUE) — this may take several minutes...\n")
 
-  # Alaska land polygon in fire dataset CRS
-  ak_poly <- terra::project(terra::vect(file.path(dsn, "AK_polygon.shp")), histfire)
+  # Alaska land polygon — project to env_grid CRS (histfire already shares this CRS)
+  ak_poly <- terra::project(terra::vect(file.path(dsn, "AK_polygon.shp")), terra::crs(env_grid))
 
   # Filter and fix geometry (replaces gBuffer width=0)
   histfire_yr  <- histfire[!is.na(histfire$FIREYEAR) &
@@ -189,10 +206,10 @@ if (run_anew) {
   # (equivalent to unionSpatialPolygons(histfire, FIREYEAR) in the original)
   histfire_agg <- terra::aggregate(histfire_yr, by = "FIREYEAR", dissolve = TRUE)
 
-  # Raster template tiling AK with iLand-sized cells
+  # Raster template tiling AK with iLand-sized cells (env_grid CRS, metric units)
   ak_grid_rast    <- terra::rast(terra::ext(histfire),
                                  resolution = c(25500, 23900),
-                                 crs = terra::crs(histfire))
+                                 crs = terra::crs(env_grid))
   ak_grid_rast[]  <- seq_len(terra::ncell(ak_grid_rast))
 
   # Convert to polygons; keep only cells that overlap AK land area
