@@ -65,6 +65,7 @@ fire <- DBI::dbConnect(RSQLite::SQLite(),
     dbname = "Z:/personal_storage/quinn_storage/NorEsm2-MMssp126_dbh2.5_yr_31_iLand2.0/rep_3/NorEsm2-MMssp126_dbh2.5_yr_31_iLand2.0_3.sqlite") |>
   DBI::dbReadTable("fire")
 env_grid <-terra::rast("Z:/personal_storage/quinn_storage/landscape_init_ak_can/landscape_alaska_01/gis/env.grid.tif")
+landscape_area_ha <- sum(!is.na(terra::values(env_grid)))
 
 
 
@@ -176,6 +177,9 @@ if (is.na(hist_firesize) || is.na(hist_firefreq)) {
 cat("Replicate summary (last 100 sim years):\n")
 print(as.data.frame(fire_summary))
 cat("\nSelected replicate:", best_rep, "\n\n")
+
+
+
 
 #------------------------------------------------------------------------------#
 # Section 5: AK-wide grid FRP (landscape-independent).
