@@ -265,4 +265,89 @@ frp_rast      <- terra::rast(file.path(ak_grid_dir, "frp_raster.tif"))
 firesize_rast <- terra::rast(file.path(ak_grid_dir, "firesize_raster.tif"))
 firefreq_rast <- terra::rast(file.path(ak_grid_dir, "firefreq_raster.tif"))
 
-# TODO: Section 6 — rolling FRP for the selected replicate
+#------------------------------------------------------------------------------#
+# Section 6: Rolling FRP for the selected replicate.
+# Slides a frp_numyears window through the simulation — equivalent to the loop
+# in the original Rmd (lines 492–508) but uses best_rep instead of hardcoded
+# replicate==6 and landscape_area_ha instead of hardcoded cpcrw_area.
+# Guard: if the historical period (frp_numyears) exceeds the simulation length,
+# the window can never start — skip and warn.
+#------------------------------------------------------------------------------#
+fire_best <- fire[fire$replicate == best_rep, ]
+
+first_ilandyear <- min(fire_best$year) + frp_numyears
+last_ilandyear  <- max(fire_best$year)
+
+if (first_ilandyear > last_ilandyear) {
+  warning(
+    "frp_numyears (", frp_numyears, ") exceeds simulation length (",
+    n_sim_years, " years) — rolling FRP cannot be computed. Skipping."
+  )
+  rolling_frp_df <- data.frame(year = integer(0), iland_frp = numeric(0))
+} else {
+  sim_years <- first_ilandyear:last_ilandyear
+  iland_frp <- vapply(sim_years, function(yr) {
+    years_to_eval <- (yr - frp_numyears + 1):yr
+    area_burned   <- sum(fire_best$area_ha[fire_best$year %in% years_to_eval])
+    if (area_burned == 0) return(NA_real_)
+    round(frp_numyears / (area_burned / landscape_area_ha), 0)
+  }, numeric(1))
+  rolling_frp_df <- data.frame(year = sim_years, iland_frp = iland_frp)
+}
+
+cat("Rolling FRP — replicate", best_rep, ":\n")
+print(rolling_frp_df)
+cat("\nFinal rolling FRP:", tail(rolling_frp_df$iland_frp, 1), "years\n\n")
+
+write.csv(rolling_frp_df,
+          file.path(output_dir, "rolling_frp.csv"),
+          row.names = FALSE)
+
+# Per-year fire summary for best replicate: annual area burned + severity.
+# prop_n_died and prop_ba_died are aggregate proportions (sum killed / sum total)
+# across all fire events within each year; set to 0 when denominator is 0
+# (years with no trees on burning pixels — matches original Rmd handling).
+annual_fire <- fire_best |>
+  group_by(year) |>
+  summarize(
+    total_area_ha = sum(area_ha),
+    prop_n_died   = {
+      d <- sum(n_trees, na.rm = TRUE)
+      if (d == 0) 0 else sum(n_trees_died, na.rm = TRUE) / d
+    },
+    prop_ba_died  = {
+      d <- sum(basalArea_total, na.rm = TRUE)
+      if (d == 0) 0 else sum(basalArea_died, na.rm = TRUE) / d
+    },
+    .groups = "drop"
+  )
+
+write.csv(annual_fire,
+          file.path(output_dir, "annual_fire_summary.csv"),
+          row.names = FALSE)
+
+# Scalar comparison table: observed (historical) vs simulated (best replicate).
+best_stats    <- fire_summary[fire_summary$replicate == best_rep, ]
+final_iland_frp <- if (nrow(rolling_frp_df) > 0) tail(rolling_frp_df$iland_frp, 1) else NA_real_
+
+comparison_df <- data.frame(
+  metric    = c("frp_years", "mean_firesize_ha", "firefreq_fires_per_year"),
+  observed  = c(hist_frp,    hist_firesize,       hist_firefreq),
+  simulated = c(final_iland_frp,
+                best_stats$iland_firesize,
+                best_stats$iland_firefreq)
+)
+
+cat("Fire comparison (observed vs simulated replicate", best_rep, "):\n")
+print(comparison_df)
+cat("\n")
+
+write.csv(comparison_df,
+          file.path(output_dir, "fire_comparison.csv"),
+          row.names = FALSE)
+
+cat("Outputs written to:", output_dir, "\n")
+cat("  rolling_frp.csv\n")
+cat("  annual_fire_summary.csv\n")
+cat("  fire_comparison.csv\n")
+cat("\nDone:", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n")
