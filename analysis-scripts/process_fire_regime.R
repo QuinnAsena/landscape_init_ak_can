@@ -275,6 +275,7 @@ firefreq_rast <- terra::rast(file.path(ak_grid_dir, "firefreq_raster.tif"))
 #------------------------------------------------------------------------------#
 fire_best <- fire[fire$replicate == best_rep, ]
 
+# First iland year will need to be edited to filter for the last 40 years of simulation
 first_ilandyear <- min(fire_best$year) + frp_numyears
 last_ilandyear  <- max(fire_best$year)
 
