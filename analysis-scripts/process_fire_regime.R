@@ -150,6 +150,8 @@ cat("Historical fire frequency:  ", round(hist_firefreq, 2), "fires/year\n\n")
 # and select the replicate with the smallest combined absolute difference.
 # Original hardcoded year > 200 and observed values; both are now computed.
 #------------------------------------------------------------------------------#
+
+# EDIT THIS: need 100 years of simulated data.
 n_sim_years <- max(fire$year) - min(fire$year) + 1
 
 fire_summary <- fire |>
