@@ -1,0 +1,3 @@
+bash /glade/work/qasena/landscape_init_ak_can/run_iland_csv_cpxml_apptainer.sh /glade/work/qasena/landscape_init_ak_can/landscape_alaska_06/landscape_alaska_06_1950-1980spinup.xml 7 7 300
+bash /glade/work/qasena/landscape_init_ak_can/run_iland_csv_cpxml_apptainer.sh /glade/work/qasena/landscape_init_ak_can/landscape_alaska_06/landscape_alaska_06_1950-1980spinup.xml 8 8 300
+bash /glade/work/qasena/landscape_init_ak_can/run_iland_csv_cpxml_apptainer.sh /glade/work/qasena/landscape_init_ak_can/landscape_alaska_06/landscape_alaska_06_1950-1980spinup.xml 9 9 300
