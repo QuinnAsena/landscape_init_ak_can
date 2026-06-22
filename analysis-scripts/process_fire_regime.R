@@ -57,15 +57,16 @@ fire <- dplyr::bind_rows(lapply(rep_nums, function(rep) {
   df <- DBI::dbReadTable(db, "fire")
   DBI::dbDisconnect(db)
   df$replicate <- rep
+  df <- df |> filter(year >= 200)
   df
 }))
 
-# Temporary files for testing
-fire <- DBI::dbConnect(RSQLite::SQLite(), 
-    dbname = "Z:/personal_storage/quinn_storage/NorEsm2-MMssp126_dbh2.5_yr_31_iLand2.0/rep_3/NorEsm2-MMssp126_dbh2.5_yr_31_iLand2.0_3.sqlite") |>
-  DBI::dbReadTable("fire")
-env_grid <-terra::rast("Z:/personal_storage/quinn_storage/landscape_init_ak_can/landscape_alaska_01/gis/env.grid.tif")
-landscape_area_ha <- sum(!is.na(terra::values(env_grid)))
+      # Temporary files for testing
+      fire <- DBI::dbConnect(RSQLite::SQLite(),
+          dbname = "Z:/personal_storage/quinn_storage/NorEsm2-MMssp126_dbh2.5_yr_31_iLand2.0/rep_3/NorEsm2-MMssp126_dbh2.5_yr_31_iLand2.0_3.sqlite") |>
+        DBI::dbReadTable("fire")
+      env_grid <-terra::rast("Z:/personal_storage/quinn_storage/landscape_init_ak_can/landscape_alaska_01/gis/env.grid.tif")
+      landscape_area_ha <- sum(!is.na(terra::values(env_grid)))
 
 
 
@@ -152,8 +153,9 @@ cat("Historical fire frequency:  ", round(hist_firefreq, 2), "fires/year\n\n")
 #------------------------------------------------------------------------------#
 
 # EDIT THIS: need 100 years of simulated data.
-n_sim_years <- max(fire$year) - min(fire$year) + 1
+# n_sim_years <- max(fire$year) - min(fire$year) + 1
 
+n_sim_years  <- 100
 fire_summary <- fire |>
   group_by(replicate) |>
   summarize(
@@ -194,74 +196,69 @@ cat("\nSelected replicate:", best_rep, "\n\n")
 ak_grid_dir <- "/glade/work/qasena/landscape_init_ak_can/data/ak_fire_grid"
 dir.create(ak_grid_dir, recursive = TRUE, showWarnings = FALSE)
 
-run_anew <- !file.exists(file.path(ak_grid_dir, "frp_raster.tif"))
 
-if (run_anew) {
-  cat("Computing AK grid FRP (run_anew = TRUE) — this may take several minutes...\n")
+cat("Computing AK grid FRP (run_anew = TRUE) — this may take several minutes...\n")
 
-  # Alaska land polygon — project to env_grid CRS (histfire already shares this CRS)
-  ak_poly <- terra::project(terra::vect(file.path(dsn, "AK_polygon.shp")), terra::crs(env_grid))
+# Alaska land polygon — project to env_grid CRS (histfire already shares this CRS)
+ak_poly <- terra::project(terra::vect(file.path(dsn, "AK_polygon.shp")), terra::crs(env_grid))
 
-  # Filter and fix geometry (replaces gBuffer width=0)
-  histfire_yr  <- histfire[!is.na(histfire$FIREYEAR) &
-                           histfire$FIREYEAR >= first_year &
-                           histfire$FIREYEAR <= last_year, ]
-  histfire_yr  <- terra::makeValid(histfire_yr)
+# Filter and fix geometry (replaces gBuffer width=0)
+histfire_yr  <- histfire[!is.na(histfire$FIREYEAR) &
+                         histfire$FIREYEAR >= first_year &
+                         histfire$FIREYEAR <= last_year, ]
+histfire_yr  <- terra::makeValid(histfire_yr)
 
-  # Dissolve by year so each resulting polygon = one fire-year per union area
-  # (equivalent to unionSpatialPolygons(histfire, FIREYEAR) in the original)
-  histfire_agg <- terra::aggregate(histfire_yr, by = "FIREYEAR", dissolve = TRUE)
+# Dissolve by year so each resulting polygon = one fire-year per union area
+# (equivalent to unionSpatialPolygons(histfire, FIREYEAR) in the original)
+histfire_agg <- terra::aggregate(histfire_yr, by = "FIREYEAR", dissolve = TRUE)
 
-  # Raster template tiling AK with iLand-sized cells (env_grid CRS, metric units)
-  ak_grid_rast    <- terra::rast(terra::ext(histfire),
-                                 resolution = c(25500, 23900),
-                                 crs = terra::crs(env_grid))
-  ak_grid_rast[]  <- seq_len(terra::ncell(ak_grid_rast))
+# Raster template tiling AK with iLand-sized cells (env_grid CRS, metric units)
+ak_grid_rast    <- terra::rast(terra::ext(histfire),
+                               resolution = c(25500, 23900),
+                               crs = terra::crs(env_grid))
+ak_grid_rast[]  <- seq_len(terra::ncell(ak_grid_rast))
 
-  # Convert to polygons; keep only cells that overlap AK land area
-  ak_grid_polys         <- terra::as.polygons(ak_grid_rast)
-  names(ak_grid_polys)[1] <- "cell_id"
-  ak_grid_polys$AREA_ha <- terra::expanse(ak_grid_polys, unit = "ha")
-  land_mask             <- terra::relate(ak_grid_polys, ak_poly, relation = "intersects")[, 1]
-  ak_grid_polys         <- ak_grid_polys[land_mask, ]
+# Convert to polygons; keep only cells that overlap AK land area
+ak_grid_polys         <- terra::as.polygons(ak_grid_rast)
+names(ak_grid_polys)[1] <- "cell_id"
+ak_grid_polys$AREA_ha <- terra::expanse(ak_grid_polys, unit = "ha")
+land_mask             <- terra::relate(ak_grid_polys, ak_poly, relation = "intersects")[, 1]
+ak_grid_polys         <- ak_grid_polys[land_mask, ]
 
-  # Vectorised intersect replaces per-cell gIntersection loop
-  fire_x_grid              <- terra::intersect(ak_grid_polys, histfire_agg)
-  fire_x_grid$clip_area_ha <- terra::expanse(fire_x_grid, unit = "ha")
+# Vectorised intersect replaces per-cell gIntersection loop
+fire_x_grid              <- terra::intersect(ak_grid_polys, histfire_agg)
+fire_x_grid$clip_area_ha <- terra::expanse(fire_x_grid, unit = "ha")
 
-  cell_stats <- as.data.frame(fire_x_grid)[, c("cell_id", "clip_area_ha")] |>
-    group_by(cell_id) |>
-    summarize(
-      total_burned_ha = sum(clip_area_ha),
-      num_fires       = n(),
-      mean_firesize   = mean(clip_area_ha),
-      .groups = "drop"
-    )
+cell_stats <- as.data.frame(fire_x_grid)[, c("cell_id", "clip_area_ha")] |>
+  group_by(cell_id) |>
+  summarize(
+    total_burned_ha = sum(clip_area_ha),
+    num_fires       = n(),
+    mean_firesize   = mean(clip_area_ha),
+    .groups = "drop"
+  )
 
-  grid_df <- dplyr::left_join(as.data.frame(ak_grid_polys), cell_stats, by = "cell_id") |>
-    mutate(
-      FRP            = round(frp_numyears / (total_burned_ha / AREA_ha), 0),
-      FRP            = ifelse(!is.na(FRP) & FRP > 10000, NA, FRP),
-      FIRE_FREQ      = ifelse(is.na(num_fires) | num_fires == 0, NA,
-                              frp_numyears / num_fires),
-      MEAN_FIRE_SIZE = mean_firesize
-    )
+grid_df <- dplyr::left_join(as.data.frame(ak_grid_polys), cell_stats, by = "cell_id") |>
+  mutate(
+    FRP            = round(frp_numyears / (total_burned_ha / AREA_ha), 0),
+    FRP            = ifelse(!is.na(FRP) & FRP > 10000, NA, FRP),
+    FIRE_FREQ      = ifelse(is.na(num_fires) | num_fires == 0, NA,
+                            frp_numyears / num_fires),
+    MEAN_FIRE_SIZE = mean_firesize
+  )
 
-  ak_grid_polys$FRP            <- grid_df$FRP
-  ak_grid_polys$MEAN_FIRE_SIZE <- grid_df$MEAN_FIRE_SIZE
-  ak_grid_polys$FIRE_FREQ      <- grid_df$FIRE_FREQ
+ak_grid_polys$FRP            <- grid_df$FRP
+ak_grid_polys$MEAN_FIRE_SIZE <- grid_df$MEAN_FIRE_SIZE
+ak_grid_polys$FIRE_FREQ      <- grid_df$FIRE_FREQ
 
-  terra::writeRaster(terra::rasterize(ak_grid_polys, ak_grid_rast, field = "FRP"),
-                     file.path(ak_grid_dir, "frp_raster.tif"),      overwrite = TRUE)
-  terra::writeRaster(terra::rasterize(ak_grid_polys, ak_grid_rast, field = "MEAN_FIRE_SIZE"),
-                     file.path(ak_grid_dir, "firesize_raster.tif"), overwrite = TRUE)
-  terra::writeRaster(terra::rasterize(ak_grid_polys, ak_grid_rast, field = "FIRE_FREQ"),
-                     file.path(ak_grid_dir, "firefreq_raster.tif"), overwrite = TRUE)
+# terra::writeRaster(terra::rasterize(ak_grid_polys, ak_grid_rast, field = "FRP"),
+#                    file.path(ak_grid_dir, "frp_raster.tif"),      overwrite = TRUE)
+# terra::writeRaster(terra::rasterize(ak_grid_polys, ak_grid_rast, field = "MEAN_FIRE_SIZE"),
+#                    file.path(ak_grid_dir, "firesize_raster.tif"), overwrite = TRUE)
+# terra::writeRaster(terra::rasterize(ak_grid_polys, ak_grid_rast, field = "FIRE_FREQ"),
+#                    file.path(ak_grid_dir, "firefreq_raster.tif"), overwrite = TRUE)
 
-  cat("AK grid rasters written to:", ak_grid_dir, "\n\n")
-} else {
-  cat("AK grid rasters already exist — loading from cache.\n\n")
-}
+cat("AK grid rasters written to:", ak_grid_dir, "\n\n")
 
 frp_rast      <- terra::rast(file.path(ak_grid_dir, "frp_raster.tif"))
 firesize_rast <- terra::rast(file.path(ak_grid_dir, "firesize_raster.tif"))
