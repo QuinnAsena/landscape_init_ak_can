@@ -87,7 +87,7 @@ cat("Replicates in data:", paste(sort(unique(fire$replicate)), collapse = ", "),
 # Replaces readOGR + raster::area() from original; uses terra::vect + expanse.
 # DSN is a network drive path — update to HPC path before running on Derecho.
 #------------------------------------------------------------------------------#
-dsn      <- "/glade/work/qasena/landscape_init_ak_can/data/historic_fire/raw data/fire"
+dsn      <- "/glade/work/qasena/landscape_init_ak_can/data/historic_fire/raw_data/fire"
 histfire <- terra::vect(file.path(dsn, "AK_fire_location_polygons.shp"))
 
 histfire$area_ha  <- histfire$Shape_Area / 10000
@@ -102,7 +102,6 @@ cat("Fire year range:", paste(range(histfire$FIREYEAR, na.rm = TRUE), collapse =
 # Clip historical perimeters to the landscape spatial extent.
 # histfire is already in env_grid CRS so no intermediate reprojection is needed.
 
-# Possible mismatch here because landscape footprint could be irregular (i.e., landscape 01 is a diamond within the square area)
 landscape_poly <- terra::as.polygons(
   terra::ifel(!is.na(env_grid), 1L, NA),
   dissolve = TRUE
@@ -153,7 +152,6 @@ cat("Historical fire frequency:  ", round(hist_firefreq, 2), "fires/year\n\n")
 # Summarise iLand fire stats over the last 100 simulation years per replicate,
 # compare to observed (hist_firesize, hist_firefreq) via relative difference,
 # and select the replicate with the smallest combined absolute difference.
-# Original hardcoded year > 200 and observed values; both are now computed.
 #------------------------------------------------------------------------------#
 
 # EDIT THIS: need 100 years of simulated data.
@@ -201,12 +199,9 @@ cat("\nSelected replicate:", best_rep, "\n\n")
 # Section 5: AK-wide grid FRP (landscape-independent).
 # Tiles Alaska with ~60,000 ha cells (25,500 × 23,900 m — same as an iLand
 # landscape) and calculates FRP, mean fire size, and fire frequency per cell
-# from the historical record. Results are cached as rasters; set run_anew to
-# TRUE only when the historical fire dataset changes.
+# from the historical record.
 # Replaces the nested sp/rgeos loop in the original with terra::intersect.
 #------------------------------------------------------------------------------#
-ak_grid_dir <- "/glade/work/qasena/landscape_init_ak_can/data/ak_fire_grid"
-dir.create(ak_grid_dir, recursive = TRUE, showWarnings = FALSE)
 
 cat("Computing AK grid FRP (run_anew = TRUE) — this may take several minutes...\n")
 

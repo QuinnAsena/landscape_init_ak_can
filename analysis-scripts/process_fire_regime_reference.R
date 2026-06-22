@@ -101,7 +101,8 @@ cat("Historical fire freq:  ", round(hist_firefreq, 2), "fires/year\n\n")
 # Section 4: No replicate selection — single replicate in test data.
 # Compute fire_summary for the comparison table output.
 #------------------------------------------------------------------------------#
-n_sim_years  <- max(fire$year) - min(fire$year) + 1
+# n_sim_years  <- max(fire$year) - min(fire$year) + 1
+n_sim_years  <- 100
 fire_summary <- data.frame(
   iland_firesize = mean(fire$area_ha),
   sd_firesize    = sd(fire$area_ha),
@@ -112,6 +113,18 @@ fire_best <- fire
 cat("Simulation years:", n_sim_years, "\n")
 cat("Mean iLand fire size:  ", round(fire_summary$iland_firesize, 0), "ha\n")
 cat("iLand fire frequency:  ", round(fire_summary$iland_firefreq, 2), "fires/year\n\n")
+
+
+
+
+
+
+
+
+
+
+
+
 
 #------------------------------------------------------------------------------#
 # Section 5: AK-wide grid FRP.
