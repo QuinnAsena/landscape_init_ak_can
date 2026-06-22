@@ -61,12 +61,16 @@ fire <- dplyr::bind_rows(lapply(rep_nums, function(rep) {
   df
 }))
 
+
+
+#------------------------------------------------------------------------------#
       # Temporary files for testing
       fire <- DBI::dbConnect(RSQLite::SQLite(),
           dbname = "Z:/personal_storage/quinn_storage/NorEsm2-MMssp126_dbh2.5_yr_31_iLand2.0/rep_3/NorEsm2-MMssp126_dbh2.5_yr_31_iLand2.0_3.sqlite") |>
         DBI::dbReadTable("fire")
       env_grid <-terra::rast("Z:/personal_storage/quinn_storage/landscape_init_ak_can/landscape_alaska_01/gis/env.grid.tif")
       landscape_area_ha <- sum(!is.na(terra::values(env_grid)))
+#------------------------------------------------------------------------------#
 
 
 
@@ -83,7 +87,7 @@ cat("Replicates in data:", paste(sort(unique(fire$replicate)), collapse = ", "),
 # Replaces readOGR + raster::area() from original; uses terra::vect + expanse.
 # DSN is a network drive path — update to HPC path before running on Derecho.
 #------------------------------------------------------------------------------#
-dsn      <- "//10.60.2.10/FF_Lab/project_data/na_boreal/sensitivity_analysis/data/historic_fire/raw data/fire"
+dsn      <- "/glade/work/qasena/landscape_init_ak_can/data/historic_fire/raw data/fire"
 histfire <- terra::vect(file.path(dsn, "AK_fire_location_polygons.shp"))
 
 histfire$area_ha  <- histfire$Shape_Area / 10000
@@ -185,6 +189,14 @@ cat("\nSelected replicate:", best_rep, "\n\n")
 
 
 
+
+
+
+
+
+
+
+
 #------------------------------------------------------------------------------#
 # Section 5: AK-wide grid FRP (landscape-independent).
 # Tiles Alaska with ~60,000 ha cells (25,500 × 23,900 m — same as an iLand
@@ -195,7 +207,6 @@ cat("\nSelected replicate:", best_rep, "\n\n")
 #------------------------------------------------------------------------------#
 ak_grid_dir <- "/glade/work/qasena/landscape_init_ak_can/data/ak_fire_grid"
 dir.create(ak_grid_dir, recursive = TRUE, showWarnings = FALSE)
-
 
 cat("Computing AK grid FRP (run_anew = TRUE) — this may take several minutes...\n")
 
