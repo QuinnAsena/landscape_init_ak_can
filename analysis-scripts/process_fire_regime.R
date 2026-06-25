@@ -1,7 +1,6 @@
-library(DBI)      # Rmd L20: provides dbConnect/dbReadTable/dbDisconnect interface
-library(RSQLite)  # Rmd L20: SQLite backend driver for DBI
-library(dplyr)    # Rmd L21: library(tidyverse) — used here for group_by/summarize/mutate/filter
-library(terra)    # replaces Rmd L22-26: raster, rgdal, rgeos, sp, maptools
+library(DBI)
+library(RSQLite)
+library(dplyr)
 
 # CLI arguments: landscape and treatment are passed by the calling script/bash job; no Rmd equivalent
 args      <- commandArgs(TRUE)
@@ -50,12 +49,12 @@ cat("Found replicates:", paste(rep_nums, collapse = ", "), "\n\n")  # diagnostic
 
 # Load fire table from each replicate SQLite and bind into one data frame; Rmd L157-168: for loop over i=1:10 reading CPCRW_sm_i.sqlite, rbind(fire,df)
 fire <- dplyr::bind_rows(lapply(rep_nums, function(rep) {
-  input_file <- file.path(             # Rmd L159: paste0(dbname="D:/workspace/.../CPCRW_sm_",i,".sqlite")
+  input_file <- file.path(
     data_path, treatment,
     paste0("rep_", rep),
     paste0(treatment, "_", rep, ".sqlite")
   )
-  if (!file.exists(input_file)) {      # guard for missing files; Rmd assumed all files present
+  if (!file.exists(input_file)) {
     warning("Input file not found: ", input_file)
     return(NULL)
   }
@@ -63,6 +62,7 @@ fire <- dplyr::bind_rows(lapply(rep_nums, function(rep) {
   df <- DBI::dbReadTable(db, "fire")                            # Rmd L161: df <- dbReadTable(db.conn, "fire")
   DBI::dbDisconnect(db)                                         # Rmd L162: dbDisconnect(db.conn)
   df$replicate <- rep                                           # Rmd L166: df$replicate=i
+  # Filter could end up with empty data frame if no fire in last 100 years of sim (unlikely)
   df <- df |> filter(year >= 200)                               # Rmd L482: fire %>% filter(year>200) — keep only post-spinup years
   df
 }))
@@ -73,9 +73,14 @@ fire <- dplyr::bind_rows(lapply(rep_nums, function(rep) {
       # Temporary files for testing
       fire <- DBI::dbConnect(RSQLite::SQLite(),
           dbname = "Z:/personal_storage/quinn_storage/NorEsm2-MMssp126_dbh2.5_yr_31_iLand2.0/rep_3/NorEsm2-MMssp126_dbh2.5_yr_31_iLand2.0_3.sqlite") |>
-        DBI::dbReadTable("fire")
+        DBI::dbReadTable("fire") |>
+        filter(year >= 200) |>
+        mutate(replicate = 3)
       env_grid <-terra::rast("Z:/personal_storage/quinn_storage/landscape_init_ak_can/landscape_alaska_01/gis/env.grid.tif")
       landscape_area_ha <- sum(!is.na(terra::values(env_grid)))
+
+      dsn <- "//10.60.2.10/FF_Lab/project_data/na_boreal/sensitivity_analysis/data/historic_fire/raw data/fire"
+      histfire <- terra::vect(file.path(dsn, "AK_fire_location_polygons.shp"))
 #------------------------------------------------------------------------------#
 
 
@@ -84,7 +89,7 @@ fire <- dplyr::bind_rows(lapply(rep_nums, function(rep) {
 fire <- fire[fire$area_m2 > 0, ]   # Rmd L170: fire <- fire[fire$area_m2 > 0,]
 fire$area_ha <- fire$area_m2 / 10000  # Rmd L173: fire$area_ha <- fire$area_m2 / 10000 — convert m² to ha
 
-cat("Fire events loaded:", nrow(fire), "\n")                                            # diagnostic; no Rmd equivalent
+cat("Fire events loaded:", nrow(fire), "\n")
 cat("Year range:        ", paste(range(fire$year), collapse = " – "), "\n")
 cat("Replicates in data:", paste(sort(unique(fire$replicate)), collapse = ", "), "\n\n")
 
@@ -94,7 +99,7 @@ cat("Replicates in data:", paste(sort(unique(fire$replicate)), collapse = ", "),
 # DSN is a network drive path — update to HPC path before running on Derecho.
 #------------------------------------------------------------------------------#
 # HPC path to AK fire shapefile; Rmd L197-226: readOGR(dsn=...) with on_ws flag
-dsn      <- "/glade/work/qasena/landscape_init_ak_can/data/historic_fire/raw_data/fire"
+dsn <- "/glade/work/qasena/landscape_init_ak_can/data/historic_fire/raw_data/fire"
 histfire <- terra::vect(file.path(dsn, "AK_fire_location_polygons.shp"))  # Rmd L197-202: readOGR(dsn=..., layer="AK_fire_location_polygons")
 
 histfire$area_ha  <- histfire$Shape_Area / 10000   # Rmd L203: histfire$area_ha <- histfire$Shape_Area / 10000
@@ -103,7 +108,7 @@ histfire$FIREYEAR <- as.numeric(histfire$FIREYEAR) # Rmd L204: histfire$FIREYEAR
 # Reproject to env_grid CRS so all subsequent spatial operations share one CRS.
 histfire <- terra::project(histfire, terra::crs(env_grid))  # new: reproject to env_grid CRS; Rmd used spTransform only inside the grid block (L297)
 
-cat("Historical fire polygons loaded:", nrow(histfire), "\n")                                    # diagnostic; no Rmd equivalent
+cat("Historical fire polygons loaded:", nrow(histfire), "\n")
 cat("Fire year range:", paste(range(histfire$FIREYEAR, na.rm = TRUE), collapse = " – "), "\n\n")
 
 # Clip historical perimeters to the landscape spatial extent.
@@ -162,9 +167,6 @@ cat("Historical fire frequency:  ", round(hist_firefreq, 2), "fires/year\n\n")
 # and select the replicate with the smallest combined absolute difference.
 #------------------------------------------------------------------------------#
 
-# EDIT THIS: need 100 years of simulated data.
-# n_sim_years <- max(fire$year) - min(fire$year) + 1
-
 # Rmd L482 context: iland_firefreq = length(area_ha)/100 — 100 sim years hardcoded
 n_sim_years  <- 100
 # Summarise fire stats per replicate; Rmd L482-485: iland.fire.summary = fire %>% filter(year>200) %>% group_by(replicate) %>% summarize(iland_firesize=..., sd_fire_size=..., iland_firefreq=...)
@@ -213,9 +215,6 @@ cat("\nSelected replicate:", best_rep, "\n\n")  # diagnostic; no Rmd equivalent
 # from the historical record.
 # Replaces the nested sp/rgeos loop in the original with terra::intersect.
 #------------------------------------------------------------------------------#
-
-# Always recompute (no caching in the final script unlike the reference); Rmd L277: run_anew = F
-cat("Computing AK grid FRP (run_anew = TRUE) — this may take several minutes...\n")
 
 # Load and reproject AK outline polygon; Rmd L293-297: ak <- readOGR(dsn, layer="AK_polygon"); ak <- spTransform(ak, proj4string(histfire))
 ak_poly <- terra::project(terra::vect(file.path(dsn, "AK_polygon.shp")), terra::crs(env_grid))
@@ -272,21 +271,6 @@ ak_grid_polys$FRP            <- grid_df$FRP             # Rmd L354: ak_grid$FRP 
 ak_grid_polys$MEAN_FIRE_SIZE <- grid_df$MEAN_FIRE_SIZE  # Rmd L355: ak_grid$MEAN_FIRE_SIZE = 0 (initialised)
 ak_grid_polys$FIRE_FREQ      <- grid_df$FIRE_FREQ       # Rmd L394-395: computed and assigned to ak_grid$FIRE_FREQ
 
-# Rasters commented out for now — uncomment to cache for downstream visualisation; Rmd L401-415: writeRaster() calls
-# terra::writeRaster(terra::rasterize(ak_grid_polys, ak_grid_rast, field = "FRP"),
-#                    file.path(ak_grid_dir, "frp_raster.tif"),      overwrite = TRUE)
-# terra::writeRaster(terra::rasterize(ak_grid_polys, ak_grid_rast, field = "MEAN_FIRE_SIZE"),
-#                    file.path(ak_grid_dir, "firesize_raster.tif"), overwrite = TRUE)
-# terra::writeRaster(terra::rasterize(ak_grid_polys, ak_grid_rast, field = "FIRE_FREQ"),
-#                    file.path(ak_grid_dir, "firefreq_raster.tif"), overwrite = TRUE)
-
-cat("AK grid rasters written to:", ak_grid_dir, "\n\n")
-
-# Load rasters (will fail until write block above is uncommented); Rmd L419-423: frpras/firesizeras/firefreqras <- raster(...)
-frp_rast      <- terra::rast(file.path(ak_grid_dir, "frp_raster.tif"))
-firesize_rast <- terra::rast(file.path(ak_grid_dir, "firesize_raster.tif"))
-firefreq_rast <- terra::rast(file.path(ak_grid_dir, "firefreq_raster.tif"))
-
 #------------------------------------------------------------------------------#
 # Section 6: Rolling FRP for the selected replicate.
 # Slides a frp_numyears window through the simulation — equivalent to the loop
@@ -321,43 +305,19 @@ if (first_ilandyear > last_ilandyear) {  # guard: window longer than simulation;
   rolling_frp_df <- data.frame(year = sim_years, iland_frp = iland_frp)  # Rmd L519-520: data.frame(year=first_ilandyear:max(...), frp=iland_frp) used for ggplot
 }
 
-cat("Rolling FRP — replicate", best_rep, ":\n")
-print(rolling_frp_df)
-cat("\nFinal rolling FRP:", tail(rolling_frp_df$iland_frp, 1), "years\n\n")  # Rmd L562: tail(iland_frp,n=1) used as geom_vline xintercept
 
 # Write rolling FRP series; no Rmd equivalent (original plotted directly)
 write.csv(rolling_frp_df,
           file.path(output_dir, "rolling_frp.csv"),
           row.names = FALSE)
 
-# Per-year fire summary for best replicate; Rmd L649-651: summ_fire_iland <- fire %>% filter(replicate==6) %>% group_by(year) %>% summarise(total_area=sum(area_ha), prop_n_died=n_trees_died/n_trees, prop_ba_died=basalArea_died/basalArea_total)
-# prop_n_died and prop_ba_died computed as aggregate proportions (sum killed / sum total)
-# across all fire events within each year; set to 0 when denominator is 0
-# (years with no trees on burning pixels — matches original Rmd handling).
-annual_fire <- fire_best |>
-  group_by(year) |>
-  summarize(
-    total_area_ha = sum(area_ha),   # Rmd L650: total_area = sum(area_ha)
-    prop_n_died   = {               # Rmd L650: prop_n_died = n_trees_died/n_trees — reformulated as aggregate fraction; Rmd L652-653 set NA→0 after
-      d <- sum(n_trees, na.rm = TRUE)
-      if (d == 0) 0 else sum(n_trees_died, na.rm = TRUE) / d
-    },
-    prop_ba_died  = {               # Rmd L651: prop_ba_died = basalArea_died / basalArea_total — same aggregate approach
-      d <- sum(basalArea_total, na.rm = TRUE)
-      if (d == 0) 0 else sum(basalArea_died, na.rm = TRUE) / d
-    },
-    .groups = "drop"
-  )
-
-# Write annual fire summary; no Rmd equivalent (original produced ggplot figures)
-write.csv(annual_fire,
-          file.path(output_dir, "annual_fire_summary.csv"),
-          row.names = FALSE)
 
 # Scalar comparison table: observed (historical) vs simulated (best replicate); no direct Rmd equivalent (original produced density plots)
 best_stats    <- fire_summary[fire_summary$replicate == best_rep, ]  # pull best-rep row from fire_summary
 final_iland_frp <- if (nrow(rolling_frp_df) > 0) tail(rolling_frp_df$iland_frp, 1) else NA_real_  # Rmd L562: tail(iland_frp,n=1)
 
+
+# Need to include landscape name and rep here
 comparison_df <- data.frame(
   metric    = c("frp_years", "mean_firesize_ha", "firefreq_fires_per_year"),
   observed  = c(hist_frp,    hist_firesize,       hist_firefreq),   # Rmd L252-255: hist_frp, hist_firesize, hist_firefreq
@@ -366,9 +326,6 @@ comparison_df <- data.frame(
                 best_stats$iland_firefreq)                           # Rmd L485: iland_firefreq = length(area_ha)/100
 )
 
-cat("Fire comparison (observed vs simulated replicate", best_rep, "):\n")
-print(comparison_df)
-cat("\n")
 
 # Write comparison table; no Rmd equivalent
 write.csv(comparison_df,
@@ -376,7 +333,4 @@ write.csv(comparison_df,
           row.names = FALSE)
 
 cat("Outputs written to:", output_dir, "\n")
-cat("  rolling_frp.csv\n")
-cat("  annual_fire_summary.csv\n")
-cat("  fire_comparison.csv\n")
 cat("\nDone:", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n")
