@@ -39,10 +39,9 @@ sample_climate <- function(desired_years = 1950:1980, mod_years = 300, seed = 19
 master_xml <- read_xml(here("data", "shared-xml-create", "landscape_master.xml"))
 
 gen_project_file <- function(landscape_name, master_xml, run_type,
-                             desired_years, mod_years, filt_cond, seed) {
+                             desired_years, mod_years, filt_cond, save_output,
+                             seed) {
   x <- read_xml(as.character(master_xml))
-
-  out_xml <- here(landscape_name, paste0(landscape_name, "_", paste0(range(desired_years), collapse = "-"), run_type, ".xml"))
 
   env_file <- list.files(here(landscape_name, "gis"),
                          pattern = "env.grid.tif$", full.names = TRUE)
@@ -90,9 +89,27 @@ gen_project_file <- function(landscape_name, master_xml, run_type,
   editxml(x,"//initialization/mode", mode)
   editxml(x,"//initialization/type", type)
   editxml(x,"//initialization/file", file)
+
+  # save outputs? May need to edit for individual arguments later
+  # currently fire outputs are always true
+  if (save_output == TRUE) {
+    save_enabled <- "true"
+  } else if (save_output == FALSE) {
+    save_enabled <- "false"
+  } else {
+    stop("save_output must be TRUE or FALSE")
+  }
+
+  editxml(x, "//output/tree/enabled", save_enabled)
+  editxml(x, "//output/stand/enabled", save_enabled)
+  editxml(x, "//output/sapling/enabled", save_enabled)
+  editxml(x, "//output/saplingdetail/enabled", save_enabled)
+  editxml(x, "//output/carbon/enabled", save_enabled)
+  editxml(x, "//output/water/enabled", save_enabled)
+
   # This defines the filter for which years to save in the following tags
   # use -1 to set filter to blank
-  if (filt_cond != -1) {
+  if (filt_cond != -1 && save_output == TRUE) {
     save_filter <- paste0("year >= ", filt_cond, " and year <= ", mod_years)
     # Set filter for followin tags
     editxml(x, "//output/tree/filter", save_filter)
@@ -102,6 +119,11 @@ gen_project_file <- function(landscape_name, master_xml, run_type,
     editxml(x, "//output/carbon/condition", save_filter)
     editxml(x, "//output/water/condition", save_filter)
   }
+
+  out_xml <- here(landscape_name,
+    paste0(landscape_name, "_",
+    paste0(range(desired_years), collapse = "-"),
+    run_type, "save_", save_enabled, ".xml"))
 
   write_xml(x, out_xml)
 }
@@ -123,11 +145,26 @@ for (i in seq_along(landscape_names)) {
     landscape_name = landscape_names[i],
     master_xml     = master_xml,
     run_type       = "spinup",
+    save_output    = TRUE,
     desired_years  = 1950:1980,
     mod_years      = 300,
     filt_cond      = 260,
     seed           = 1984 + i)
 }
+
+#---------------
+for (i in seq_along(landscape_names)) {
+  gen_project_file(
+    landscape_name = landscape_names[i],
+    master_xml     = master_xml,
+    run_type       = "scenario",
+    save_output    = FALSE,
+    desired_years  = 2015:2100,
+    mod_years      = 100,
+    filt_cond      = 260,
+    seed           = 1984 + i)
+}
+#---------------
 
 
 ##--------------- Move shared files to landscapes ---------------#

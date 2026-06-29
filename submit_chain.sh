@@ -14,5 +14,3 @@ for batch in s02 s03 s04 s05; do
     JID=$($LAUNCH -W depend=afterok:${JID} ${DIR}/cmdfile_${batch}.sh | tail -1)
     echo "Batch ${batch} submitted: ${JID}"
 done
-
-echo "All 5 batches queued. Verify with: qstat -u qasena"

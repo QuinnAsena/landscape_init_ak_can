@@ -1,0 +1,4 @@
+sp_param,gcm,fri,epsilon,dbh,stand_grid,env_file,id,snapshot_file,onlysim
+spp_param,NorEsm2-MMssp126,120,2.7,2.5,gis/stand_grid_yr1,gis/env.file_link_yr_1,yr_1_iLand2.1,,false
+spp_param,NorEsm2-MMssp245,120,2.7,2.5,gis/stand_grid_yr1,gis/env.file_link_yr_1,yr_1_iLand2.1,,false
+spp_param,NorEsm2-MMssp370,120,2.7,2.5,gis/stand_grid_yr1,gis/env.file_link_yr_1,yr_1_iLand2.1,,false

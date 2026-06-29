@@ -35,6 +35,7 @@ landscape_area_ha <- sum(!is.na(terra::values(env_grid)))         # replaces Rmd
 cat("landscape area (ha):", landscape_area_ha, "\n\n")  # diagnostic; no Rmd equivalent
 
 #------------------------------------------------------------------------------#
+# Section 1: Load iLand fire data.
 # Discover replicate directories and load fire table from each SQLite file.
 # Replicates are inferred from directory names (rep_1, rep_2, ...) so the
 # script works for any number of replicates without hardcoding.
@@ -79,7 +80,7 @@ fire <- dplyr::bind_rows(lapply(rep_nums, function(rep) {
       env_grid <-terra::rast("Z:/personal_storage/quinn_storage/landscape_init_ak_can/landscape_alaska_01/gis/env.grid.tif")
       landscape_area_ha <- sum(!is.na(terra::values(env_grid)))
 
-      dsn <- "//10.60.2.10/FF_Lab/project_data/na_boreal/sensitivity_analysis/data/historic_fire/raw data/fire"
+      dsn <- "Z:/personal_storage/quinn_storage/landscape_init_ak_can/data/historic_fire/raw_data/fire"
       histfire <- terra::vect(file.path(dsn, "AK_fire_location_polygons.shp"))
 #------------------------------------------------------------------------------#
 
@@ -209,67 +210,91 @@ cat("\nSelected replicate:", best_rep, "\n\n")  # diagnostic; no Rmd equivalent
 
 
 #------------------------------------------------------------------------------#
-# Section 5: AK-wide grid FRP (landscape-independent).
-# Tiles Alaska with ~60,000 ha cells (25,500 × 23,900 m — same as an iLand
-# landscape) and calculates FRP, mean fire size, and fire frequency per cell
-# from the historical record.
-# Replaces the nested sp/rgeos loop in the original with terra::intersect.
+# Section 5: AK-wide grid fire statistics (landscape-independent).
+#
+# PURPOSE: Build a boreal-wide reference distribution of fire behaviour so that
+# each iLand landscape's simulated fire regime (Section 6) can be placed in
+# ecological context. The grid cells are the same size as an iLand landscape
+# (~60,000 ha, 25,500 × 23,900 m), so the per-cell statistics are directly
+# comparable to the per-landscape statistics computed in Sections 3 & 6.
+#
+# Steps:
+#   1. Tile Alaska at iLand landscape resolution.
+#   2. Clip to boreal domain (ecologically relevant zone).
+#   3. Intersect each grid cell with the historical fire record.
+#   4. Compute FRP, mean fire size, and fire frequency per cell.
+#
+# Output: ak_grid_polys with columns FRP, MEAN_FIRE_SIZE, FIRE_FREQ — written
+# to ak_grid_stats.csv at the end of Section 6.
+# Replaces the nested sp/rgeos per-cell loop in the original with terra::intersect.
 #------------------------------------------------------------------------------#
 
-# Load and reproject AK outline polygon; Rmd L293-297: ak <- readOGR(dsn, layer="AK_polygon"); ak <- spTransform(ak, proj4string(histfire))
-ak_poly <- terra::project(terra::vect(file.path(dsn, "AK_polygon.shp")), terra::crs(env_grid))
+# AK outline polygon — used to discard grid cells that fall entirely in the ocean
+ak_poly <- terra::project(terra::vect(file.path(dsn, "AK_polygon.shp")), terra::crs(env_grid))  # Rmd L293-297: readOGR + spTransform
 
-# Subset histfire to analysis window and fix geometry; Rmd L287-289 (filter) and L361 (gBuffer width=0)
-histfire_yr  <- histfire[!is.na(histfire$FIREYEAR) &
-                         histfire$FIREYEAR >= first_year &
-                         histfire$FIREYEAR <= last_year, ]
-histfire_yr  <- terra::makeValid(histfire_yr)  # Rmd L361: gBuffer(histfire, byid=T, width=0) — makeValid replaces zero-width buffer for geometry repair
+# Filter fire record to the analysis window and repair any invalid geometries
+# (self-intersections etc. can cause gIntersection to fail in the original)
+histfire_yr <- histfire[!is.na(histfire$FIREYEAR) &
+                        histfire$FIREYEAR >= first_year &
+                        histfire$FIREYEAR <= last_year, ]
+histfire_yr <- terra::makeValid(histfire_yr)  # Rmd L361: gBuffer(width=0) — makeValid is the terra equivalent
 
-# Dissolve perimeters by year so each polygon = one fire-year union area; Rmd L367: histfire_oneyear <- unionSpatialPolygons(histfire, histfire@data$FIREYEAR)
-histfire_agg <- terra::aggregate(histfire_yr, by = "FIREYEAR", dissolve = TRUE)
+# Dissolve individual fire polygons into one polygon per year so that overlapping
+# perimeters from the same year are not double-counted in the burned-area totals
+histfire_agg <- terra::aggregate(histfire_yr, by = "FIREYEAR", dissolve = TRUE)  # Rmd L367: unionSpatialPolygons
 
-# Build raster template tiling AK at iLand landscape cell size; Rmd L300-311: x_left/x_right/y_bottom/y_top seq() grid — terra::rast replaces manual bbox + seq() construction
+# Build a regular grid at iLand landscape resolution covering the extent of the
+# fire record, then assign each cell a unique integer ID
 ak_grid_rast    <- terra::rast(terra::ext(histfire),
-                               resolution = c(25500, 23900),  # Rmd L300-301: xlength = 25500; ylength = 23900
+                               resolution = c(25500, 23900),  # Rmd L300-301: xlength/ylength
                                crs = terra::crs(env_grid))
-ak_grid_rast[]  <- seq_len(terra::ncell(ak_grid_rast))  # assign unique integer cell IDs; Rmd L341: data.frame(ID = 1:length(poly_list))
+ak_grid_rast[]  <- seq_len(terra::ncell(ak_grid_rast))
 
-# Convert raster cells to polygons; Rmd L336-341: SpatialPolygons(poly_list); SpatialPolygonsDataFrame(...) — loop replaced by as.polygons
-ak_grid_polys         <- terra::as.polygons(ak_grid_rast)
-names(ak_grid_polys)[1] <- "cell_id"                              # rename ID field for join clarity
-ak_grid_polys$AREA_ha <- terra::expanse(ak_grid_polys, unit = "ha")  # Rmd L352: ak_grid$AREA <- raster::area(ak_grid)/10000
+# Convert the raster grid to polygons for spatial intersection
+ak_grid_polys         <- terra::as.polygons(ak_grid_rast)  # Rmd L336-341: SpatialPolygons loop
+names(ak_grid_polys)[1] <- "cell_id"
+ak_grid_polys$AREA_ha <- terra::expanse(ak_grid_polys, unit = "ha")  # Rmd L352: raster::area / 10000
 
-# Keep only cells that overlap AK land; Rmd L347-349: int <- over(ak_grid, ak, returnList=T); land_area <- sapply(int, ...); ak_grid <- ak_grid[land_area,]
-land_mask             <- terra::relate(ak_grid_polys, ak_poly, relation = "intersects")[, 1]
-ak_grid_polys         <- ak_grid_polys[land_mask, ]
+# Discard cells that do not overlap AK land (open ocean, outside study area)
+land_mask     <- terra::relate(ak_grid_polys, ak_poly, relation = "intersects")[, 1]  # Rmd L347-349: over() + sapply
+ak_grid_polys <- ak_grid_polys[land_mask, ]
 
-# Vectorised intersect of grid cells × fire-year polygons; Rmd L371-386: for(i in 1:nrow(ak_grid)) { hist_clip <- gIntersection(one_grid, histfire_oneyear, byid=T); ... } — single call replaces per-cell loop
-fire_x_grid              <- terra::intersect(ak_grid_polys, histfire_agg)
-fire_x_grid$clip_area_ha <- terra::expanse(fire_x_grid, unit = "ha")  # Rmd L377: hist_clip$clip_area_ha <- raster::area(hist_clip) / 10000
+# Clip to the boreal domain so the reference distribution reflects the same
+# ecological zone as the iLand landscapes; Rmd L442: mask(frpras, spTransform(boreal, ...))
+boreal_poly   <- terra::project(terra::vect(file.path(dsn, "boreal_domain.shp")), terra::crs(env_grid))
+boreal_mask   <- terra::relate(ak_grid_polys, boreal_poly, relation = "intersects")[, 1]
+ak_grid_polys <- ak_grid_polys[boreal_mask, ]
 
-# Summarise burned area, fire count, and mean size per grid cell; Rmd L378-384: ak_grid$FRP, ak_grid$NUM_FIRES, ak_grid$MEAN_FIRE_SIZE filled inside loop
+# Intersect every boreal grid cell with the year-dissolved fire record in one
+# vectorised call; each row of fire_x_grid is one (cell × fire-year) combination
+fire_x_grid              <- terra::intersect(ak_grid_polys, histfire_agg)  # Rmd L371-386: per-cell gIntersection loop
+fire_x_grid$clip_area_ha <- terra::expanse(fire_x_grid, unit = "ha")       # Rmd L377: raster::area / 10000
+
+# Aggregate intersection results to one row per grid cell: total burned area
+# across all years, fire count, and mean fire size
 cell_stats <- as.data.frame(fire_x_grid)[, c("cell_id", "clip_area_ha")] |>
   group_by(cell_id) |>
   summarize(
-    total_burned_ha = sum(clip_area_ha),   # Rmd L378-379: sum(hist_clip$clip_area_ha) for FRP denominator
-    num_fires       = n(),                 # Rmd L384: ak_grid$NUM_FIRES[i] <- length(hist_clip)
-    mean_firesize   = mean(clip_area_ha),  # Rmd L382: ak_grid$MEAN_FIRE_SIZE[i] <- mean(hist_clip$clip_area_ha)
+    total_burned_ha = sum(clip_area_ha),  # summed across all years — used as FRP denominator
+    num_fires       = n(),                # count of fire-year intersections per cell
+    mean_firesize   = mean(clip_area_ha), # mean clipped area per fire-year event
     .groups = "drop"
   )
 
-# Join cell stats back to grid polygons and compute FRP/FIRE_FREQ; Rmd L378-395
+# Join per-cell statistics back to the grid polygons and derive the three
+# summary metrics that will form the reference distribution
 grid_df <- dplyr::left_join(as.data.frame(ak_grid_polys), cell_stats, by = "cell_id") |>
   mutate(
-    FRP            = round(frp_numyears / (total_burned_ha / AREA_ha), 0),  # Rmd L378-379: ak_grid$FRP[i] <- round(frp_numyears / (sum(...) / ak_grid$AREA[i]), 0)
-    FRP            = ifelse(!is.na(FRP) & FRP > 10000, NA, FRP),            # Rmd L391: ak_grid$FRP[ak_grid$FRP > 10000] <- NA — cap implausible values
-    FIRE_FREQ      = ifelse(is.na(num_fires) | num_fires == 0, NA,
-                            frp_numyears / num_fires),                      # Rmd L394-395: ak_grid$FIRE_FREQ <- ifelse(ak_grid$NUM_FIRES == 0, NA, frp_numyears / ak_grid$NUM_FIRES)
-    MEAN_FIRE_SIZE = mean_firesize                                           # Rmd L382: ak_grid$MEAN_FIRE_SIZE
+    FRP = round(frp_numyears / (total_burned_ha / AREA_ha), 0),   # fire rotation period (years)
+    FRP = ifelse(!is.na(FRP) & FRP > 10000, NA, FRP),             # Rmd L391: cap implausible values
+    FIRE_FREQ = ifelse(is.na(num_fires) | num_fires == 0, NA,
+                       frp_numyears / num_fires),                  # mean years between fire events
+    MEAN_FIRE_SIZE = mean_firesize
   )
 
-ak_grid_polys$FRP            <- grid_df$FRP             # Rmd L354: ak_grid$FRP = NA (initialised); values written in loop; here assigned after vectorised summarise
-ak_grid_polys$MEAN_FIRE_SIZE <- grid_df$MEAN_FIRE_SIZE  # Rmd L355: ak_grid$MEAN_FIRE_SIZE = 0 (initialised)
-ak_grid_polys$FIRE_FREQ      <- grid_df$FIRE_FREQ       # Rmd L394-395: computed and assigned to ak_grid$FIRE_FREQ
+ak_grid_polys$FRP            <- grid_df$FRP
+ak_grid_polys$MEAN_FIRE_SIZE <- grid_df$MEAN_FIRE_SIZE
+ak_grid_polys$FIRE_FREQ      <- grid_df$FIRE_FREQ
 
 #------------------------------------------------------------------------------#
 # Section 6: Rolling FRP for the selected replicate.
@@ -282,7 +307,6 @@ ak_grid_polys$FIRE_FREQ      <- grid_df$FIRE_FREQ       # Rmd L394-395: computed
 # Filter combined fire table to the selected replicate; Rmd L492: fire.analyze=fire %>%filter(replicate==6) — replicate chosen programmatically above
 fire_best <- fire[fire$replicate == best_rep, ]
 
-# First iland year will need to be edited to filter for the last 40 years of simulation
 # First valid year for a full frp_numyears window; Rmd L493: first_ilandyear = min(fire.analyze$year)+frp_numyears
 first_ilandyear <- min(fire_best$year) + frp_numyears
 last_ilandyear  <- max(fire_best$year)  # Rmd L494: max(fire.analyze$year) used as loop upper bound
@@ -317,7 +341,6 @@ best_stats    <- fire_summary[fire_summary$replicate == best_rep, ]  # pull best
 final_iland_frp <- if (nrow(rolling_frp_df) > 0) tail(rolling_frp_df$iland_frp, 1) else NA_real_  # Rmd L562: tail(iland_frp,n=1)
 
 
-# Need to include landscape name and rep here
 comparison_df <- data.frame(
   metric    = c("frp_years", "mean_firesize_ha", "firefreq_fires_per_year"),
   observed  = c(hist_frp,    hist_firesize,       hist_firefreq),   # Rmd L252-255: hist_frp, hist_firesize, hist_firefreq
@@ -330,6 +353,27 @@ comparison_df <- data.frame(
 # Write comparison table; no Rmd equivalent
 write.csv(comparison_df,
           file.path(output_dir, "fire_comparison.csv"),
+          row.names = FALSE)
+
+# Write per-replicate iLand fire summary; Rmd L482-489: iland.fire.summary — used to select best_rep and as vertical lines in density plots
+write.csv(fire_summary,
+          file.path(output_dir, "annual_fire_summary.csv"),
+          row.names = FALSE)
+
+# Extract the boreal-wide reference distribution from ak_grid_polys (already boreal-
+# clipped in Section 5). This is the equivalent of dat.orig in the original Rmd
+# (lines 543-546) and provides the background for the fire-size and fire-frequency
+# density plots. FIRE_FREQ (years between fires) is converted to annual probability
+# (fires per year) to match the iLand firefreq metric and the original's 1/firefreqras.
+ak_grid_stats <- as.data.frame(ak_grid_polys)[, c("cell_id", "FRP", "MEAN_FIRE_SIZE", "FIRE_FREQ")] |>
+  dplyr::rename(frp = FRP, firesize = MEAN_FIRE_SIZE) |>
+  dplyr::mutate(
+    firefreq = ifelse(!is.na(FIRE_FREQ) & FIRE_FREQ > 0, 1 / FIRE_FREQ, NA)
+  ) |>
+  dplyr::select(-FIRE_FREQ)
+
+write.csv(ak_grid_stats,
+          file.path(output_dir, "ak_grid_stats.csv"),
           row.names = FALSE)
 
 cat("Outputs written to:", output_dir, "\n")
