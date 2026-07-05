@@ -1,6 +1,7 @@
 library(DBI)
 library(RSQLite)
 library(dplyr)
+library(terra)
 
 # CLI arguments: landscape and treatment are passed by the calling script/bash job; no Rmd equivalent
 args      <- commandArgs(TRUE)
@@ -8,6 +9,12 @@ landscape <- args[1]   # e.g. "landscape_alaska_01_1950-1980spinup"
 treatment <- args[2]   # e.g. "NorEsm2-MMssp126_dbh2.5_onlysimfalse_yr_1_iLand2.1"
 
 # HPC paths constructed from args; replaces Rmd L155-163 on_ws flag + hardcoded workspace paths
+
+  # for login node. Remember to comment-out
+  # Easy enough to run such a light script on the login node pre landscape.
+  landscape <- "landscape_alaska_04_1950-1980spinup"
+  treatment <- "NorEsm2-MMssp126_dbh2.5_onlysimfalse_yr_1_iLand2.1"
+
 user       <- "qasena"
 data_path  <- paste0("/glade/derecho/scratch/", user, "/output_ak_can/", landscape, "/")
 output_dir <- file.path(data_path, "processed", treatment, "fire_regime")
@@ -46,8 +53,6 @@ rep_nums  <- sort(as.integer(sub("rep_", "", grep("^rep_", rep_dirs, value = TRU
 
 if (length(rep_nums) == 0) stop("No replicate directories found in: ", file.path(data_path, treatment))  # guard; no Rmd equivalent
 
-cat("Found replicates:", paste(rep_nums, collapse = ", "), "\n\n")  # diagnostic; no Rmd equivalent
-
 # Load fire table from each replicate SQLite and bind into one data frame; Rmd L157-168: for loop over i=1:10 reading CPCRW_sm_i.sqlite, rbind(fire,df)
 fire <- dplyr::bind_rows(lapply(rep_nums, function(rep) {
   input_file <- file.path(
@@ -68,23 +73,19 @@ fire <- dplyr::bind_rows(lapply(rep_nums, function(rep) {
   df
 }))
 
-
-
 #------------------------------------------------------------------------------#
       # Temporary files for testing
-      fire <- DBI::dbConnect(RSQLite::SQLite(),
-          dbname = "Z:/personal_storage/quinn_storage/NorEsm2-MMssp126_dbh2.5_yr_31_iLand2.0/rep_3/NorEsm2-MMssp126_dbh2.5_yr_31_iLand2.0_3.sqlite") |>
-        DBI::dbReadTable("fire") |>
-        filter(year >= 200) |>
-        mutate(replicate = 3)
-      env_grid <-terra::rast("Z:/personal_storage/quinn_storage/landscape_init_ak_can/landscape_alaska_01/gis/env.grid.tif")
-      landscape_area_ha <- sum(!is.na(terra::values(env_grid)))
+      # fire <- DBI::dbConnect(RSQLite::SQLite(),
+      #     dbname = "Z:/personal_storage/quinn_storage/NorEsm2-MMssp126_dbh2.5_yr_31_iLand2.0/rep_3/NorEsm2-MMssp126_dbh2.5_yr_31_iLand2.0_3.sqlite") |>
+      #   DBI::dbReadTable("fire") |>
+      #   filter(year >= 200) |>
+      #   mutate(replicate = 3)
+      # env_grid <-terra::rast("Z:/personal_storage/quinn_storage/landscape_init_ak_can/landscape_alaska_01/gis/env.grid.tif")
+      # landscape_area_ha <- sum(!is.na(terra::values(env_grid)))
 
-      dsn <- "Z:/personal_storage/quinn_storage/landscape_init_ak_can/data/historic_fire/raw_data/fire"
-      histfire <- terra::vect(file.path(dsn, "AK_fire_location_polygons.shp"))
+      # dsn <- "Z:/personal_storage/quinn_storage/landscape_init_ak_can/data/historic_fire/raw_data/fire"
+      # histfire <- terra::vect(file.path(dsn, "AK_fire_location_polygons.shp"))
 #------------------------------------------------------------------------------#
-
-
 
 # Drop events where nothing burned (area_m2 == 0 rows are iLand no-fire records)
 fire <- fire[fire$area_m2 > 0, ]   # Rmd L170: fire <- fire[fire$area_m2 > 0,]
@@ -124,8 +125,6 @@ terra::crs(landscape_poly) <- terra::crs(env_grid)  # assign CRS explicitly (as.
 
 histfire_clip              <- terra::intersect(histfire, landscape_poly)    # replaces Rmd L227: pre-clipped shapefile load — clips on-the-fly
 histfire_clip$clip_area_ha <- terra::expanse(histfire_clip, unit = "ha")   # Rmd L228: histfire_clip$clip_area_ha <- raster::area(histfire_clip) / 10000
-
-cat("Fire polygons clipped to landscape:", nrow(histfire_clip), "\n\n")  # diagnostic; no Rmd equivalent
 
 #------------------------------------------------------------------------------#
 # Section 3: Observed FRP for the landscape area.
@@ -192,20 +191,12 @@ if (is.na(hist_firesize) || is.na(hist_firefreq)) {  # guard for no historical d
       total_diff    = abs(firesize_diff) + abs(firefreq_diff)             # Rmd L489: total.diff = abs(fire.size.diff) + abs(fire.num.diff)
     )
   best_rep <- fire_summary$replicate[which.min(fire_summary$total_diff)]  # Rmd L492: fire.analyze=fire %>%filter(replicate==6) — 6 was chosen manually; here selected programmatically
+  fire_summary$best_rep <- best_rep
 }
 
 cat("Replicate summary (last 100 sim years):\n")
 print(as.data.frame(fire_summary))
 cat("\nSelected replicate:", best_rep, "\n\n")  # diagnostic; no Rmd equivalent
-
-
-
-
-
-
-
-
-
 
 
 
