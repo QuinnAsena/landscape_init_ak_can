@@ -44,7 +44,7 @@ do
 
         # Conditionally pass snapshot file (scenario runs only; blank for spinup)
         extra_args=()
-        [ -n "${snapshot_file}" ] && extra_args+=("model.initialization.file=${snapshot_file}")
+        [ -n "${snapshot_file}" ] && extra_args+=("model.initialization.file=${snapshot_file}.sqlite")
 
         # Run iLand model via Apptainer container
         apptainer exec --bind /glade/derecho/scratch /glade/work/qasena/iLandc_container/ilandv2p1.sif ilandc \

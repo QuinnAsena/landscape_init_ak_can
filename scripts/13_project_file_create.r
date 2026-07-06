@@ -39,12 +39,20 @@ sample_climate <- function(desired_years = 1950:1980, mod_years = 300, seed = 19
 master_xml <- read_xml(here("data", "shared-xml-create", "landscape_master.xml"))
 
 gen_project_file <- function(landscape_name, master_xml, run_type,
-                             desired_years, mod_years, filt_cond, save_output,
-                             seed) {
+                             desired_years, mod_years, filt_cond,
+                             save_tree, save_stand, save_sapling,
+                             save_saplingdetail, save_carbon, save_water,
+                             seed, note) {
   x <- read_xml(as.character(master_xml))
 
   env_file <- list.files(here(landscape_name, "gis"),
                          pattern = "env.grid.tif$", full.names = TRUE)
+  if (length(env_file) == 0) {
+    env_file <- list.files(paste0(
+    "//10.60.2.10/FF_Lab/personal_storage/quinn_storage/landscape_init_ak_can/", landscape_name, "/gis/"),
+    pattern = "env.grid.tif$", full.names = TRUE)
+  }
+
   env_grid <- rast(env_file)
 
   wid <- ncol(env_grid) * 100
@@ -90,79 +98,84 @@ gen_project_file <- function(landscape_name, master_xml, run_type,
   editxml(x,"//initialization/type", type)
   editxml(x,"//initialization/file", file)
 
-  # save outputs? May need to edit for individual arguments later
+  # save outputs individually per output type
   # currently fire outputs are always true
-  if (save_output == TRUE) {
-    save_enabled <- "true"
-  } else if (save_output == FALSE) {
-    save_enabled <- "false"
-  } else {
-    stop("save_output must be TRUE or FALSE")
-  }
-
-  editxml(x, "//output/tree/enabled", save_enabled)
-  editxml(x, "//output/stand/enabled", save_enabled)
-  editxml(x, "//output/sapling/enabled", save_enabled)
-  editxml(x, "//output/saplingdetail/enabled", save_enabled)
-  editxml(x, "//output/carbon/enabled", save_enabled)
-  editxml(x, "//output/water/enabled", save_enabled)
+  outputs <- list(
+    tree          = save_tree,
+    stand         = save_stand,
+    sapling       = save_sapling,
+    saplingdetail = save_saplingdetail,
+    carbon        = save_carbon,
+    water         = save_water
+  )
+  # tree uses "filter", the rest use "condition" for the year-filter tag
+  filter_tag <- c(tree = "filter", stand = "condition", sapling = "condition",
+                  saplingdetail = "condition", carbon = "condition", water = "condition")
 
   # This defines the filter for which years to save in the following tags
-  # use -1 to set filter to blank
-  if (filt_cond != -1 && save_output == TRUE) {
-    save_filter <- paste0("year >= ", filt_cond, " and year <= ", mod_years)
-    # Set filter for followin tags
-    editxml(x, "//output/tree/filter", save_filter)
-    editxml(x, "//output/stand/condition", save_filter)
-    editxml(x, "//output/sapling/condition", save_filter)
-    editxml(x, "//output/saplingdetail/condition", save_filter)
-    editxml(x, "//output/carbon/condition", save_filter)
-    editxml(x, "//output/water/condition", save_filter)
+  # use -1 to actively blank the filter tag instead of leaving it untouched
+  filter_value <- if (filt_cond == -1) {
+    ""
+  } else {
+    paste0("year >= ", filt_cond, " and year <= ", mod_years)
+  }
+
+  for (out_name in names(outputs)) {
+    enabled <- outputs[[out_name]]
+    if (!isTRUE(enabled) && !isFALSE(enabled)) {
+      stop("save_", out_name, " must be TRUE or FALSE")
+    }
+    editxml(x, paste0("//output/", out_name, "/enabled"), tolower(as.character(enabled)))
+    editxml(x, paste0("//output/", out_name, "/", filter_tag[[out_name]]), filter_value)
   }
 
   out_xml <- here(landscape_name,
     paste0(landscape_name, "_",
     paste0(range(desired_years), collapse = "-"),
-    run_type, "save_", save_enabled, ".xml"))
+    run_type, note, ".xml"))
 
   write_xml(x, out_xml)
 }
 
-# gen_project_file(
-#   landscape_name = landscape_names,
-#   master_xml = master_xml,
-#   run_type = "spinup",
-#   desired_years = 1950:1980,
-#   mod_years = 300,
-#   filt_cond = 260,
-#   seed = 1984)
 
+#--------------- Generate spinup files for all landscapes ---------------#
 
-#--------------- Generate project files for all landscapes ---------------#
+# for (i in seq_along(landscape_names)) {
+#   gen_project_file(
+#     landscape_name     = landscape_names[i],
+#     master_xml         = master_xml,
+#     run_type           = "spinup",
+#     save_tree          = TRUE,
+#     save_stand         = TRUE,
+#     save_sapling       = TRUE,
+#     save_saplingdetail = TRUE,
+#     save_carbon        = TRUE,
+#     save_water         = TRUE,
+#     desired_years      = 1950:1980,
+#     mod_years          = 300,
+#     filt_cond          = 260,
+#     seed               = 1984 + i,
+#     note               = ""
+#   )
+# }
 
+#--------------- Generate future files for all landscapes ---------------#
 for (i in seq_along(landscape_names)) {
   gen_project_file(
-    landscape_name = landscape_names[i],
-    master_xml     = master_xml,
-    run_type       = "spinup",
-    save_output    = TRUE,
-    desired_years  = 1950:1980,
-    mod_years      = 300,
-    filt_cond      = 260,
-    seed           = 1984 + i)
-}
-
-#---------------
-for (i in seq_along(landscape_names)) {
-  gen_project_file(
-    landscape_name = landscape_names[i],
-    master_xml     = master_xml,
-    run_type       = "scenario",
-    save_output    = FALSE,
-    desired_years  = 2015:2100,
-    mod_years      = 100,
-    filt_cond      = 260,
-    seed           = 1984 + i)
+    landscape_name     = landscape_names[i],
+    master_xml         = master_xml,
+    run_type           = "scenario",
+    save_tree          = FALSE,
+    save_stand         = FALSE,
+    save_sapling       = FALSE,
+    save_saplingdetail = FALSE,
+    save_carbon        = FALSE,
+    save_water         = FALSE,
+    desired_years      = 2015:2100,
+    mod_years          = 84,
+    filt_cond          = -1,
+    seed               = 1984 + i,
+    note = "_onlyfire")
 }
 #---------------
 
