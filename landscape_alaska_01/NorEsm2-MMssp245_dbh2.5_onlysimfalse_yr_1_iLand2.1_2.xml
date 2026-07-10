@@ -9,7 +9,7 @@
       <!-- Defines the input databases directory e.g., the location of species parameters and climate data. Sec 3.2 iLand book -->
       <lip>lip</lip>
       <!-- Every tree species needs to have a light influence pattern (LIP) sec 9.3 iLand book. -->
-      <output>overwritten_by_bash</output>
+      <output>Z:/personal_storage/quinn_storage/landscape_init_ak_can/landscape_alaska_01/output/NorEsm2-MMssp245_dbh2.5_onlysimfalse_yr_1_iLand2.1/rep_2</output>
       <!-- result are written to this directory. -->
       <temp>temp</temp>
       <!-- Debug outputs are written to this directory -->

@@ -1,8 +1,8 @@
-# To run run_iland_csv_cpxml locally
+# To run iLand2.1 run_iland_csv_cpxml locally
 ILANDC_BIN="D:/quinn/iLand2.1/ilandc" \
-ILANDC_OUTPUT_ROOT="landscape_alaska_03/output" \
+ILANDC_OUTPUT_ROOT="landscape_alaska_01/output" \
 bash run_iland_csv_cpxml.sh \
-    landscape_alaska_03/landscape_alaska_03_1950-1980spinup.xml 1 1 300
+    landscape_alaska_01/landscape_alaska_01_2015-2100scenario_onlyfire.xml 1 10 86
 
 
 

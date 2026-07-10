@@ -30,7 +30,7 @@ if command -v cygpath &>/dev/null; then
   output_path="$(cygpath -m "${output_path}")"
 fi
 script_dir=$(cd "$(dirname "$0")" && pwd)
-csv_name="${script_dir}/iland_scenarios.csv"
+csv_name="${script_dir}/iland_scenarios_onlyfire.csv"
 
 mkdir -p "${output_path}"
 
@@ -59,7 +59,7 @@ do
 
         # Conditionally pass snapshot file (scenario runs only; blank for spinup)
         extra_args=()
-        [ -n "${snapshot_file}" ] && extra_args+=("model.initialization.file=${snapshot_file}")
+        [ -n "${snapshot_file}" ] && extra_args+=("model.initialization.file=${snapshot_file}.sqlite")
 
         # Run iLand model
         "${path}" "$tmp_xml" "$simulation_years" \

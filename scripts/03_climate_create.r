@@ -11,9 +11,10 @@ landscape_names <- basename(dirs[grepl("landscape_", basename(dirs))])
 # gcm <- c("NorEsm2-MM", "TaiESM1", "UKESM1-0-LL", "EC-Earth3-Veg", "GFDL-ESM4")
 # ssp <- c("ssp126", "ssp245", "ssp370", "ssp585")
 
-gcm <- "NorEsm2-MM"
-# ssp <- "ssp126"
-ssp <- c("ssp245", "ssp370")
+gcm <- c("TaiESM1", "UKESM1-0-LL")
+# gcm <- "NorEsm2-MM"
+ssp <- "ssp245"
+# ssp <- c("ssp245", "ssp370")
 # var <- c("tasmax", "hurs", "pr", "rsds", "tasmin", "vp")
 var <- c("tasmax", "pr", "rsds", "tasmin", "vp")
 year <- 1950:2100

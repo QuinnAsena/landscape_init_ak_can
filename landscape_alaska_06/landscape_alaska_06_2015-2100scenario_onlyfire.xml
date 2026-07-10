@@ -312,13 +312,13 @@
     <world>
       <cellSize>2</cellSize>
       <!-- The size of pixels of the light grid (m). The default is 2m -->
-      <width>35000</width>
+      <width>25100</width>
       <!-- horizontal (east-west) extent of the simulation area (m) -->
-      <height>35000</height>
+      <height>25100</height>
       <!-- vertical (north-south) extent (meter) -->
       <buffer>200</buffer>
       <!-- a buffer zone with the given width is attached to the rectangle of the simulation area (defined by width and height). -->
-      <latitude>65</latitude>
+      <latitude>64</latitude>
       <!-- Latitude of project area (in degree). Used for day of length calculation. -->
       <resourceUnitsAsGrid>true</resourceUnitsAsGrid>
       <!-- if true, each resource unit is a 100x100m pixel. -->
@@ -342,8 +342,8 @@
       <!-- filename of the "time events" file. This is a simple CSV-style file with a fixed column year and user-defined columns with column names of valid project file keys. (example: scripts/timeevents_base_1.txt) -->
       <location>
         <!-- the following keys specify the location of the 0/0 point of the iLand modeling. this information is used to transform GIS grids to local coordinates. See https://iland-model.org/landscape+setup -->
-        <x>-2174800</x>
-        <y>3656700</y>
+        <x>-2489500</x>
+        <y>3811100</y>
         <z>0</z>
         <rotation>0</rotation>
       </location>
@@ -410,7 +410,7 @@
       <randomSamplingEnabled>true</randomSamplingEnabled>
       <!-- if true, only the first batchYears of the climate file are loaded (but see filter). The actual climate for each year is the sampled from this climate data. See also randomSamplingList. (default=false) -->
       <!-- if this key (<randomSamplingList></randomSamplingList>) contains a list of 0-based indices (e.g. "3, 12, 14, 0, 3, 14", the random sampling (if enabled) uses this sequence of years. Note: the index is 0-based (in the example the 4th year would be used first). Use any non-word characters as delimiters. The list will be recycled if more years are simulated than present in the list. The index values are to be between 0 and batchYears-1. If invalid indices are in the list, an error is reported. If the key is empty or not present, each year a climate year is selected randomly from the list of loaded years. default=empty -->
-      <randomSamplingList>"2,13,66,8,28,84,78,63,81,1,81,81,70,43,29,46,77,16,40,17,33,5,66,62,66,9,57,50,38,60,33,24,5,30,13,73,31,25,55,49,36,7,84,5,23,32,62,80,15,54,16,85,63,29,78,74,46,21,71,58,38,69,39,66,63,63,42,7,31,34,50,73,8,19,7,16,65,11,9,27,65,16,82,10,15,34"</randomSamplingList>
+      <randomSamplingList>"48,70,65,3,33,34,7,51,27,18,81,22,85,37,77,50,0,50,76,50,20,35,58,58,67,28,26,42,13,77,60,1,24,13,83,84,56,0,25,80,78,5,74,29,26,26,60,76,46,64,14,16,79,58,43,35,40,15,20,27,10,52,13,15,26,70,16,65,48,5,57,12,43,38,82,47,17,36,82,57,45,0,38,38,55,49"</randomSamplingList>
       <filter>year &gt;= 2015 and year &lt;= 2100</filter>
       <!-- an optional filter criterion that is added to the where clause of the SQL for reading the climate data. This can be useful e.g. for skipping parts of the climate records. Example: 'year>2000 and year<2010' limits used climate data to the years 2001 to 2009. See also randomSamplingEnabled. -->
       <microclimate>

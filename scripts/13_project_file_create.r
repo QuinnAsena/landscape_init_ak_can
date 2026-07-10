@@ -172,7 +172,7 @@ for (i in seq_along(landscape_names)) {
     save_carbon        = FALSE,
     save_water         = FALSE,
     desired_years      = 2015:2100,
-    mod_years          = 84,
+    mod_years          = 86,
     filt_cond          = -1,
     seed               = 1984 + i,
     note = "_onlyfire")
