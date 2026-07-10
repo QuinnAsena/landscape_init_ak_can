@@ -139,7 +139,7 @@ gen_project_file <- function(landscape_name, master_xml, run_type,
 
 
 #--------------- Generate spinup files for all landscapes ---------------#
-
+# Complete
 # for (i in seq_along(landscape_names)) {
 #   gen_project_file(
 #     landscape_name     = landscape_names[i],
@@ -159,23 +159,43 @@ gen_project_file <- function(landscape_name, master_xml, run_type,
 #   )
 # }
 
-#--------------- Generate future files for all landscapes ---------------#
+#--------------- Generate future fire xml files for all landscapes ---------------#
+# Complete
+# for (i in seq_along(landscape_names)) {
+#   gen_project_file(
+#     landscape_name     = landscape_names[i],
+#     master_xml         = master_xml,
+#     run_type           = "scenario",
+#     save_tree          = FALSE,
+#     save_stand         = FALSE,
+#     save_sapling       = FALSE,
+#     save_saplingdetail = FALSE,
+#     save_carbon        = FALSE,
+#     save_water         = FALSE,
+#     desired_years      = 2015:2100,
+#     mod_years          = 86,
+#     filt_cond          = -1,
+#     seed               = 1984 + i,
+#     note = "_onlyfire")
+# }
+
+#--------------- Generate future scenario xml files for all landscapes ---------------#
 for (i in seq_along(landscape_names)) {
   gen_project_file(
     landscape_name     = landscape_names[i],
     master_xml         = master_xml,
     run_type           = "scenario",
     save_tree          = FALSE,
-    save_stand         = FALSE,
+    save_stand         = TRUE,
     save_sapling       = FALSE,
-    save_saplingdetail = FALSE,
-    save_carbon        = FALSE,
-    save_water         = FALSE,
+    save_saplingdetail = TRUE,
+    save_carbon        = TRUE,
+    save_water         = TRUE,
     desired_years      = 2015:2100,
     mod_years          = 86,
     filt_cond          = -1,
     seed               = 1984 + i,
-    note = "_onlyfire")
+    note = "")
 }
 #---------------
 
