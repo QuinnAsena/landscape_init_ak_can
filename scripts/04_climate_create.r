@@ -105,20 +105,4 @@ param_grid <- expand.grid(
   stringsAsFactors = FALSE
 )
 
-# I get memory issues running in parallel, setting workers = 1 for now.
-plan(multisession, workers = 2)
-
-future_lapply(
-  seq_len(nrow(param_grid)),
-  function(i) {
-    process_sqlite(
-      gcm  = param_grid$gcm[i],
-      ssp  = param_grid$ssp[i],
-      var = var,
-      ak_landscape_dirs = param_grid$landscape_dir[i],
-      climate_subdir = "climate_link"
-    )
-  },
-  future.seed = TRUE
-)
-plan(sequential)
+# I get memory issues running in parallel, setting workers = 1 for
