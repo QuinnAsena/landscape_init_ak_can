@@ -37,20 +37,12 @@ dbconn <- DBI::dbConnect(
   RSQLite::SQLite(),
   dbname = input_file)
 
-# sap <- tbl(dbconn, "sapling") |>
-#   select(year) |>
-#   summarise(min_yr = min(year),
-#             max_yr = max(year)) |>
-#   collect()
-
-
 year_range <- tbl(dbconn, "stand") |>
   select(year) |>
   summarise(min_yr = min(year),
             max_yr = max(year)) |>
   collect()
 dbDisconnect(dbconn)
-
 
 
 process_chunk <- function(start, end) {

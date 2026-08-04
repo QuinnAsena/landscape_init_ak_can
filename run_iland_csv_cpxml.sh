@@ -48,6 +48,19 @@ do
 
         scenario_dir="${output_path}/${gcm}_dbh${dbh}_onlysim${onlysim}_${id}/rep_${rep}"
         tmp_xml="${xml_path}/${gcm}_dbh${dbh}_onlysim${onlysim}_${id}_${rep}.xml"
+        out_db="${scenario_dir}/${gcm}_dbh${dbh}_onlysim${onlysim}_${id}_${rep}.sqlite"
+
+        # Skip replicates whose output database already exists, so this script
+        # can be re-run (e.g. after splitting landscapes across parallel bash
+        # sessions, or resuming after a crash) without redoing finished reps.
+        # Note: this only checks that the file exists, not that the run
+        # completed successfully -- a crashed run that got as far as creating
+        # the database will also be skipped. Delete the partial .sqlite (and
+        # its scenario_dir) to force a rerun of that replicate.
+        if [ -f "${out_db}" ]; then
+            echo "Skipping gcm $gcm, id $id, rep $rep (output already exists: ${out_db})"
+            continue
+        fi
 
         mkdir -p "${scenario_dir}/crownkill"
         mkdir -p "${scenario_dir}/nFire"
