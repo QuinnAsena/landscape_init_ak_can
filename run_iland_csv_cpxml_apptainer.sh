@@ -7,13 +7,15 @@ xml=$1
 start_rep=$2
 end_rep=$3
 simulation_years=$4
+# $5 (optional) scenario CSV. Omitted -> iland_scenarios.csv, so four-argument
+# calls from older cmdfiles behave exactly as before.
 
 # Set variables
 xml_path=$(dirname "$xml")
 landscape_name=$(basename "$xml" .xml)
 output_path="$(realpath -m "${ILANDC_OUTPUT_ROOT:-/glade/derecho/scratch/qasena/output_ak_can/${landscape_name}}")"
 script_dir=$(cd "$(dirname "$0")" && pwd)
-csv_name="${script_dir}/iland_scenarios.csv"
+csv_name="${5:-${script_dir}/iland_scenarios.csv}"
 
 mkdir -p "${output_path}"
 
@@ -33,6 +35,21 @@ do
 
         scenario_dir="${output_path}/${gcm}_dbh${dbh}_onlysim${onlysim}_${id}/rep_${rep}"
         tmp_xml="${xml_path}/${gcm}_dbh${dbh}_onlysim${onlysim}_${id}_${rep}.xml"
+
+        # Resume guard. The sentinel is written only after ilandc exits 0, so a
+        # replicate is skipped only if it genuinely finished. Testing for the
+        # output .sqlite instead would also skip walltime-killed reps that got
+        # as far as creating a partial database.
+        if [ -f "${scenario_dir}/.complete" ]; then
+            echo "Skipping gcm $gcm, id $id, rep $rep (already complete)"
+            continue
+        fi
+
+        # Discard partial output from any previous attempt. Fire grids are named
+        # by fire event id and burn year (kbdi_<Fire.id>_<year>.txt) and reps are
+        # not seeded, so a resumed rep burns differently -- keeping the old files
+        # would mix two realizations in one rep_N folder.
+        rm -rf "${scenario_dir}"
 
         mkdir -p "${scenario_dir}/crownkill"
         mkdir -p "${scenario_dir}/nFire"
@@ -61,6 +78,8 @@ do
             model.world.standGrid.fileName=${stand_grid}.txt \
             model.world.environmentFile=${env_file}.txt \
             "${extra_args[@]}"
+
+        touch "${scenario_dir}/.complete"
 
         rm "$tmp_xml"
 
