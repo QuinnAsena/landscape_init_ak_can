@@ -49,8 +49,11 @@ po/*~
 rsconnect/
 
 # Ignore all contents of landscape directories except XML project files at their root
+# and the scripts/ subdirectory (deployed iLand run scripts, e.g. saveWorkflow.js)
 /landscape_*/**
 !/landscape_*/*.xml
+!/landscape_*/scripts/
+!/landscape_*/scripts/**
 /data/landscape_selection/
 /data/lora_proj_temp/
 

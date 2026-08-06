@@ -36,6 +36,7 @@ do
 
         mkdir -p "${scenario_dir}/crownkill"
         mkdir -p "${scenario_dir}/nFire"
+        mkdir -p "${scenario_dir}/kbdi"
         mkdir -p "${scenario_dir}/log"
 
         # Create modified XML with unique output path
