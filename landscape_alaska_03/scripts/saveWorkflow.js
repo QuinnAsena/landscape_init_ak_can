@@ -202,19 +202,31 @@ function add_log(new_line)
 }										 
 
 // main function
-function manage(year)
-{
-///If you want to turn on the image each five years and the sqlite database.
-///screenShot()
-   var praefix = Globals.year;
-	loadData(); // only done once
-	snapShot();
-	  // Fire.gridToFile('kbdi','output/kbdi/kbdi_' + praefix + '.txt');
-	//createDeterministicDisturbances();
-	//run_planned_disturbances(Globals.year);
+// function manage(year)
+// {
+// ///If you want to turn on the image each five years and the sqlite database.
+// ///screenShot()
+//    var praefix = Globals.year;
+//    var outputPath = Globals.path(Globals.setting('system.path.output'));
+// 	// loadData(); // only done once
+// 	// snapShot();
+// 	// Fire.gridToFile('kbdi','output/kbdi/kbdi_' + praefix + '.txt');
+// 	Fire.gridToFile('kbdi', outputPath + '/kbdi/kbdi_' + praefix + '.txt');
+// 	//createDeterministicDisturbances();
+// 	//run_planned_disturbances(Globals.year);
+//   }
+//   manage(Globals.year)
 
-  }						 
-manage(Globals.year)
+// This function is called automatically by iLand AFTER all processing for the year
+function onYearEnd() {
+    var praefix = Globals.year;
+    var outputPath = Globals.path(Globals.setting('system.path.output'));
+    
+    // Create unique filename and save finalized KBDI grid
+    Fire.gridToFile('kbdi', outputPath + '/kbdi/kbdi_' + praefix + '.txt');
+    
+    console.log("Saved KBDI for year " + praefix);
+}
 
 function afterFireProcessing() {
    var outputPath = Globals.path(Globals.setting('system.path.output'));
@@ -224,7 +236,7 @@ function afterFireProcessing() {
  
    console.log("Full Hierarchical Output Path: " + outputPath);
   
-   Fire.gridToFile('kbdi', outputPath + '/kbdi/kbdi_' + pid + '_' + praefix + '.txt');
+   // Fire.gridToFile('kbdi', outputPath + '/kbdi/kbdi_' + pid + '_' + praefix + '.txt');
    Fire.gridToFile('crownkill', outputPath + '/crownkill/crownkill_' + pid + '_' + praefix + '.txt');
    //Fire.gridToFile('basalarea', outputPath + '/basalarea/basalarea_' + pid + '_' + praefix + '.txt');
    //Fire.gridToFile('spread', outputPath + '/spread/spread_' + pid + '.txt');

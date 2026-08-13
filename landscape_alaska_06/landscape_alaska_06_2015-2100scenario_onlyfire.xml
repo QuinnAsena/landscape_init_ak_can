@@ -401,16 +401,16 @@
       <!-- if a co2pathway is used, then co2startYear defines the starting point of CO2 concentration within the simulation. See also https://iland-model.org/ClimateData -->
       <tableName>placeholder</tableName>
       <!-- Name of the SQLite table within the defined climate database to load (system.database.climate). Replace or set in environment file. -->
-      <batchYears>86</batchYears>
+      <batchYears>50</batchYears>
       <!-- for performance reasons the access to the climate database accesses is performed bulked. This setting specifies how many years are loaded at once. -->
       <temperatureShift>0</temperatureShift>
       <!-- simple option to modify the climate. The value is added to each daily temperature (default = 0) -->
       <precipitationShift>1</precipitationShift>
       <!-- simple option to modify the climate. The daily precipitation is multiplied for each day with this value. (default = 1). -->
-      <randomSamplingEnabled>true</randomSamplingEnabled>
+      <randomSamplingEnabled>false</randomSamplingEnabled>
       <!-- if true, only the first batchYears of the climate file are loaded (but see filter). The actual climate for each year is the sampled from this climate data. See also randomSamplingList. (default=false) -->
       <!-- if this key (<randomSamplingList></randomSamplingList>) contains a list of 0-based indices (e.g. "3, 12, 14, 0, 3, 14", the random sampling (if enabled) uses this sequence of years. Note: the index is 0-based (in the example the 4th year would be used first). Use any non-word characters as delimiters. The list will be recycled if more years are simulated than present in the list. The index values are to be between 0 and batchYears-1. If invalid indices are in the list, an error is reported. If the key is empty or not present, each year a climate year is selected randomly from the list of loaded years. default=empty -->
-      <randomSamplingList>"48,70,65,3,33,34,7,51,27,18,81,22,85,37,77,50,0,50,76,50,20,35,58,58,67,28,26,42,13,77,60,1,24,13,83,84,56,0,25,80,78,5,74,29,26,26,60,76,46,64,14,16,79,58,43,35,40,15,20,27,10,52,13,15,26,70,16,65,48,5,57,12,43,38,82,47,17,36,82,57,45,0,38,38,55,49"</randomSamplingList>
+      <randomSamplingList></randomSamplingList>
       <filter>year &gt;= 2015 and year &lt;= 2100</filter>
       <!-- an optional filter criterion that is added to the where clause of the SQL for reading the climate data. This can be useful e.g. for skipping parts of the climate records. Example: 'year>2000 and year<2010' limits used climate data to the years 2001 to 2009. See also randomSamplingEnabled. -->
       <microclimate>

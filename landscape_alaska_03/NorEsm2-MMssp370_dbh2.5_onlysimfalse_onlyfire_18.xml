@@ -9,7 +9,7 @@
       <!-- Defines the input databases directory e.g., the location of species parameters and climate data. Sec 3.2 iLand book -->
       <lip>lip</lip>
       <!-- Every tree species needs to have a light influence pattern (LIP) sec 9.3 iLand book. -->
-      <output>overwritten_by_bash</output>
+      <output>Z:/personal_storage/quinn_storage/landscape_init_ak_can/landscape_alaska_03/output/NorEsm2-MMssp370_dbh2.5_onlysimfalse_onlyfire/rep_18</output>
       <!-- result are written to this directory. -->
       <temp>temp</temp>
       <!-- Debug outputs are written to this directory -->
@@ -342,8 +342,8 @@
       <!-- filename of the "time events" file. This is a simple CSV-style file with a fixed column year and user-defined columns with column names of valid project file keys. (example: scripts/timeevents_base_1.txt) -->
       <location>
         <!-- the following keys specify the location of the 0/0 point of the iLand modeling. this information is used to transform GIS grids to local coordinates. See https://iland-model.org/landscape+setup -->
-        <x>-2464500</x>
-        <y>3761100</y>
+        <x>-2439500</x>
+        <y>3836100</y>
         <z>0</z>
         <rotation>0</rotation>
       </location>
@@ -401,16 +401,16 @@
       <!-- if a co2pathway is used, then co2startYear defines the starting point of CO2 concentration within the simulation. See also https://iland-model.org/ClimateData -->
       <tableName>placeholder</tableName>
       <!-- Name of the SQLite table within the defined climate database to load (system.database.climate). Replace or set in environment file. -->
-      <batchYears>50</batchYears>
+      <batchYears>86</batchYears>
       <!-- for performance reasons the access to the climate database accesses is performed bulked. This setting specifies how many years are loaded at once. -->
       <temperatureShift>0</temperatureShift>
       <!-- simple option to modify the climate. The value is added to each daily temperature (default = 0) -->
       <precipitationShift>1</precipitationShift>
       <!-- simple option to modify the climate. The daily precipitation is multiplied for each day with this value. (default = 1). -->
-      <randomSamplingEnabled>false</randomSamplingEnabled>
+      <randomSamplingEnabled>true</randomSamplingEnabled>
       <!-- if true, only the first batchYears of the climate file are loaded (but see filter). The actual climate for each year is the sampled from this climate data. See also randomSamplingList. (default=false) -->
       <!-- if this key (<randomSamplingList></randomSamplingList>) contains a list of 0-based indices (e.g. "3, 12, 14, 0, 3, 14", the random sampling (if enabled) uses this sequence of years. Note: the index is 0-based (in the example the 4th year would be used first). Use any non-word characters as delimiters. The list will be recycled if more years are simulated than present in the list. The index values are to be between 0 and batchYears-1. If invalid indices are in the list, an error is reported. If the key is empty or not present, each year a climate year is selected randomly from the list of loaded years. default=empty -->
-      <randomSamplingList></randomSamplingList>
+      <randomSamplingList>"72,23,9,1,15,6,20,52,27,26,6,38,66,4,69,23,71,49,81,70,17,65,33,71,12,54,13,37,30,72,6,34,43,38,71,75,45,51,54,64,52,70,14,68,0,52,3,1,15,31,26,4,4,40,31,25,15,5,83,3,2,21,30,7,45,68,79,12,29,75,37,38,33,6,1,35,60,39,6,47,36,30,54,83,24,25"</randomSamplingList>
       <filter>year &gt;= 2015 and year &lt;= 2100</filter>
       <!-- an optional filter criterion that is added to the where clause of the SQL for reading the climate data. This can be useful e.g. for skipping parts of the climate records. Example: 'year>2000 and year<2010' limits used climate data to the years 2001 to 2009. See also randomSamplingEnabled. -->
       <microclimate>

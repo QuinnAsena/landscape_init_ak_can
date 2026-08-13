@@ -74,21 +74,36 @@ gen_project_file <- function(landscape_name, master_xml, run_type,
   editxml(x, "//location/x", as.character(xllcorner))
   editxml(x, "//location/y", as.character(yllcorner))
 
-  # Set up climate sampling
-  climate_settings <- sample_climate(desired_years, mod_years, seed)
-  editxml(x, "//climate/filter", climate_settings$climate_filter)
-  editxml(x, "//climate/randomSamplingList", paste0('"', climate_settings$random_sample_list, '"'))
-  editxml(x, "//climate/batchYears", as.character(climate_settings$batch_years))
+  # Set up climate sampling. The filter differs by run type, so it is set within
+  # each branch alongside the sampling keys it belongs with -- climate_settings
+  # only exists in the spinup branch.
   # leave 'file' blank include a blank entry in scenario csv.
   # iLand might print a warning, that no file is found but that's fine.
   if (run_type == "spinup") {
     mode <- "standgrid"
     type <- "distribution"
     file <- ""
+    # resample the historic window across the full spinup length
+    climate_settings <- sample_climate(desired_years, mod_years, seed)
+    editxml(x, "//climate/filter", climate_settings$climate_filter)
+    editxml(x, "//climate/randomSamplingEnabled", "true")
+    editxml(x, "//climate/randomSamplingList", paste0('"', climate_settings$random_sample_list, '"'))
+    editxml(x, "//climate/batchYears", as.character(climate_settings$batch_years))
   } else if (run_type == "scenario") {
     mode <- "snapshot"
     type <- "iland"
     file <- "overwritten_by_csv"
+    # Read the projection sequentially, so the sampling list stays blank.
+    # batchYears is only a climate read-buffer size here -- 50 years loaded at a
+    # time rather than one, which avoids constant database queries. It is safe
+    # for it to be smaller than the run length ONLY because sampling is off:
+    # with randomSamplingEnabled=true it would also cap the climate to the first
+    # batchYears of the record.
+    editxml(x, "//climate/filter",
+            paste0("year >= ", min(desired_years), " and year <= ", max(desired_years)))
+    editxml(x, "//climate/randomSamplingEnabled", "false")
+    editxml(x, "//climate/randomSamplingList", "")
+    editxml(x, "//climate/batchYears", "50")
   } else {
     stop("Unknown run_type '", run_type, "'. Expected 'spinup' or 'scenario'.")
   }
@@ -161,23 +176,44 @@ gen_project_file <- function(landscape_name, master_xml, run_type,
 
 #--------------- Generate future fire xml files for all landscapes ---------------#
 # Complete
-# for (i in seq_along(landscape_names)) {
-#   gen_project_file(
-#     landscape_name     = landscape_names[i],
-#     master_xml         = master_xml,
-#     run_type           = "scenario",
-#     save_tree          = FALSE,
-#     save_stand         = FALSE,
-#     save_sapling       = FALSE,
-#     save_saplingdetail = FALSE,
-#     save_carbon        = FALSE,
-#     save_water         = FALSE,
-#     desired_years      = 2015:2100,
-#     mod_years          = 86,
-#     filt_cond          = -1,
-#     seed               = 1984 + i,
-#     note = "_onlyfire")
-# }
+for (i in seq_along(landscape_names)) {
+  gen_project_file(
+    landscape_name     = landscape_names[i],
+    master_xml         = master_xml,
+    run_type           = "scenario",
+    save_tree          = FALSE,
+    save_stand         = FALSE,
+    save_sapling       = FALSE,
+    save_saplingdetail = FALSE,
+    save_carbon        = FALSE,
+    save_water         = FALSE,
+    desired_years      = 2015:2100,
+    mod_years          = 86,
+    filt_cond          = -1,
+    seed               = 1984 + i,
+    note = "_onlyfire")
+}
+
+#--------------- Generate historic fire xml files for all landscapes ---------------#
+# Complete
+for (i in seq_along(landscape_names)) {
+  gen_project_file(
+    landscape_name     = landscape_names[i],
+    master_xml         = master_xml,
+    run_type           = "scenario",
+    save_tree          = FALSE,
+    save_stand         = FALSE,
+    save_sapling       = FALSE,
+    save_saplingdetail = FALSE,
+    save_carbon        = FALSE,
+    save_water         = FALSE,
+    desired_years      = 1950:2015, # Will only work with ssp126
+    mod_years          = 66,
+    filt_cond          = -1,
+    seed               = 1984 + i,
+    note = "_onlyfire")
+}
+
 
 #--------------- Generate future scenario xml files for all landscapes ---------------#
 for (i in seq_along(landscape_names)) {
