@@ -9,7 +9,7 @@
       <!-- Defines the input databases directory e.g., the location of species parameters and climate data. Sec 3.2 iLand book -->
       <lip>lip</lip>
       <!-- Every tree species needs to have a light influence pattern (LIP) sec 9.3 iLand book. -->
-      <output>Z:/personal_storage/quinn_storage/landscape_init_ak_can/landscape_alaska_02/output/TaiESM1ssp370_dbh2.5_onlysimfalse_onlyfire/rep_1</output>
+      <output>Z:/personal_storage/quinn_storage/landscape_init_ak_can/landscape_alaska_01/output/TaiESM1ssp370_dbh2.5_onlysimfalse_onlyfire/rep_1</output>
       <!-- result are written to this directory. -->
       <temp>temp</temp>
       <!-- Debug outputs are written to this directory -->
@@ -312,13 +312,13 @@
     <world>
       <cellSize>2</cellSize>
       <!-- The size of pixels of the light grid (m). The default is 2m -->
-      <width>25100</width>
+      <width>35000</width>
       <!-- horizontal (east-west) extent of the simulation area (m) -->
-      <height>25000</height>
+      <height>35000</height>
       <!-- vertical (north-south) extent (meter) -->
       <buffer>200</buffer>
       <!-- a buffer zone with the given width is attached to the rectangle of the simulation area (defined by width and height). -->
-      <latitude>62</latitude>
+      <latitude>65</latitude>
       <!-- Latitude of project area (in degree). Used for day of length calculation. -->
       <resourceUnitsAsGrid>true</resourceUnitsAsGrid>
       <!-- if true, each resource unit is a 100x100m pixel. -->
@@ -342,8 +342,8 @@
       <!-- filename of the "time events" file. This is a simple CSV-style file with a fixed column year and user-defined columns with column names of valid project file keys. (example: scripts/timeevents_base_1.txt) -->
       <location>
         <!-- the following keys specify the location of the 0/0 point of the iLand modeling. this information is used to transform GIS grids to local coordinates. See https://iland-model.org/landscape+setup -->
-        <x>-2664500</x>
-        <y>3711200</y>
+        <x>-2174800</x>
+        <y>3656700</y>
         <z>0</z>
         <rotation>0</rotation>
       </location>

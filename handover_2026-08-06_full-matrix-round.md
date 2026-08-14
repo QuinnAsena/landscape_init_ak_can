@@ -15,12 +15,14 @@ everything else:
 
 | Landscapes | SSPs | onlysim | Reps |
 |---|---|---|---|
-| 01–03 | 126, 370 | false | 1–12 |
-| 01–03 | 126, 370 | true | 1–3 |
-| 04–06 | 126, 245, 370 | false | 1–12 |
-| 04–06 | 126, 245, 370 | true | 1–3 |
+| 01–06 | 126, 245, 370 | false | 1–12 |
+| 01–06 | 126, 245, 370 | true | 1–3 |
 
-**225 cmdfile lines → 675 model runs.** One line = one landscape × one ssp × one
+Revised 2026-08-13 to the complete grid. The earlier version skipped ssp245 for
+landscapes 01–03 because those runs were already done, but the climate resampling bug
+(see NOTES.md) invalidated them, so everything is being redone.
+
+**270 cmdfile lines → 810 model runs.** One line = one landscape × one ssp × one
 onlysim × one rep, looping the three GCM rows in its CSV, so roughly 8 hours of work
 per line inside a 12-hour walltime.
 
@@ -136,8 +138,8 @@ fire analysis would silently read two realizations as one.
 - **`generate_cmdfiles.sh`** — emits `cmdfile_ch{A,B,C}_NN.sh` deterministically from
   the matrix. **Edit the matrix here, not the cmdfiles** — regenerating overwrites
   them wholesale.
-- **20 cmdfiles** — chain A 5 batches, B 7, C 8; 12 lines each, with trailing batches
-  of 3 (chain B) and 6 (chain C), both multiples of `--steps-per-node`.
+- **24 cmdfiles** — 8 batches per chain, 12 lines each with a trailing 6, which is a
+  multiple of `--steps-per-node` and so fills 2 nodes rather than under-using one.
 
 ### `submit_chain.sh` — rewritten
 
@@ -146,9 +148,9 @@ landscape so they never touch the same source directory:
 
 | Chain | Landscapes | Lines | Batches |
 |---|---|---|---|
-| A | 01, 02 | 64 | 6 |
-| B | 03, 04 | 80 | 7 |
-| C | 05, 06 | 96 | 8 |
+| A | 01, 02 | 90 | 8 |
+| B | 03, 04 | 90 | 8 |
+| C | 05, 06 | 90 | 8 |
 
 Each batch is 12 lines = 4 nodes at `--steps-per-node 3 --nthreads 40`, so 12
 concurrent reps per chain. Launch A first; once it runs clean add B, then C. That
@@ -172,8 +174,10 @@ rm -f landscape_alaska_0*/*_dbh2.5_onlysim*.xml   # only when no job is active
 
 ## 4. Verification performed
 
-- All 225 lines expanded against their CSVs → **675 output keys, all unique, zero
-  collisions.** Key is landscape × gcm-with-ssp × dbh × onlysim × id × rep.
+- All 270 lines expanded against their CSVs → **810 output keys, all unique, zero
+  collisions.** Key is landscape × gcm-with-ssp × dbh × onlysim × id × rep. Coverage
+  confirmed as all 6 landscapes × all 3 SSPs × all 3 GCMs, reps 1–12 at onlysim=false
+  and 1–3 at onlysim=true.
 - Every generated batch is a multiple of `--steps-per-node` (12, plus trailing 3 and
   6), so no node runs under-filled.
 - Per-landscape/ssp/onlysim breakdown matches the spec exactly.
@@ -219,8 +223,8 @@ rm -f landscape_alaska_0*/*_dbh2.5_onlysim*.xml   # only when no job is active
 ## Appendix — session summary as delivered
 
 Preserved verbatim, so its counts are the pre-revision ones: it says 240 lines / 720
-runs / 21 cmdfiles, from when onlysim=true still had 4 reps. Current figures are 225
-lines, 675 runs, 20 cmdfiles — see section 1.
+runs / 21 cmdfiles, from when onlysim=true still had 4 reps and landscapes 01–03
+skipped ssp245. Current figures are 270 lines, 810 runs, 24 cmdfiles — see section 1.
 
 > Built and verified. Everything is scenario runs against
 > `landscape_alaska_0N_2015-2100scenario.xml` for all six landscapes — the spinup

@@ -3,10 +3,14 @@
 #   bash generate_cmdfiles.sh
 #
 # Matrix (scenario runs only -- the spinup snapshots are an input, not a run):
-#   landscapes 01-03   ssp126, ssp370           (ssp245 already complete)
-#   landscapes 04-06   ssp126, ssp245, ssp370
+#   landscapes 01-06   ssp126, ssp245, ssp370
 #   onlysim=false  fire burns biomass           reps 1-12
 #   onlysim=true   fire simulated, no effect    reps 1-3
+#
+# The full grid is required: the ssp245 runs for landscapes 01-03, which an
+# earlier round skipped as already complete, were invalidated by the climate
+# resampling bug fixed in 13_project_file_create.r on 2026-08-13. Everything is
+# being redone from scratch.
 #
 # onlysim=true uses 3 reps because replication does not matter there -- 3 simply
 # fills a node at --steps-per-node 3. onlysim=false keeps its full 12.
@@ -33,19 +37,13 @@ NODES_PER_JOB=4
 BATCH=$(( NODES_PER_JOB * STEPS_PER_NODE ))
 REPS_FALSE=12
 REPS_TRUE=3
+SSPS="126 245 370"        # every landscape now needs all three
 
 chain_landscapes() {
     case "$1" in
         A) echo "01 02" ;;
         B) echo "03 04" ;;
         C) echo "05 06" ;;
-    esac
-}
-
-landscape_ssps() {
-    case "$1" in
-        01|02|03) echo "126 370" ;;
-        04|05|06) echo "126 245 370" ;;
     esac
 }
 
@@ -56,7 +54,7 @@ for chain in A B C; do
     lines=()
     for n in $(chain_landscapes "$chain"); do
         xml="${DIR}/landscape_alaska_${n}/landscape_alaska_${n}_2015-2100scenario.xml"
-        for ssp in $(landscape_ssps "$n"); do
+        for ssp in $SSPS; do
             for sim in false true; do
                 if [ "$sim" = "false" ]; then reps=$REPS_FALSE; else reps=$REPS_TRUE; fi
                 csv="${DIR}/iland_scenarios_ssp${ssp}_sim${sim}.csv"

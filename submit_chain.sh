@@ -7,18 +7,22 @@
 # directory. Submit A first; once it is running cleanly add B, then C, to scale
 # concurrency deliberately rather than in one jump.
 #
-#   A   landscapes 01, 02    5 batches    60 lines
-#   B   landscapes 03, 04    7 batches    75 lines
+#   A   landscapes 01, 02    8 batches    90 lines
+#   B   landscapes 03, 04    8 batches    90 lines
 #   C   landscapes 05, 06    8 batches    90 lines
 #
 # Each batch is 12 lines = 4 nodes at --steps-per-node 3, so 12 replicates run
 # concurrently per chain (36 with all three chains live). Each line loops the
 # three GCM rows of its CSV, ~8 h inside the 12 h walltime.
 #
-# The trailing batches of chains B and C are short (3 and 6 lines) but both are
-# multiples of --steps-per-node, so they fill 1 and 2 nodes respectively rather
-# than leaving a node under-used. Keep --steps-per-node here in step with
-# STEPS_PER_NODE in generate_cmdfiles.sh, which checks that property.
+# Every chain ends on a 6-line batch, a multiple of --steps-per-node, so it
+# fills 2 nodes rather than leaving one under-used. Keep --steps-per-node here
+# in step with STEPS_PER_NODE in generate_cmdfiles.sh, which checks that.
+#
+# NOTE: the runner clears each scenario_dir before running a replicate that has
+# no .complete sentinel. Output on scratch from the earlier ssp245 rounds has no
+# sentinel and shares the same directory key, so submitting will overwrite it.
+# Move it aside first if it is worth keeping for comparison.
 #
 # steps-per-node stays at 3: at 3 x 40 threads the node already reports ~95%
 # CPU, so packing a 4th step yields the same lines per node-hour while raising
