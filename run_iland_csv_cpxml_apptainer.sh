@@ -31,17 +31,24 @@ sed '1d' "$csv_name" | while IFS=, read -r sp_param gcm fri epsilon dbh stand_gr
 do
     for rep in $(seq "$start_rep" "$end_rep")
     do
-        echo "running gcm $gcm, id $id, rep $rep, $stand_grid, $env_file, $onlysim"
+        echo "running gcm $gcm, fri $fri, id $id, rep $rep, $stand_grid, $env_file, $onlysim"
 
-        scenario_dir="${output_path}/${gcm}_dbh${dbh}_onlysim${onlysim}_${id}/rep_${rep}"
-        tmp_xml="${xml_path}/${gcm}_dbh${dbh}_onlysim${onlysim}_${id}_${rep}.xml"
+        # Single source of truth for the scenario name -- the .complete sentinel,
+        # the output database and the temp XML all derive from it. fri is part of
+        # the name because changing it in the CSV without renaming made the new
+        # runs overwrite the old ones. id is optional: it is blank in the Derecho
+        # CSVs and set (e.g. "onlyfire") in the local ones.
+        scenario_id="${gcm}_dbh${dbh}_onlysim${onlysim}_fri${fri}${id:+_${id}}"
+
+        scenario_dir="${output_path}/${scenario_id}/rep_${rep}"
+        tmp_xml="${xml_path}/${scenario_id}_${rep}.xml"
 
         # Resume guard. The sentinel is written only after ilandc exits 0, so a
         # replicate is skipped only if it genuinely finished. Testing for the
         # output .sqlite instead would also skip walltime-killed reps that got
         # as far as creating a partial database.
         if [ -f "${scenario_dir}/.complete" ]; then
-            echo "Skipping gcm $gcm, id $id, rep $rep (already complete)"
+            echo "Skipping gcm $gcm, fri $fri, id $id, rep $rep (already complete)"
             continue
         fi
 
@@ -67,7 +74,7 @@ do
         # Run iLand model via Apptainer container
         apptainer exec --bind /glade/derecho/scratch /glade/work/qasena/iLandc_container/ilandv2p1.sif ilandc \
             "$tmp_xml" "$simulation_years" \
-            system.database.out=${gcm}_dbh${dbh}_onlysim${onlysim}_${id}_${rep}.sqlite \
+            system.database.out=${scenario_id}_${rep}.sqlite \
             system.logging.logFile=${scenario_dir}/log/log.txt \
             system.database.climate=${gcm}.sqlite \
             system.database.in=${sp_param}.sqlite \
