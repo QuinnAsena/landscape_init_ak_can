@@ -525,7 +525,7 @@
       <!-- Output of indivdual trees https://iland-model.org/Outputs#Tree_Output. Use the filter property to reduce amount of data (filter by resource-unit, year, species, ...).
 				The output is triggered after the growth of the current season. Initial values (without any growth) are output as 'startyear-1'.
 				The 'treeFlags' is a binary combination of individual flags; see the documentation of the treeremoved output for details. -->
-      <enabled>true</enabled>
+      <enabled>false</enabled>
       <!-- modulo: mod(id,100)=0 -->
       <filter>year &gt;= 260 and year &lt;= 300</filter>
       <!-- Use the filter property to reduce amount of data (filter by resource-unit, year, species, ...). -->
@@ -564,7 +564,7 @@
     </management>
     <sapling>
       <!-- Output of the establishment/sapling layer per resource unit and species. The output covers trees between a dbh of 1cm (height>1.3m) and the recruitment threshold (i.e. a height of 4m). Cohorts with a dbh < 1cm are counted in 'cohort_count_ha' but not used for average calculations. -->
-      <enabled>true</enabled>
+      <enabled>false</enabled>
       <condition>year &gt;= 260 and year &lt;= 300</condition>
       <!-- You can specify a 'condition' to limit execution for specific time/ area with the variables 'ru' (resource unit id) and 'year' (the current year) -->
     </sapling>
@@ -578,7 +578,7 @@
     </saplingdetail>
     <carbon>
       <!-- Carbon and nitrogen pools (C and N) per resource unit / year and/or by landsacpe/year https://iland-model.org/Outputs#Carbon_and_nitrogen_pools_above_and_belowground_per_RU_yr. -->
-      <enabled>true</enabled>
+      <enabled>false</enabled>
       <condition>year &gt;= 260 and year &lt;= 300</condition>
       <!-- You can use the 'condition' to control if the output should be created for the current year (see also dynamic stand output). -->
       <conditionRU/>
@@ -603,7 +603,7 @@
     </dynamic>
     <water>
       <!-- Annual water cycle output on resource unit/landscape unit https://iland-model.org/Outputs#Water_output. -->
-      <enabled>true</enabled>
+      <enabled>false</enabled>
       <condition>year &gt;= 260 and year &lt;= 300</condition>
       <!-- You can specify a 'condition' to limit output execution to specific years (variable 'year'). -->
       <conditionRU/>

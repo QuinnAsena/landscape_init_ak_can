@@ -175,25 +175,30 @@ gen_project_file <- function(landscape_name, master_xml, run_type,
 
 
 #--------------- Generate spinup files for all landscapes ---------------#
-# Complete
-# for (i in seq_along(landscape_names)) {
-#   gen_project_file(
-#     landscape_name     = landscape_names[i],
-#     master_xml         = master_xml,
-#     run_type           = "spinup",
-#     save_tree          = TRUE,
-#     save_stand         = TRUE,
-#     save_sapling       = TRUE,
-#     save_saplingdetail = TRUE,
-#     save_carbon        = TRUE,
-#     save_water         = TRUE,
-#     desired_years      = 1950:1980,
-#     mod_years          = 300,
-#     filt_cond          = 260,
-#     seed               = 1984 + i,
-#     note               = ""
-#   )
-# }
+# Regenerated 2026-08-19 with four of the six output blocks switched off. The
+# 300-year spinup only needs enough state to judge convergence and to hand a
+# snapshot to the scenario runs, so tree/sapling/carbon/water were dropped to cut
+# output volume and speed the run. filt_cond = 260 still limits the surviving
+# outputs to the last 40 years. Re-enable an output here if a spinup diagnostic
+# needs it -- the analysis qmds in workflow-output/ read stand and saplingdetail.
+for (i in seq_along(landscape_names)) {
+  gen_project_file(
+    landscape_name     = landscape_names[i],
+    master_xml         = master_xml,
+    run_type           = "spinup",
+    save_tree          = FALSE,
+    save_stand         = TRUE,
+    save_sapling       = FALSE,
+    save_saplingdetail = TRUE,
+    save_carbon        = FALSE,
+    save_water         = FALSE,
+    desired_years      = 1950:1980,
+    mod_years          = 300,
+    filt_cond          = 260,
+    seed               = 1984 + i,
+    note               = ""
+  )
+}
 
 #--------------- Generate future fire xml files for all landscapes ---------------#
 # Complete

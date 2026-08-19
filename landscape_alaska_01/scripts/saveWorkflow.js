@@ -19,14 +19,30 @@ function snapShot() {
     if (Globals.year == 300) {
         var outputPath = Globals.path(Globals.setting('system.path.output'));
         Globals.saveModelSnapshot(outputPath + '/spinup_300.sqlite');
+        console.log("Model snapshot saved for year 300.");
     }
 }
 
-function onYearEnd()
-{
-	snapShot()
-	}
-onYearEnd(Globals.year)
+function saveKBDI() {
+    // Decadal save. Every year would give 301 grids over a 300-year spinup.
+    if (Globals.year % 10 == 0) {
+        var praefix = Globals.year;
+        var outputPath = Globals.path(Globals.setting('system.path.output'));
+        Fire.gridToFile('kbdi', outputPath + '/kbdi/kbdi_' + praefix + '.txt');
+        console.log("Decadal save: Saved KBDI for year " + praefix);
+    }
+}
+
+// The SINGLE end-of-year handler. iLand calls this automatically once all
+// processing for the year is done -- do not call it from the top level, and do
+// not declare onYearEnd anywhere else in this file. All JavaScript here shares
+// one engine and one global scope, so a second declaration silently replaces
+// this one (that is how the KBDI writer disabled the snapshot between
+// 2026-08-13 and 2026-08-19). Add new annual work as a helper called from here.
+function onYearEnd() {
+    snapShot();
+    saveKBDI();
+}
 
 function screenShot()
 {
@@ -217,16 +233,8 @@ function add_log(new_line)
 //   }
 //   manage(Globals.year)
 
-// This function is called automatically by iLand AFTER all processing for the year
-function onYearEnd() {
-    var praefix = Globals.year;
-    var outputPath = Globals.path(Globals.setting('system.path.output'));
-    
-    // Create unique filename and save finalized KBDI grid
-    Fire.gridToFile('kbdi', outputPath + '/kbdi/kbdi_' + praefix + '.txt');
-    
-    console.log("Saved KBDI for year " + praefix);
-}
+// The end-of-year handler lives at the top of this file. The KBDI write that
+// used to be declared here is now saveKBDI(), called from that one handler.
 
 function afterFireProcessing() {
    var outputPath = Globals.path(Globals.setting('system.path.output'));
