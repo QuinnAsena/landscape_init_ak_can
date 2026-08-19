@@ -17,6 +17,24 @@ ssp <- "ssp126"
 # ssp <- c("ssp245", "ssp370")
 # var <- c("tasmax", "hurs", "pr", "rsds", "tasmin", "vp")
 var <- c("tasmax", "pr", "rsds", "tasmin", "vp")
+# Coverage is NOT uniform across gcm x ssp x domain -- audited 2026-08-18, source
+# .nc and the resulting sqlite databases agree:
+#
+#   NorESM2-MM        all 3 ssps, both domains    1950-2100
+#   TaiESM1 / UKESM   ssp126, Landscapes domain   1950-2100
+#   TaiESM1 / UKESM   ssp126, CPCRW domain        1980-2100
+#   TaiESM1 / UKESM   ssp245 / ssp370, both       1980-2100
+#
+# Landscape 01 is CPCRW, so it takes the fallback branch below and starts at 1980
+# for every GCM except NorESM2-MM. A 1950-start model run is NorESM2-MM only if
+# all six landscapes are needed; use 1980 to include all three GCMs.
+#
+# Requesting 1950:2100 for a combination that starts in 1980 is SILENT: the
+# tryCatch in process_climate_link routes the missing-file error to log_msg,
+# which is invisible(NULL) while logs = FALSE, so the 30 unavailable years are
+# skipped with no message and step 04 simply compiles the files that exist. Set
+# logs = TRUE in the future_lapply call to see them (this also hides typo'd
+# gcm/ssp/var names and network dropouts).
 year <- 1950:2100
 
 param_grid <- expand.grid(

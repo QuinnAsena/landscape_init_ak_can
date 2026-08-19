@@ -30,7 +30,7 @@ if command -v cygpath &>/dev/null; then
   output_path="$(cygpath -m "${output_path}")"
 fi
 script_dir=$(cd "$(dirname "$0")" && pwd)
-csv_name="${script_dir}/iland_scenarios_onlyfire.csv"
+csv_name="${script_dir}/iland_scenarios_onlyfire_historic.csv"
 
 mkdir -p "${output_path}"
 

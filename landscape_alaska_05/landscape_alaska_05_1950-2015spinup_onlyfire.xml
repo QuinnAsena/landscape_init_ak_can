@@ -343,7 +343,7 @@
       <location>
         <!-- the following keys specify the location of the 0/0 point of the iLand modeling. this information is used to transform GIS grids to local coordinates. See https://iland-model.org/landscape+setup -->
         <x>-2439500</x>
-        <y>3836100</y>
+        <y>3811100</y>
         <z>0</z>
         <rotation>0</rotation>
       </location>
@@ -401,16 +401,16 @@
       <!-- if a co2pathway is used, then co2startYear defines the starting point of CO2 concentration within the simulation. See also https://iland-model.org/ClimateData -->
       <tableName>placeholder</tableName>
       <!-- Name of the SQLite table within the defined climate database to load (system.database.climate). Replace or set in environment file. -->
-      <batchYears>50</batchYears>
+      <batchYears>66</batchYears>
       <!-- for performance reasons the access to the climate database accesses is performed bulked. This setting specifies how many years are loaded at once. -->
       <temperatureShift>0</temperatureShift>
       <!-- simple option to modify the climate. The value is added to each daily temperature (default = 0) -->
       <precipitationShift>1</precipitationShift>
       <!-- simple option to modify the climate. The daily precipitation is multiplied for each day with this value. (default = 1). -->
-      <randomSamplingEnabled>false</randomSamplingEnabled>
+      <randomSamplingEnabled>true</randomSamplingEnabled>
       <!-- if true, only the first batchYears of the climate file are loaded (but see filter). The actual climate for each year is the sampled from this climate data. See also randomSamplingList. (default=false) -->
       <!-- if this key (<randomSamplingList></randomSamplingList>) contains a list of 0-based indices (e.g. "3, 12, 14, 0, 3, 14", the random sampling (if enabled) uses this sequence of years. Note: the index is 0-based (in the example the 4th year would be used first). Use any non-word characters as delimiters. The list will be recycled if more years are simulated than present in the list. The index values are to be between 0 and batchYears-1. If invalid indices are in the list, an error is reported. If the key is empty or not present, each year a climate year is selected randomly from the list of loaded years. default=empty -->
-      <randomSamplingList></randomSamplingList>
+      <randomSamplingList>"65,26,11,22,6,25,16,2,48,40,28,1,21,13,53,45,11,31,14,14,1,64,6,13,10,52,43,23,49,28,5,35,2,2,50,25,53,45,60,32,38,46,40,17,57,3,24,38,19,62,10,30,11,31,9,9,3,4,46,47,51,26,17,19,39,56"</randomSamplingList>
       <filter>year &gt;= 1950 and year &lt;= 2015</filter>
       <!-- an optional filter criterion that is added to the where clause of the SQL for reading the climate data. This can be useful e.g. for skipping parts of the climate records. Example: 'year>2000 and year<2010' limits used climate data to the years 2001 to 2009. See also randomSamplingEnabled. -->
       <microclimate>
@@ -424,15 +424,15 @@
       </microclimate>
     </climate>
     <initialization>
-      <mode>snapshot</mode>
+      <mode>standgrid</mode>
       <!-- describes the general mode. Following options: 'copy': initalize 1 resource unit, then copy to all others, 'unit': separate initailization for each resource unit, 'single': one initialization for the full area, 'map': init-files for each stand (defined by a map), 'standgrid': init file with stand_id for each stand (defined by a map); 'snapshot': load from a database snapshot. See https://iland-model.org/initialize+trees for details. -->
-      <type>iland</type>
+      <type>distribution</type>
       <!-- describes the type of the expected initialization file. Possible values: distribution or single (see also: https://iland-model.org/initialize+trees). -->
       <randomFunction>max(1-x^2,0)</randomFunction>
       <!-- defines the function (as an expression https://iland-model.org/Expression) used when estimating positions for individual trees (for init files of type distribution). -->
       <mapFileName/>
       <!-- when using the map mode, the matching of stands and init files is defined in this file (see also: landscape setup ). -->
-      <file>overwritten_by_csv</file>
+      <file></file>
       <!-- path of the initialization file to be loaded. In mode unit this key needs to be overwritten by the environment file. If blank, no trees are loaded. (example: init/snapshot_sml.sqlite) -->
       <saplingFile>landscape_model_init.txt</saplingFile>
       <!-- path of the initialization file for saplings (see initialize trees https://iland-model.org/initialize+trees). If blank, no saplings are loaded. -->

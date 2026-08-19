@@ -205,6 +205,50 @@ being compiled into SQLite databases in step 04. These data live on the Z drive:
 `//10.60.2.10/FF_Lab/project_data/downscaling/Landscapes` for the landscapes, and
 `//10.60.2.10/FF_Lab/project_data/downscaling/CPCRW` for CPCRW.
 
+### Year coverage is not uniform
+
+The climate record does **not** run 1950–2100 for every GCM/SSP combination.
+Audited 2026-08-18 against both the source netCDF files and the resulting
+per-landscape SQLite databases, which agree exactly — no years are missing inside
+any range, and all five variables are consistent within each combination.
+
+| GCM | SSP | Landscapes domain | CPCRW domain |
+|---|---|---|---|
+| NorESM2-MM | ssp126 / ssp245 / ssp370 | 1950–2100 | 1950–2100 |
+| TaiESM1 | ssp126 | 1950–2100 | 1980–2100 |
+| TaiESM1 | ssp245 / ssp370 | 1980–2100 | 1980–2100 |
+| UKESM1-0-LL | ssp126 | 1950–2100 | 1980–2100 |
+| UKESM1-0-LL | ssp245 / ssp370 | 1980–2100 | 1980–2100 |
+
+The databases inherit this directly. `landscape_alaska_01` is the CPCRW landscape,
+so it takes the CPCRW fallback branch in step 03 and reads the CPCRW column above:
+
+| Database | `landscape_alaska_01` | `landscape_alaska_02`–`06` |
+|---|---|---|
+| `NorEsm2-MM{ssp126,ssp245,ssp370}.sqlite` | 1950–2100 | 1950–2100 |
+| `TaiESM1ssp126.sqlite`, `UKESM1-0-LLssp126.sqlite` | **1980–2100** | 1950–2100 |
+| `TaiESM1{ssp245,ssp370}`, `UKESM1-0-LL{ssp245,ssp370}` | 1980–2100 | 1980–2100 |
+
+**Consequence for run configuration.** A model run starting in 1950 — such as the
+`historic` run type in step 13 (1950–2015) — is possible with **NorESM2-MM only**
+if all six landscapes are required. Starting at 1980 instead makes all three GCMs
+available everywhere.
+
+**This constraint fails silently.** Step 03 wraps each file in `tryCatch` and routes
+the error to `log_msg`, which is `invisible(NULL)` whenever `logs = FALSE` (the
+default at the call site). Requesting `year <- 1950:2100` for a combination that
+begins in 1980 therefore skips the 30 unavailable years without any message, and
+step 04 compiles whichever text files happen to exist. The resulting database looks
+complete but starts in 1980. Set `logs = TRUE` to surface these failures — the same
+silence also conceals mistyped GCM/SSP/variable names and network dropouts.
+
+**Historical period differs between SSPs.** In CMIP6 the scenario runs branch from a
+common historical simulation, so 1950–2014 should be identical across SSPs of one
+GCM. It is not: NorESM2-MM ssp126 and ssp245 differ by roughly 0.15 °C on average
+and 0.96 °C at most in `min_temp`, with only 3 of 1095 sampled days matching. Each
+SSP appears to have been downscaled independently, so "the historical climate" is
+mildly SSP-dependent in this dataset.
+
 ## Permafrost
 
 A permafrost presence/absence raster sourced from network storage. Projected

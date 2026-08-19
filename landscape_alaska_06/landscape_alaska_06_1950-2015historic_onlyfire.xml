@@ -342,7 +342,7 @@
       <!-- filename of the "time events" file. This is a simple CSV-style file with a fixed column year and user-defined columns with column names of valid project file keys. (example: scripts/timeevents_base_1.txt) -->
       <location>
         <!-- the following keys specify the location of the 0/0 point of the iLand modeling. this information is used to transform GIS grids to local coordinates. See https://iland-model.org/landscape+setup -->
-        <x>-2439500</x>
+        <x>-2489500</x>
         <y>3811100</y>
         <z>0</z>
         <rotation>0</rotation>
@@ -401,7 +401,7 @@
       <!-- if a co2pathway is used, then co2startYear defines the starting point of CO2 concentration within the simulation. See also https://iland-model.org/ClimateData -->
       <tableName>placeholder</tableName>
       <!-- Name of the SQLite table within the defined climate database to load (system.database.climate). Replace or set in environment file. -->
-      <batchYears>50</batchYears>
+      <batchYears>66</batchYears>
       <!-- for performance reasons the access to the climate database accesses is performed bulked. This setting specifies how many years are loaded at once. -->
       <temperatureShift>0</temperatureShift>
       <!-- simple option to modify the climate. The value is added to each daily temperature (default = 0) -->

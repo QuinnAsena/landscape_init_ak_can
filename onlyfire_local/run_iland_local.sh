@@ -45,3 +45,29 @@ for n in 03; do
     bash run_iland_csv_cpxml.sh \
         landscape_alaska_${n}/landscape_alaska_${n}_2015-2100scenario_onlyfire.xml 1 1 86
 done
+
+
+###################################
+##### historic only fire runs #####
+###################################
+
+for n in 01; do
+    ILANDC_BIN="D:/quinn/iLand2.1/ilandc" \
+    ILANDC_OUTPUT_ROOT="landscape_alaska_${n}/output" \
+    bash run_iland_csv_cpxml.sh \
+        landscape_alaska_${n}/landscape_alaska_${n}_1950-2015historic_onlyfire.xml 1 1 66
+done
+
+for n in 02; do
+    ILANDC_BIN="D:/quinn/iLand2.1/ilandc" \
+    ILANDC_OUTPUT_ROOT="landscape_alaska_${n}/output" \
+    bash run_iland_csv_cpxml.sh \
+        landscape_alaska_${n}/landscape_alaska_${n}_1950-2015historic_onlyfire.xml 1 1 66
+done
+
+for n in 03; do
+    ILANDC_BIN="D:/quinn/iLand2.1/ilandc" \
+    ILANDC_OUTPUT_ROOT="landscape_alaska_${n}/output" \
+    bash run_iland_csv_cpxml.sh \
+        landscape_alaska_${n}/landscape_alaska_${n}_1950-2015historic_onlyfire.xml 1 1 66
+done

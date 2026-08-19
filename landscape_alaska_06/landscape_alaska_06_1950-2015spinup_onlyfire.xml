@@ -180,7 +180,7 @@
         <!-- see: https://doi.org/10.5194/gmd-16-2011-2023 and https://iland-model.org/permafrost -->
         <enabled>true</enabled>
         <!-- set to true or false as applicable -->
-        <onlySimulate>overwritten_by_csv</onlySimulate>
+        <onlySimulate>false</onlySimulate>
         <!-- if true, permafrost has no effect on the water cycle  -->
         <initialGroundTemperature>-2.6</initialGroundTemperature>
         <!-- Assumptions regarding soil temperature below the active layer: at depth "groundBaseDepth" the temperature is assumed to remain +- constant within a year and to follow MAT with a 10yr delay. The initial value is given with 'initialGroundTemperature'. and the depth from which thermal energy flows -->
@@ -312,13 +312,13 @@
     <world>
       <cellSize>2</cellSize>
       <!-- The size of pixels of the light grid (m). The default is 2m -->
-      <width>35000</width>
+      <width>25100</width>
       <!-- horizontal (east-west) extent of the simulation area (m) -->
-      <height>35000</height>
+      <height>25100</height>
       <!-- vertical (north-south) extent (meter) -->
       <buffer>200</buffer>
       <!-- a buffer zone with the given width is attached to the rectangle of the simulation area (defined by width and height). -->
-      <latitude>65</latitude>
+      <latitude>64</latitude>
       <!-- Latitude of project area (in degree). Used for day of length calculation. -->
       <resourceUnitsAsGrid>true</resourceUnitsAsGrid>
       <!-- if true, each resource unit is a 100x100m pixel. -->
@@ -342,8 +342,8 @@
       <!-- filename of the "time events" file. This is a simple CSV-style file with a fixed column year and user-defined columns with column names of valid project file keys. (example: scripts/timeevents_base_1.txt) -->
       <location>
         <!-- the following keys specify the location of the 0/0 point of the iLand modeling. this information is used to transform GIS grids to local coordinates. See https://iland-model.org/landscape+setup -->
-        <x>-2174800</x>
-        <y>3656700</y>
+        <x>-2489500</x>
+        <y>3811100</y>
         <z>0</z>
         <rotation>0</rotation>
       </location>
@@ -401,7 +401,7 @@
       <!-- if a co2pathway is used, then co2startYear defines the starting point of CO2 concentration within the simulation. See also https://iland-model.org/ClimateData -->
       <tableName>placeholder</tableName>
       <!-- Name of the SQLite table within the defined climate database to load (system.database.climate). Replace or set in environment file. -->
-      <batchYears>31</batchYears>
+      <batchYears>66</batchYears>
       <!-- for performance reasons the access to the climate database accesses is performed bulked. This setting specifies how many years are loaded at once. -->
       <temperatureShift>0</temperatureShift>
       <!-- simple option to modify the climate. The value is added to each daily temperature (default = 0) -->
@@ -410,8 +410,8 @@
       <randomSamplingEnabled>true</randomSamplingEnabled>
       <!-- if true, only the first batchYears of the climate file are loaded (but see filter). The actual climate for each year is the sampled from this climate data. See also randomSamplingList. (default=false) -->
       <!-- if this key (<randomSamplingList></randomSamplingList>) contains a list of 0-based indices (e.g. "3, 12, 14, 0, 3, 14", the random sampling (if enabled) uses this sequence of years. Note: the index is 0-based (in the example the 4th year would be used first). Use any non-word characters as delimiters. The list will be recycled if more years are simulated than present in the list. The index values are to be between 0 and batchYears-1. If invalid indices are in the list, an error is reported. If the key is empty or not present, each year a climate year is selected randomly from the list of loaded years. default=empty -->
-      <randomSamplingList>"17,29,2,13,2,9,8,28,20,14,17,1,17,17,17,16,6,11,29,27,12,14,13,16,29,28,8,21,17,26,1,5,2,30,2,28,9,25,18,6,19,28,1,13,24,5,30,13,30,9,25,23,17,5,30,2,4,7,20,18,26,9,5,23,0,2,30,16,15,20,13,22,16,21,29,14,22,10,14,21,7,6,26,6,5,7,2,12,27,22,10,7,23,1,2,18,9,8,17,19,7,16,4,24,13,1,11,9,21,27,5,1,16,16,18,29,10,15,2,9,9,14,21,26,10,23,1,2,12,11,21,11,1,24,19,4,4,12,16,10,24,18,4,28,13,18,30,30,20,7,15,0,15,11,19,27,25,6,7,9,23,28,0,21,5,23,2,10,10,22,13,8,15,22,5,19,18,24,7,16,10,9,20,26,13,22,2,9,19,1,18,3,26,25,20,28,13,29,6,12,19,10,15,25,0,25,3,16,25,17,28,17,26,12,19,28,7,8,19,3,13,18,5,28,11,10,28,7,18,0,0,8,11,4,25,25,15,2,1,0,20,16,13,6,11,21,17,1,3,15,24,8,3,4,23,17,6,8,21,13,23,6,27,8,13,4,0,26,18,10,27,11,24,24,17,28,18,11,19,0,13,1,25,18,11,3,6,13,13,8,18,12,11,27,15,22,7,25,17,7"</randomSamplingList>
-      <filter>year &gt;= 1950 and year &lt;= 1980</filter>
+      <randomSamplingList>"48,65,3,33,34,7,51,27,18,22,37,50,0,50,50,20,35,58,58,28,26,42,13,60,1,24,13,56,0,25,5,29,26,26,60,46,64,14,16,58,43,35,40,15,20,27,10,52,13,15,26,16,65,48,5,57,12,43,38,47,17,36,57,45,0,38"</randomSamplingList>
+      <filter>year &gt;= 1950 and year &lt;= 2015</filter>
       <!-- an optional filter criterion that is added to the where clause of the SQL for reading the climate data. This can be useful e.g. for skipping parts of the climate records. Example: 'year>2000 and year<2010' limits used climate data to the years 2001 to 2009. See also randomSamplingEnabled. -->
       <microclimate>
         <enabled>false</enabled>
@@ -525,7 +525,7 @@
       <!-- Output of indivdual trees https://iland-model.org/Outputs#Tree_Output. Use the filter property to reduce amount of data (filter by resource-unit, year, species, ...).
 				The output is triggered after the growth of the current season. Initial values (without any growth) are output as 'startyear-1'.
 				The 'treeFlags' is a binary combination of individual flags; see the documentation of the treeremoved output for details. -->
-      <enabled>true</enabled>
+      <enabled>false</enabled>
       <!-- modulo: mod(id,100)=0 -->
       <filter></filter>
       <!-- Use the filter property to reduce amount of data (filter by resource-unit, year, species, ...). -->
@@ -543,7 +543,7 @@
       <!-- Output of aggregates on the level of RU x species. Values are always aggregated per hectare (of stockable area). 
 				Use the 'area' column to scale to the actual values on the resource unit. The output is created after the growth of the year, i.e. output with year=2000 means effectively the state of at the end of the year 2000.
 				The initial state (without any growth) is indicated by the year 'startyear-1'. -->
-      <enabled>true</enabled>
+      <enabled>false</enabled>
       <condition></condition>
       <!-- use the 'condition' to control if the output should be created for the current year (see dynamic stand output) -->
       <byRU/>
@@ -564,13 +564,13 @@
     </management>
     <sapling>
       <!-- Output of the establishment/sapling layer per resource unit and species. The output covers trees between a dbh of 1cm (height>1.3m) and the recruitment threshold (i.e. a height of 4m). Cohorts with a dbh < 1cm are counted in 'cohort_count_ha' but not used for average calculations. -->
-      <enabled>true</enabled>
+      <enabled>false</enabled>
       <condition></condition>
       <!-- You can specify a 'condition' to limit execution for specific time/ area with the variables 'ru' (resource unit id) and 'year' (the current year) -->
     </sapling>
     <saplingdetail>
       <!-- Detailed output on indidvidual sapling cohorts. For each occupied and living 2x2m pixel, a row is generated, unlessthe tree diameter is below the 'minDbh' threshold (cm). -->
-      <enabled>true</enabled>
+      <enabled>false</enabled>
       <condition></condition>
       <!-- You can further specify a 'condition' to limit execution for specific time/ area with the variables 'ru' (resource unit id) and 'year' (the current year). -->
       <minDbh>overwritten_by_csv</minDbh>
@@ -578,7 +578,7 @@
     </saplingdetail>
     <carbon>
       <!-- Carbon and nitrogen pools (C and N) per resource unit / year and/or by landsacpe/year https://iland-model.org/Outputs#Carbon_and_nitrogen_pools_above_and_belowground_per_RU_yr. -->
-      <enabled>true</enabled>
+      <enabled>false</enabled>
       <condition></condition>
       <!-- You can use the 'condition' to control if the output should be created for the current year (see also dynamic stand output). -->
       <conditionRU/>
@@ -603,7 +603,7 @@
     </dynamic>
     <water>
       <!-- Annual water cycle output on resource unit/landscape unit https://iland-model.org/Outputs#Water_output. -->
-      <enabled>true</enabled>
+      <enabled>false</enabled>
       <condition></condition>
       <!-- You can specify a 'condition' to limit output execution to specific years (variable 'year'). -->
       <conditionRU/>
@@ -799,7 +799,7 @@
         <direction>225</direction>
         <!-- the main wind direction (in degrees). North=0, East=90, South=180, West=270. For each fire event the wind direction is calculated as direction +- 45°. Different values are used for iLand in different regions. -->
       </wind>
-      <onlySimulation>false</onlySimulation>
+      <onlySimulation>overwritten_by_csv</onlySimulation>
       <!-- only if value is false real effects of fire (on trees, snags, soil pools) are simulated (default: false). A value of true can be useful for testing purposes. -->
       <crownKill1>0.03</crownKill1>
       <!-- parameter kCK1 to calculate fraction of crown kill. (default: 0.21111). Different values are used for iLand in different regions. -->

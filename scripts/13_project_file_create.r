@@ -104,8 +104,29 @@ gen_project_file <- function(landscape_name, master_xml, run_type,
     editxml(x, "//climate/randomSamplingEnabled", "false")
     editxml(x, "//climate/randomSamplingList", "")
     editxml(x, "//climate/batchYears", "50")
+  } else if (run_type == "historic") {
+    # Starts from the spinup snapshot, exactly like the scenario runs, so the CSV
+    # must supply snapshot_file (see iland_scenarios_onlyfire_historic.csv). What
+    # differs from 'scenario' is only the climate window: the real 1950-2015
+    # record read in sequence rather than the 2015-2100 projection, so the run
+    # follows the observed order of fire weather.
+    #
+    # Functionally this branch is now the scenario branch with a different
+    # batchYears, and both values are only read-buffer sizes. It is kept separate
+    # so the run type is explicit in the output filename.
+    mode <- "snapshot"
+    type <- "iland"
+    file <- "overwritten_by_csv"
+    editxml(x, "//climate/filter",
+            paste0("year >= ", min(desired_years), " and year <= ", max(desired_years)))
+    editxml(x, "//climate/randomSamplingEnabled", "false")
+    editxml(x, "//climate/randomSamplingList", "")
+    # Read-buffer size only, because sampling is off (see the scenario branch).
+    # Derived from desired_years so it cannot drift out of step with the filter.
+    editxml(x, "//climate/batchYears", as.character(length(desired_years)))
   } else {
-    stop("Unknown run_type '", run_type, "'. Expected 'spinup' or 'scenario'.")
+    stop("Unknown run_type '", run_type,
+         "'. Expected 'spinup', 'scenario' or 'historic'.")
   }
 
   # Set up model type e.g., spinup vs. not
@@ -200,15 +221,34 @@ for (i in seq_along(landscape_names)) {
   gen_project_file(
     landscape_name     = landscape_names[i],
     master_xml         = master_xml,
-    run_type           = "scenario",
+    run_type           = "historic",
     save_tree          = FALSE,
     save_stand         = FALSE,
     save_sapling       = FALSE,
     save_saplingdetail = FALSE,
     save_carbon        = FALSE,
     save_water         = FALSE,
-    desired_years      = 1950:2015, # Will only work with ssp126
-    mod_years          = 66,
+    # Climate coverage is NOT uniform -- audited 2026-08-18 against both the
+    # source .nc files and the per-landscape sqlite databases, which agree:
+    #
+    #   NorEsm2-MM        all 3 ssps, all 6 landscapes   1950-2100  <- only safe choice
+    #   TaiESM1 / UKESM   ssp126, landscapes 02-06       1950-2100
+    #   TaiESM1 / UKESM   ssp126, landscape 01 (CPCRW)   1980-2100  <- too short
+    #   TaiESM1 / UKESM   ssp245 / ssp370, all           1980-2100  <- too short
+    #
+    # Landscape 01 is the CPCRW landscape, so script 03 takes the CPCRW fallback
+    # branch, and the CPCRW downscaling only reaches 1950 for NorEsm2-MM. Hence
+    # a 1950-start historic run is NorEsm2-MM only; drop the start to 1980 if all
+    # three GCMs are wanted.
+    #
+    # Also note the 1950-2014 values are NOT shared between the ssp databases of
+    # a given GCM (NorEsm2-MM ssp126 vs ssp245 differ by ~0.15 C mean, 0.96 C max
+    # in min_temp), even though CMIP6 scenarios branch from a common historical
+    # run -- each ssp appears to have been downscaled separately.
+    desired_years      = 1950:2015,
+    mod_years          = 66,   # inert here: filt_cond = -1 blanks the output
+                               # filter and sample_climate is not called. The
+                               # real run length is the runner's 4th argument.
     filt_cond          = -1,
     seed               = 1984 + i,
     note = "_onlyfire")
