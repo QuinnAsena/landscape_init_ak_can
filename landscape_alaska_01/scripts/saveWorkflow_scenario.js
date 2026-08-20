@@ -15,37 +15,22 @@
 ******************************************************************** */
  
    
-function snapShot() {
-    if (Globals.year == 300) {
-        var outputPath = Globals.path(Globals.setting('system.path.output'));
-        Globals.saveModelSnapshot(outputPath + '/spinup_300.sqlite');
-        console.log("Model snapshot saved for year 300.");
-    }
-}
 
-// ONLY ONE saveKBDI MAY BE UNCOMMENTED AT A TIME. Two live declarations would
-// shadow each other silently -- the same trap that let the KBDI writer disable
-// snapShot() between 2026-08-13 and 2026-08-19. Swap which one is commented,
-// never leave both active.
-
-// ---- DECADAL VERSION: restore this before the 300-year spinup round. ----
-// 66 annual grids is fine for a historic run; 301 per replicate across 54
-// spinup replicates is not. Commented out 2026-08-20 so landscapes 04-06 can be
-// re-run with annual KBDI for the per-landscape KBDIref calculation -- the
-// decadal years 10-60 turned out to be systematically dry (+5 to +10% on the
-// landscape mean), so they are not comparable with the annual runs of 01-03.
+// ============================================================================
+// SCENARIO / HISTORIC workflow: annual KBDI, no snapshot.
 //
-// function saveKBDI() {
-//     // Decadal save. Every year would give 301 grids over a 300-year spinup.
-//     if (Globals.year % 10 == 0) {
-//         var praefix = Globals.year;
-//         var outputPath = Globals.path(Globals.setting('system.path.output'));
-//         Fire.gridToFile('kbdi', outputPath + '/kbdi/kbdi_' + praefix + '.txt');
-//         console.log("Decadal save: Saved KBDI for year " + praefix);
-//     }
-// }
+// Counterpart file: saveWorkflow_spinup.js
+// Everything below onYearEnd is IDENTICAL in both files. If you change a shared
+// helper here (screenShot, afterFireProcessing, loadData, ...), make the same
+// change there. Deployed to landscape_alaska_NN/scripts/ by script 13, which
+// also points each project file at the right one via //management/file.
+// ============================================================================
 
-// ---- ANNUAL VERSION: in use for the historic KBDIref re-runs. ----
+// Scenario runs are 86 years and historic 66, both started from the spinup
+// snapshot, so year 300 is unreachable and snapShot() is deliberately absent
+// rather than present-but-dead. KBDI is saved every year: the decadal years
+// 10-60 proved systematically dry (+5 to +10% on the landscape mean), which is
+// why the per-landscape KBDIref must come from an annual record.
 function saveKBDI() {
     var praefix = Globals.year;
     var outputPath = Globals.path(Globals.setting('system.path.output'));
@@ -53,14 +38,12 @@ function saveKBDI() {
     console.log("Saved KBDI for year " + praefix);
 }
 
-// The SINGLE end-of-year handler. iLand calls this automatically once all
-// processing for the year is done -- do not call it from the top level, and do
-// not declare onYearEnd anywhere else in this file. All JavaScript here shares
-// one engine and one global scope, so a second declaration silently replaces
-// this one (that is how the KBDI writer disabled the snapshot between
-// 2026-08-13 and 2026-08-19). Add new annual work as a helper called from here.
+// ONE onYearEnd, ONE saveKBDI PER FILE. All JavaScript in iLand shares a single
+// engine and global scope, so a second declaration of either name silently
+// replaces the first -- that is how the KBDI writer disabled snapShot() between
+// 2026-08-13 and 2026-08-19. Add new annual work as a helper called from
+// onYearEnd, never as a second onYearEnd.
 function onYearEnd() {
-    snapShot();
     saveKBDI();
 }
 

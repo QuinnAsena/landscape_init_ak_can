@@ -83,6 +83,7 @@ gen_project_file <- function(landscape_name, master_xml, run_type,
     mode <- "standgrid"
     type <- "distribution"
     file <- ""
+    js_file <- "saveWorkflow_spinup.js"
     # resample the historic window across the full spinup length
     climate_settings <- sample_climate(desired_years, mod_years, seed)
     editxml(x, "//climate/filter", climate_settings$climate_filter)
@@ -93,6 +94,7 @@ gen_project_file <- function(landscape_name, master_xml, run_type,
     mode <- "snapshot"
     type <- "iland"
     file <- "overwritten_by_csv"
+    js_file <- "saveWorkflow_scenario.js"
     # Read the projection sequentially, so the sampling list stays blank.
     # batchYears is only a climate read-buffer size here -- 50 years loaded at a
     # time rather than one, which avoids constant database queries. It is safe
@@ -117,6 +119,7 @@ gen_project_file <- function(landscape_name, master_xml, run_type,
     mode <- "snapshot"
     type <- "iland"
     file <- "overwritten_by_csv"
+    js_file <- "saveWorkflow_scenario.js"
     editxml(x, "//climate/filter",
             paste0("year >= ", min(desired_years), " and year <= ", max(desired_years)))
     editxml(x, "//climate/randomSamplingEnabled", "false")
@@ -133,6 +136,45 @@ gen_project_file <- function(landscape_name, master_xml, run_type,
   editxml(x,"//initialization/mode", mode)
   editxml(x,"//initialization/type", type)
   editxml(x,"//initialization/file", file)
+
+  # Which JavaScript file iLand loads. This is //management/file, NOT
+  # //javascript/fileName (which is empty and unused). A bare filename resolves
+  # against <system><path><script>, i.e. landscape_alaska_NN/scripts/. The two
+  # variants differ only in onYearEnd: the spinup one writes the year-300
+  # snapshot and decadal KBDI, the scenario one writes annual KBDI.
+  editxml(x, "//management/file", js_file)
+
+  # Landscape-specific KBDIref, replacing the master's generic 0.038. Read from
+  # the landscape's own summary so a project file can be regenerated without the
+  # combined table existing. Fail rather than fall back: a silent 0.038 would
+  # change fire probability across a whole round, and this project has already
+  # lost runs to three silent fallbacks (climate resampling, the shadowed
+  # snapshot, script 03 skipping missing climate years).
+  kbdi_file <- here(landscape_name, "supporting_data", "kbdi_summary",
+                    "kbdi_summary.csv")
+  if (!file.exists(kbdi_file)) {
+    stop("no KBDI summary for '", landscape_name, "' at ", kbdi_file,
+         " -- run analysis-scripts/process_kbdi.R first")
+  }
+  kbdi_tbl <- read.csv(kbdi_file, stringsAsFactors = FALSE)
+  if (nrow(kbdi_tbl) != 1 || is.na(kbdi_tbl$kbdi_mean[1])) {
+    stop("expected one usable kbdi_mean for '", landscape_name, "', found ",
+         nrow(kbdi_tbl), " row(s) in ", kbdi_file)
+  }
+  # Consume the audit column rather than trusting it: a non-zero value means some
+  # cells were zero in only some years, i.e. possibly genuine dry-zero data that
+  # process_kbdi.R discarded, which would bias this mean upward.
+  if (kbdi_tbl$n_zero_partial[1] > 0) {
+    warning(landscape_name, ": n_zero_partial = ", kbdi_tbl$n_zero_partial[1],
+            " -- KBDIref may be biased, see the comment in process_kbdi.R")
+  }
+  # 3 decimals matches how KBDIref is conventionally expressed (the master's
+  # 0.038) and is well inside the precision a 66-year estimate supports.
+  # Landscapes 04-06 all land on 0.030; their means differ by less than the
+  # standard error of any one of them, so that is not a lost distinction.
+  # sprintf, not round + as.character: as.character can emit scientific notation
+  # for a small value, which iLand would not parse.
+  editxml(x, "//modules/fire/KBDIref", sprintf("%.3f", kbdi_tbl$kbdi_mean[1]))
 
   # save outputs individually per output type
   # currently fire outputs are always true
@@ -200,7 +242,7 @@ for (i in seq_along(landscape_names)) {
   )
 }
 
-#--------------- Generate future fire xml files for all landscapes ---------------#
+#--------------- Generate future FIRE ONLY xml files for all landscapes ---------------#
 # Complete
 for (i in seq_along(landscape_names)) {
   gen_project_file(
@@ -220,7 +262,7 @@ for (i in seq_along(landscape_names)) {
     note = "_onlyfire")
 }
 
-#--------------- Generate historic fire xml files for all landscapes ---------------#
+#--------------- Generate historic FIRE ONLY xml files for all landscapes ---------------#
 # Complete
 for (i in seq_along(landscape_names)) {
   gen_project_file(
@@ -308,11 +350,16 @@ lapply(landscape_names, function(lcp) {
     paste(lcp, "spp_param.sqlite")
   )
 
-  # 3. Create scripts/ directory and copy saveWorkflow.js into it
+  # 3. Create scripts/ directory and copy BOTH saveWorkflow variants into it.
+  # Both are deployed to every landscape; each project file selects one via
+  # //management/file, set per run_type in gen_project_file above. There is no
+  # longer a single saveWorkflow.js -- if one turns up in a landscape's scripts/
+  # folder it is a stale leftover and no XML references it.
   dir.create(here(lcp, "scripts"), recursive = TRUE, showWarnings = FALSE)
-  check_copy(
-    file.copy(file.path(shared, "saveWorkflow.js"),
-              here(lcp, "scripts", "saveWorkflow.js"), overwrite = TRUE),
-    paste(lcp, "saveWorkflow.js")
-  )
+  for (js in c("saveWorkflow_spinup.js", "saveWorkflow_scenario.js")) {
+    check_copy(
+      file.copy(file.path(shared, js), here(lcp, "scripts", js), overwrite = TRUE),
+      paste(lcp, js)
+    )
+  }
 })

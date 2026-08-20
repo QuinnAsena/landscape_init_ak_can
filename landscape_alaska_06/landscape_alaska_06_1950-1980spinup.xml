@@ -468,7 +468,7 @@
     </initialization>
     <management>
       <enabled>true</enabled>
-      <file>saveWorkflow.js</file>
+      <file>saveWorkflow_spinup.js</file>
       <!-- Filename of the main Javascript file of ABE (Agent Based management Engine) (relative paths are relative to the project root). -->
       <abeEnabled>false</abeEnabled>
       <!-- Switch for turning the agent based management https://iland-model.org/ABE engine on/off. ABE details are specified in the sub section abe. -->
@@ -758,7 +758,7 @@
       <!-- name of the module -->
       <enabled>true</enabled>
       <!-- the "enabled" tag is available for each module -->
-      <KBDIref>0.038</KBDIref>
+      <KBDIref>0.030</KBDIref>
       <!-- reference value for the site specific KBDI (Keetch Byram Drought Index). See wildfire#fire_ignition https://iland-model.org/wildfire.	Different values are used for iLand in different regions. Replace or set in environment file. -->
       <meanAnnualPrecipitation>400</meanAnnualPrecipitation>
       <!-- mean annual precipitation (mm). Different values are used for iLand in different regions. Replace or set in environment file. -->

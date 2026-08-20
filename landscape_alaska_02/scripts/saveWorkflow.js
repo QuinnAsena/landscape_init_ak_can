@@ -23,14 +23,34 @@ function snapShot() {
     }
 }
 
+// ONLY ONE saveKBDI MAY BE UNCOMMENTED AT A TIME. Two live declarations would
+// shadow each other silently -- the same trap that let the KBDI writer disable
+// snapShot() between 2026-08-13 and 2026-08-19. Swap which one is commented,
+// never leave both active.
+
+// ---- DECADAL VERSION: restore this before the 300-year spinup round. ----
+// 66 annual grids is fine for a historic run; 301 per replicate across 54
+// spinup replicates is not. Commented out 2026-08-20 so landscapes 04-06 can be
+// re-run with annual KBDI for the per-landscape KBDIref calculation -- the
+// decadal years 10-60 turned out to be systematically dry (+5 to +10% on the
+// landscape mean), so they are not comparable with the annual runs of 01-03.
+//
+// function saveKBDI() {
+//     // Decadal save. Every year would give 301 grids over a 300-year spinup.
+//     if (Globals.year % 10 == 0) {
+//         var praefix = Globals.year;
+//         var outputPath = Globals.path(Globals.setting('system.path.output'));
+//         Fire.gridToFile('kbdi', outputPath + '/kbdi/kbdi_' + praefix + '.txt');
+//         console.log("Decadal save: Saved KBDI for year " + praefix);
+//     }
+// }
+
+// ---- ANNUAL VERSION: in use for the historic KBDIref re-runs. ----
 function saveKBDI() {
-    // Decadal save. Every year would give 301 grids over a 300-year spinup.
-    if (Globals.year % 10 == 0) {
-        var praefix = Globals.year;
-        var outputPath = Globals.path(Globals.setting('system.path.output'));
-        Fire.gridToFile('kbdi', outputPath + '/kbdi/kbdi_' + praefix + '.txt');
-        console.log("Decadal save: Saved KBDI for year " + praefix);
-    }
+    var praefix = Globals.year;
+    var outputPath = Globals.path(Globals.setting('system.path.output'));
+    Fire.gridToFile('kbdi', outputPath + '/kbdi/kbdi_' + praefix + '.txt');
+    console.log("Saved KBDI for year " + praefix);
 }
 
 // The SINGLE end-of-year handler. iLand calls this automatically once all
