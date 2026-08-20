@@ -8,12 +8,13 @@
 # these were relative and only worked from the root, which broke when the launch
 # files moved into onlyfire_local/. Override ILAND_REPO if the checkout moves.
 #
-# WHICH CSV RUNS IS SET IN THE RUNNER, NOT HERE. run_iland_csv_cpxml_local.sh
-# hard-codes csv_name and nothing checks it against the XML passed in. Before a
-# scenario block that line must read iland_scenarios_onlyfire.csv; before a
-# historic block, iland_scenarios_onlyfire_historic.csv. Getting it wrong still
-# runs, but with the wrong fri/gcm set, and the output directory name will not
-# make the mistake obvious.
+# Every block names its own CSV via ILAND_SCENARIO_CSV, so no block depends on
+# whatever the runner happens to default to, and switching tracks needs no edits.
+# The pairing matters and is not enforced -- a mismatch runs happily with the
+# wrong fri/gcm set, and the output directory name will not reveal it:
+#   iland_scenarios_onlyfire.csv          <-> *_2015-2100scenario_onlyfire.xml
+#   iland_scenarios_onlyfire_historic.csv <-> *_1950-2015historic_onlyfire.xml
+# The runner echoes the CSV it resolved on startup -- worth a glance.
 #
 # The per-landscape blocks are separate on purpose: each is launched in its own
 # terminal so landscapes run concurrently. Three at a time saturates this machine
@@ -33,16 +34,17 @@ runner="${root}/onlyfire_local/run_iland_csv_cpxml_local.sh"
 
 
 # ------------------------ scenario runs, 2015-2100 -------------------------- #
-# Runner must be pointing at iland_scenarios_onlyfire.csv
 
 # ten reps of a single landscape
 for n in 01; do
+    ILAND_SCENARIO_CSV=iland_scenarios_onlyfire.csv \
     bash "${runner}" \
         "${root}/landscape_alaska_${n}/landscape_alaska_${n}_2015-2100scenario_onlyfire.xml" 1 10 86
 done
 
 # ten reps of each landscape, one landscape after another in a single terminal
 for n in 01 02 03; do
+    ILAND_SCENARIO_CSV=iland_scenarios_onlyfire.csv \
     bash "${runner}" \
         "${root}/landscape_alaska_${n}/landscape_alaska_${n}_2015-2100scenario_onlyfire.xml" 1 10 86
 done
@@ -51,16 +53,19 @@ done
 #### one rep per landscape -- run each block in its own terminal
 
 for n in 01; do
+    ILAND_SCENARIO_CSV=iland_scenarios_onlyfire.csv \
     bash "${runner}" \
         "${root}/landscape_alaska_${n}/landscape_alaska_${n}_2015-2100scenario_onlyfire.xml" 1 1 86
 done
 
 for n in 02; do
+    ILAND_SCENARIO_CSV=iland_scenarios_onlyfire.csv \
     bash "${runner}" \
         "${root}/landscape_alaska_${n}/landscape_alaska_${n}_2015-2100scenario_onlyfire.xml" 1 1 86
 done
 
 for n in 03; do
+    ILAND_SCENARIO_CSV=iland_scenarios_onlyfire.csv \
     bash "${runner}" \
         "${root}/landscape_alaska_${n}/landscape_alaska_${n}_2015-2100scenario_onlyfire.xml" 1 1 86
 done
@@ -69,20 +74,22 @@ done
 ###################################
 ##### historic only fire runs #####
 ###################################
-# Runner must be pointing at iland_scenarios_onlyfire_historic.csv
 # 66 simulation years, started from the spinup snapshot.
 
 for n in 04; do
+    ILAND_SCENARIO_CSV=iland_scenarios_onlyfire_historic.csv \
     bash "${runner}" \
         "${root}/landscape_alaska_${n}/landscape_alaska_${n}_1950-2015historic_onlyfire.xml" 1 1 66
 done
 
 for n in 05; do
+    ILAND_SCENARIO_CSV=iland_scenarios_onlyfire_historic.csv \
     bash "${runner}" \
         "${root}/landscape_alaska_${n}/landscape_alaska_${n}_1950-2015historic_onlyfire.xml" 1 1 66
 done
 
 for n in 06; do
+    ILAND_SCENARIO_CSV=iland_scenarios_onlyfire_historic.csv \
     bash "${runner}" \
         "${root}/landscape_alaska_${n}/landscape_alaska_${n}_1950-2015historic_onlyfire.xml" 1 1 66
 done

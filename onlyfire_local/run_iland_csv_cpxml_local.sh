@@ -32,11 +32,24 @@ if command -v cygpath &>/dev/null; then
   output_path="$(cygpath -m "${output_path}")"
 fi
 script_dir=$(cd "$(dirname "$0")" && pwd)
-# Hard-coded by design -- swap this line to switch tracks. It must match the XML
-# being passed in: iland_scenarios_onlyfire.csv pairs with the
-# _2015-2100scenario_onlyfire.xml files, iland_scenarios_onlyfire_historic.csv
-# with the _1950-2015historic_onlyfire.xml files. Nothing checks the pairing.
-csv_name="${script_dir}/iland_scenarios_onlyfire_historic.csv"
+
+# Which scenario CSV to run. Set ILAND_SCENARIO_CSV to switch tracks instead of
+# editing this line -- accepts either a bare filename in this directory or a full
+# path. The CSV must match the XML passed in:
+#   iland_scenarios_onlyfire.csv          <-> *_2015-2100scenario_onlyfire.xml
+#   iland_scenarios_onlyfire_historic.csv <-> *_1950-2015historic_onlyfire.xml
+# A mismatch still runs, just with the wrong fri/gcm set, and the output
+# directory name will not make it obvious -- so run_iland_local.sh sets this
+# explicitly in every block rather than relying on the default below.
+csv_name="${ILAND_SCENARIO_CSV:-iland_scenarios_onlyfire_historic.csv}"
+# Resolve a bare filename against this directory; leave a full path alone.
+[ -f "${csv_name}" ] || csv_name="${script_dir}/${csv_name}"
+if [ ! -f "${csv_name}" ]; then
+    echo "scenario CSV not found: ${csv_name}" >&2
+    echo "  set ILAND_SCENARIO_CSV to a filename in ${script_dir} or a full path" >&2
+    exit 1
+fi
+echo "scenario CSV: ${csv_name}"
 
 mkdir -p "${output_path}"
 
