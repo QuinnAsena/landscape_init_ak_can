@@ -6,7 +6,7 @@
 # Paths are absolute, so a block behaves the same whether it is pasted into a
 # shell sitting in the repo root, in this directory, or anywhere else. Previously
 # these were relative and only worked from the root, which broke when the launch
-# files moved into onlyfire_local/. Override ILAND_REPO if the checkout moves.
+# files moved into local-launch/. Override ILAND_REPO if the checkout moves.
 #
 # Every block names its own CSV via ILAND_SCENARIO_CSV, so no block depends on
 # whatever the runner happens to default to, and switching tracks needs no edits.
@@ -23,7 +23,7 @@
 # ---------------------------------- SETUP ----------------------------------- #
 
 root="${ILAND_REPO:-Z:/personal_storage/quinn_storage/landscape_init_ak_can}"
-runner="${root}/onlyfire_local/run_iland_csv_cpxml_local.sh"
+runner="${root}/local-launch/run_iland_csv_cpxml_local.sh"
 
 # Arguments: <xml> <start_rep> <end_rep> <simulation_years>
 #
@@ -92,4 +92,24 @@ for n in 06; do
     ILAND_SCENARIO_CSV=iland_scenarios_onlyfire_historic.csv \
     bash "${runner}" \
         "${root}/landscape_alaska_${n}/landscape_alaska_${n}_1950-2015historic_onlyfire.xml" 1 1 66
+done
+
+###################################
+#####      spinup  test       #####
+###################################
+# NOTE the CSV: iland_spinups.csv lives in spin-up-launch/, not here, so it must
+# be given as a FULL PATH. A bare filename is resolved against this directory and
+# would not be found.
+#
+# 300 years is the real spinup and takes many hours locally. For a wiring test use
+# 10 years, NOT 2: onYearEnd fires for years 1..N and the spinup workflow writes
+# KBDI only when year % 10 == 0, so a 2-year run produces no grid at all and
+# proves nothing. A 10-year run produces kbdi_10.txt, which confirms
+# saveWorkflow_spinup.js was found, parsed and fired. Only a full 300-year run
+# writes snapshot/spinup_300.sqlite.
+
+for n in 01; do
+    ILAND_SCENARIO_CSV="${root}/spin-up-launch/iland_spinups.csv" \
+    bash "${runner}" \
+        "${root}/landscape_alaska_${n}/landscape_alaska_${n}_1950-1980spinup.xml" 1 1 300
 done
