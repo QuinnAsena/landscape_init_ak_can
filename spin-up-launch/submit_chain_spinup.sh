@@ -8,31 +8,45 @@
 # = 3 nodes at --steps-per-node 3. With no argument the six batches are chained
 # with PBS afterok, so landscape 02 is held until 01 finishes.
 #
-# START WITH A SINGLE LANDSCAPE. Two things are unproven in this round and both
-# show up in the first batch:
+# START WITH A SINGLE LANDSCAPE, but for output volume rather than runtime or
+# memory. Node packing is settled: --steps-per-node 3 is the configuration the
+# earlier spinups were scaled up to and ran at. (An older note here cited
+# --steps-per-node 1 --nthreads 128 from commit 78f793c; that was an early
+# scaling test, not the production setting.)
 #
-#   1. Node packing. The spinups that produced the current snapshots ran at
-#      --steps-per-node 1 --nthreads 128, i.e. one replicate per node. This round
-#      packs three. The 86-year scenarios already reach ~157 GB of the 235 GB
-#      request at this packing, and a 300-year run carries a mature canopy with
-#      more trees, so per-step memory will be higher. Check qhist for peak memory
-#      before chaining the rest; if it is close to 235 GB, drop to
-#      --steps-per-node 1 and set REPS/batching in generate_spinup_cmdfiles.sh
-#      accordingly.
+# What the first batch is actually for: confirming saveWorkflow_spinup.js does
+# its job. Check in the replicate output directory that
+#     spinup_300.sqlite exists
+#     kbdi/ holds ~31 grids (years 0, 10 ... 300), not 301
+# The snapshot write was silently disabled between 2026-08-13 and 2026-08-19 by a
+# second onYearEnd declaration shadowing the first, so it is worth an explicit
+# look. This is also the first round using the split workflow files, so it proves
+# iLand resolves the renamed script via <system><path><script>.
 #
-#   2. saveWorkflow.js. Its two onYearEnd declarations were merged on 2026-08-19
-#      -- the later one had been silently shadowing snapShot() since 2026-08-13,
-#      so spinups in that window would have written no snapshot. After the first
-#      batch, confirm in the rep output directory:
-#         spinup_300.sqlite exists
-#         kbdi/ holds ~31 grids (years 0, 10 ... 300), not 301
+# WALLTIME 5 h, expect roughly 3-3.5 h. Do not read the local timing as the
+# Derecho figure: a single 300-year spinup with these reduced outputs took 1 h 32 m
+# locally with the whole machine to itself, while the comparable old Derecho
+# spinup at 3 steps per node took 7 h 18 m with all outputs on. Comparing the two
+# logs separates the two effects:
 #
-# WALLTIME is 12 h for this test round, down from the 18 h used historically. The
-# XMLs were regenerated on 2026-08-19 with tree/sapling/carbon/water outputs
-# disabled, which should cut write volume enough to fit -- but 300 years at 40
-# threads is roughly 9-10 h by the scenario scaling, so the margin is thin. If the
-# first batch is killed on walltime rather than memory, raise this to 18:00:00
-# rather than reducing the replicate count.
+#   timer                    old (Derecho, 3/node)   new (local, alone)
+#   ModelController:runYear        7h 17m 46s           1h 32m 02s
+#   outputs                        4h 17m 30s              25m 31s
+#   TreeOut::exec()                3h 32m 10s              absent
+#   non-output remainder            ~3h 01m                ~1h 07m
+#
+# Disabling save_tree removed TreeOut::exec() entirely -- 82% of the old output
+# time. But the non-output remainder still fell 3h 01m -> 1h 07m, and that 2.7x is
+# node sharing and hardware, not outputs. So on Derecho at 3 steps per node,
+# expect ~3 h of compute plus reduced output time -- call it 3-3.5 h. Walltime was
+# cut 12 h -> 5 h on 2026-08-21 because a shorter request backfills sooner on
+# Derecho; that leaves ~1.5 h of margin. A walltime kill is recoverable (no
+# .complete sentinel means the replicate simply re-runs), but it costs the queue
+# wait, so check qhist elapsed on the first batch before chaining the rest.
+#
+# Output volume is the thing to watch instead: that timing run produced a 25 GB
+# output database plus a 10 GB snapshot per replicate, and 54 replicates of that
+# is ~1.9 TB on scratch. Check the quota before chaining all six landscapes.
 #
 # The snapshot lands in the replicate's output directory, NOT in the landscape's
 # snapshot/ folder:
@@ -46,7 +60,7 @@
 # Regenerate the cmdfiles with generate_spinup_cmdfiles.sh after changing the matrix.
 set -euo pipefail
 
-WALLTIME="12:00:00"
+WALLTIME="5:00:00"
 STEPS_PER_NODE=3          # must match STEPS_PER_NODE in generate_spinup_cmdfiles.sh
 LAUNCH="launch_cf -A UCIE0001 -l walltime=${WALLTIME} --steps-per-node ${STEPS_PER_NODE} --ppn 128 --nthreads 40 --mem 235GB -l job_priority=economy"
 script_dir=$(cd "$(dirname "$0")" && pwd)

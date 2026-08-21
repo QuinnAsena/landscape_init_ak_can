@@ -114,6 +114,93 @@ TaiESM1ssp370_dbh2.5_onlysimfalse_fri60_onlyfire           # local
 
 ---
 
+## Spinup output volume and runtime
+
+### 2026-08-21 — The `tree` output is 95% of a spinup database and half its runtime
+**Context:** the 300-year spinups were producing 300-500 GB output databases and taking ~7.3 h
+on Derecho. Script 13's spinup block was changed on 2026-08-19 to disable four of the six
+output blocks (`tree`, `sapling`, `carbon`, `water`; `stand` and `saplingdetail` kept), and a
+local timing run then finished in 1 h 32 m with a 25 GB database. `analysis-scripts/derecho-spotcheck.R`
+was written to attribute the difference per table without reading any table into memory.
+
+**Finding — it is almost entirely `tree`.** On the old full-output spinup (landscape_03 rep_3,
+412.92 GB): `tree` 2.58 billion rows apportioning to ~391 GB, i.e. 94.6% of the file.
+`saplingdetail` 19.8 GB, `stand` 1.0 GB, and the other three disabled tables — `carbon` 0.64,
+`sapling` 0.49, `water` 0.30 — total 1.4 GB between them. Disabling `carbon`/`sapling`/`water`
+saved nothing worth having; disabling `tree` saved ~391 GB.
+
+The timers say the same thing. `TreeOut::exec()` was 3 h 32 m of the old run — 82% of its
+4 h 17 m `outputs` timer and ~48% of the entire 7 h 18 m wall clock — and is absent from the
+new run entirely.
+
+**`tree` is not a filter bug.** It was suspected of saving all 300 years rather than the
+`filt_cond = 260` window. It was not: `carbon` and `water` are per-RU-per-year tables and both
+had exactly 2,514,243 rows, which is 61,323 RUs x 41 years exactly, so the filter applied.
+`tree` is 2,579,534,174 / 2,514,243 RU-years = ~1026 trees per RU per year, a realistic
+mature-stand stem density. The table is inherently enormous because it is one row per
+individual tree per year.
+
+**Runtime expectation on Derecho: ~3.5-4 h, not 1.5 h.** The local 1 h 32 m had the whole
+machine; the old Derecho run shared a node at `--steps-per-node 3`. Non-output time alone fell
+3 h 01 m -> 1 h 07 m between them, a 2.7x gap that is hardware and node sharing, not outputs.
+Budget ~3 h compute plus reduced output time against the 12 h walltime.
+
+**Disk is now the binding constraint, not walltime.** ~25 GB output + ~10 GB snapshot per
+replicate, so 54 replicates is ~1.9 TB on scratch. Eight of the nine snapshots per landscape
+are discardable once a replicate is chosen for `landscape_nn/snapshot/`, which is ~480 GB of
+that total.
+
+**KBDIref is visible in the snapshot, in the intended direction.** Same landscape (01), same
+climate seed, KBDIref 0.038 -> 0.029: `trees` 91.6 M -> 68.4 M (-25.3%), `saplings`
+88.2 M -> 95.0 M (+7.7%), file 12.50 -> 10.12 GB. Fewer mature trees and more regeneration is
+the signature of more fire, which is what lowering the reference value should do. `snag` and
+`soil` stayed identical at 60,462 rows — they are one row per simulated RU, so that is the
+control confirming the landscape geometry did not move.
+
+That 60,462 also independently confirms the KBDI zero-cell diagnosis: landscape_01 has 60,573
+in-footprint cells, 111 of which are always-zero KBDI, leaving exactly 60,462 simulated RUs.
+Two unrelated measurements agree.
+
+**How to measure this without a login-node OOM:** `dbstat` is unavailable (RSQLite is not built
+with `SQLITE_ENABLE_DBSTAT_VTAB`), and `collect()` on a `water` table will not fit in memory.
+Instead `max(rowid)` gives the row count from the rightmost b-tree page in O(log n), and the
+payload byte sum is computed inside SQLite over a `LIMIT`ed sample so only one number is
+returned. Year ranges come from evenly spaced `where rowid = ?` seeks, exploiting the fact that
+iLand appends in year order. 35 GB across two databases profiled in 0.58 s with flat memory.
+The seeks are latency-bound, so keep the probe count low.
+
+
+### 2026-08-21 — Old spinup snapshots archived out of reach of the project files
+**Context:** the six `landscape_alaska_NN/snapshot/spinup_300.sqlite` files were produced
+May-July 2026 with `<KBDIref>` at the master default of 0.038 for every landscape. The 2026-08
+round replaces that with a per-landscape value (01 0.029, 02 0.026, 03 0.032, 04-06 0.030), so
+those snapshots are superseded — but the scenario CSVs reference `snapshot_file =
+snapshot/spinup_300`, and the files still sat at exactly that path.
+**Decision/Finding:** moved each to
+`landscape_alaska_NN/snapshot/archive_2026-05_kbdiref-default-0.038/spinup_300.sqlite` with a
+per-landscape `README.md` recording the KBDIref used, the file size, and the `trees` /
+`saplings` / `snag` / `soil` row counts. 62.73 GB total, all six untracked by git so the move
+created no churn.
+**Why:** the window between the new spinups finishing and their snapshots being collected was
+a silent-failure trap. A scenario run launched in that window would have started from the
+0.038 state with nothing to indicate it — no error, no warning, just the wrong initial
+conditions. With the file moved, iLand fails on a missing `snapshot/spinup_300.sqlite`
+instead. A loud failure is the whole point of the move.
+
+**Bonus confirmation, all six landscapes.** `snag` and `soil` hold one row per simulated
+resource unit, and those counts match the KBDI-nonzero cell counts in
+`data/kbdi_summary/kbdi_summary.csv` **exactly** for every landscape — 60,462 / 61,470 /
+61,322 / 60,666 / 61,588 / 61,747. Two entirely unrelated measurements agreeing six times over
+settles the earlier zero-cell diagnosis: KBDI > 0 identifies precisely the RUs iLand simulates.
+
+**Gotcha for anyone reusing `derecho-spotcheck.R`:** `select min(rowid), max(rowid) from tbl`
+in one query **full-scans the table**. SQLite's min/max optimisation only fires when the query
+holds exactly one aggregate — `EXPLAIN QUERY PLAN` shows `SEARCH` for either alone and `SCAN`
+for both together. That is 0.05 s versus 136 s on a 466 M-row table locally, and it never
+finished against a 412 GB table on a Derecho login node. Split it into two queries.
+
+---
+
 ## Known Fragilities (from `issues-codex5.3.md`)
 
 Not urgent for controlled pipeline runs, but worth awareness:
