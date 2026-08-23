@@ -60,7 +60,7 @@
 # Regenerate the cmdfiles with generate_spinup_cmdfiles.sh after changing the matrix.
 set -euo pipefail
 
-WALLTIME="5:00:00"
+WALLTIME="10:00:00"
 STEPS_PER_NODE=3          # must match STEPS_PER_NODE in generate_spinup_cmdfiles.sh
 LAUNCH="launch_cf -A UCIE0001 -l walltime=${WALLTIME} --steps-per-node ${STEPS_PER_NODE} --ppn 128 --nthreads 40 --mem 235GB -l job_priority=economy"
 script_dir=$(cd "$(dirname "$0")" && pwd)

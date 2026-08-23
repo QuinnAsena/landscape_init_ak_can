@@ -54,7 +54,7 @@ rep_nums  <- sort(as.integer(sub("rep_", "", grep("^rep_", rep_dirs, value = TRU
 if (length(rep_nums) == 0) stop("No replicate directories found in: ", file.path(data_path, treatment))  # guard; no Rmd equivalent
 
 # Load fire table from each replicate SQLite and bind into one data frame; Rmd L157-168: for loop over i=1:10 reading CPCRW_sm_i.sqlite, rbind(fire,df)
-fire <- dplyr::bind_rows(lapply(rep_nums, function(rep) {
+fire_raw <- dplyr::bind_rows(lapply(rep_nums, function(rep) {
   input_file <- file.path(
     data_path, treatment,
     paste0("rep_", rep),
@@ -68,10 +68,26 @@ fire <- dplyr::bind_rows(lapply(rep_nums, function(rep) {
   df <- DBI::dbReadTable(db, "fire")                            # Rmd L161: df <- dbReadTable(db.conn, "fire")
   DBI::dbDisconnect(db)                                         # Rmd L162: dbDisconnect(db.conn)
   df$replicate <- rep                                           # Rmd L166: df$replicate=i
-  # Filter could end up with empty data frame if no fire in last 100 years of sim (unlikely)
-  df <- df |> filter(year >= 200)                               # Rmd L482: fire %>% filter(year>200) — keep only post-spinup years
   df
 }))
+
+# Raw fire table: every event, every replicate, all simulated years, straight from
+# the database. Tiny (the local 300-year spinup logged 43 events) and worth having
+# on disk so "how much burned" does not mean reopening a 25 GB database. Written
+# before the year filter below, which is what the rest of this script analyses.
+if (nrow(fire_raw)) {
+  write.csv(fire_raw,
+            file.path(output_dir, "fire_table.csv"),
+            row.names = FALSE)
+  message("fire_table.csv: ", nrow(fire_raw), " events across ",
+          length(unique(fire_raw$replicate)), " replicate(s), years ",
+          min(fire_raw$year), "-", max(fire_raw$year))
+} else {
+  warning("fire table is empty for ", treatment, " -- fire_table.csv not written")
+}
+
+# Filter could end up with empty data frame if no fire in last 100 years of sim (unlikely)
+fire <- fire_raw |> filter(year >= 200)                         # Rmd L482: fire %>% filter(year>200) — keep only post-spinup years
 
 #------------------------------------------------------------------------------#
       # Temporary files for testing
@@ -197,6 +213,62 @@ if (is.na(hist_firesize) || is.na(hist_firefreq)) {  # guard for no historical d
 cat("Replicate summary (last 100 sim years):\n")
 print(as.data.frame(fire_summary))
 cat("\nSelected replicate:", best_rep, "\n\n")  # diagnostic; no Rmd equivalent
+
+#------------------------------------------------------------------------------#
+# Put the best-matching replicate's snapshot where the scenario runs will find it
+#
+# Every scenario and historic run starts from `snapshot_file = snapshot/spinup_300`
+# in its CSV, which iLand resolves against the project home in /glade/work. So the
+# chosen replicate's spinup_300.sqlite has to be copied from scratch into
+# <landscape>/snapshot/. Doing it here means the choice and the copy cannot
+# disagree -- best_rep above is the only thing that decides it.
+#
+# The old snapshots were archived on 2026-08-21 precisely because a stale file at
+# this path is invisible: a scenario run would start from the wrong state with no
+# error. Hence the guards below -- an existing snapshot is never replaced silently.
+#------------------------------------------------------------------------------#
+
+overwrite_snapshot <- FALSE   # set TRUE to deliberately replace an existing snapshot
+
+# landscape is the XML basename, e.g. "landscape_alaska_06_1950-1980spinup".
+# Strip the year-range suffix to get the directory: "landscape_alaska_06".
+landscape_dir <- sub("_[0-9]{4}-[0-9]{4}.*$", "", landscape)
+snap_src      <- file.path(data_path, treatment, paste0("rep_", best_rep), "spinup_300.sqlite")
+snap_dest_dir <- file.path("/glade/work", user, "landscape_init_ak_can", landscape_dir, "snapshot")
+snap_dest     <- file.path(snap_dest_dir, "spinup_300.sqlite")
+
+if (!grepl("spinup", landscape)) {
+  # Scenario and historic runs consume a snapshot, they do not produce one.
+  message("not a spinup run (", landscape, ") -- no snapshot to collect")
+} else if (!file.exists(snap_src)) {
+  warning("spinup run but no snapshot found at ", snap_src,
+          " -- check that saveWorkflow_spinup.js ran (snapShot() fires at year 300 only)")
+} else if (file.exists(snap_dest) && !overwrite_snapshot) {
+  message("snapshot already present, NOT overwriting: ", snap_dest)
+  message("  existing:  ", round(file.size(snap_dest) / 2^30, 2), " GB, modified ",
+          format(file.mtime(snap_dest), "%Y-%m-%d"))
+  message("  candidate: ", round(file.size(snap_src) / 2^30, 2), " GB from rep_", best_rep)
+  message("  set overwrite_snapshot <- TRUE to replace it")
+} else {
+  dir.create(snap_dest_dir, recursive = TRUE, showWarnings = FALSE)
+  message("copying snapshot from rep_", best_rep, " (",
+          round(file.size(snap_src) / 2^30, 2), " GB)")
+  message("  from: ", snap_src)
+  message("  to:   ", snap_dest)
+  ok <- file.copy(snap_src, snap_dest, overwrite = TRUE)
+  # Verify rather than trust file.copy's return value: this is ~10 GB across a
+  # filesystem boundary, and a truncated copy would hand every scenario run a
+  # corrupt starting state.
+  if (!ok) {
+    stop("file.copy reported failure writing ", snap_dest)
+  }
+  if (file.size(snap_dest) != file.size(snap_src)) {
+    stop("snapshot copy is truncated: ", file.size(snap_dest), " bytes at destination vs ",
+         file.size(snap_src), " at source -- delete ", snap_dest, " and retry")
+  }
+  message("  copied and size-verified: ", format(file.size(snap_dest), big.mark = ",", scientific = FALSE), " bytes")
+}
+
 
 
 
