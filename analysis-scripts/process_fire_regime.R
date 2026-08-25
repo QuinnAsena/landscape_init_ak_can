@@ -6,13 +6,15 @@ library(terra)
 # CLI arguments: landscape and treatment are passed by the calling script/bash job; no Rmd equivalent
 args      <- commandArgs(TRUE)
 landscape <- args[1]   # e.g. "landscape_alaska_01_1950-1980spinup"
-treatment <- args[2]   # e.g. "NorEsm2-MMssp126_dbh2.5_onlysimfalse_yr_1_iLand2.1"
+treatment <- args[2]   # e.g. "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120"
+                       # naming contract lives in run_iland_csv_cpxml_apptainer.sh:
+                       #   ${gcm}_dbh${dbh}_onlysim${onlysim}_fri${fri}${id:+_${id}}
 
 # HPC paths constructed from args; replaces Rmd L155-163 on_ws flag + hardcoded workspace paths
 
   # for login node. Remember to comment-out
   # Easy enough to run such a light script on the login node pre landscape.
-  landscape <- "landscape_alaska_01_1950-1980spinup"
+  landscape <- "landscape_alaska_02_1950-1980spinup"
   treatment <- "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120"
 
 user       <- "qasena"
@@ -439,5 +441,65 @@ write.csv(ak_grid_stats,
           file.path(output_dir, "ak_grid_stats.csv"),
           row.names = FALSE)
 
-cat("Outputs written to:", output_dir, "\n")
-cat("\nDone:", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n")
+#------------------------------------------------------------------------------#
+# Section 7: Copy the chosen replicate's raw KBDI grids into the processed tree.
+#
+# saveWorkflow_spinup.js writes one KBDI grid per decade to <treatment>/rep_N/kbdi/.
+# Copying them under processed/ puts them beside the other derived outputs, so they
+# can be pulled down without dragging the ~25 GB output databases along.
+#
+# COPY, never move. An earlier version of this block moved the files and nearly
+# destroyed the only copy of the KBDI data. The run directories on scratch are
+# PRIMARY output: nothing in this pipeline should delete from them, however
+# convenient it looks. Reclaiming space there is a deliberate, separate decision.
+#
+# Only best_rep is copied. That replicate is selected above by the fire-regime
+# comparison and its snapshot is the one placed in <landscape>/snapshot/ for the
+# scenario runs, so it is the state the KBDI grids need to correspond to.
+#------------------------------------------------------------------------------#
+kbdi_src <- file.path(data_path, treatment, paste0("rep_", best_rep), "kbdi")
+kbdi_dst <- file.path(data_path, "processed", treatment, "kbdi")
+
+if (!dir.exists(kbdi_src)) {
+  cat("KBDI: no kbdi directory for rep", best_rep, "-- nothing to copy\n")
+} else {
+  kbdi_files <- list.files(kbdi_src, pattern = "\\.txt$", full.names = TRUE)
+  kbdi_have  <- if (dir.exists(kbdi_dst)) list.files(kbdi_dst, pattern = "\\.txt$") else character(0)
+
+  if (!length(kbdi_files)) {
+    warning("no KBDI grids found in ", kbdi_src,
+            " -- a spinup should have written one per decade")
+
+  } else if (length(kbdi_have)) {
+    # Leave a populated destination alone rather than merging into it. The grid
+    # filenames are kbdi_<year>.txt and carry no replicate number, so a mix of two
+    # replicates would be indistinguishable after the fact. best_rep is recorded in
+    # annual_fire_summary.csv if you need to check which one is sitting there.
+    cat("KBDI: destination already holds", length(kbdi_have),
+        "grid(s), leaving it alone\n")
+    cat("      clear it by hand if best_rep has changed since it was written\n")
+
+  } else {
+    dir.create(kbdi_dst, recursive = TRUE, showWarnings = FALSE)
+    kbdi_dest <- file.path(kbdi_dst, basename(kbdi_files))
+    ok <- file.copy(kbdi_files, kbdi_dest, overwrite = FALSE)
+
+    # Verify rather than trust file.copy's return value, as the snapshot copy above
+    # does: a short write would leave a plausible-looking but wrong grid.
+    src_bytes <- sum(file.size(kbdi_files))
+    dst_bytes <- sum(file.size(kbdi_dest[file.exists(kbdi_dest)]))
+
+    if (!all(ok) || dst_bytes != src_bytes) {
+      warning("KBDI copy incomplete for rep ", best_rep, ": ", sum(ok), "/",
+              length(ok), " file(s), ", dst_bytes, " of ", src_bytes,
+              " bytes. Source is untouched.")
+    } else {
+      cat("KBDI:", length(kbdi_files), "grid(s) copied for rep", best_rep, "->",
+          kbdi_dst, "\n")
+      cat("      source retained at", kbdi_src, "\n")
+    }
+  }
+}
+
+cat("\nOutputs written to:", output_dir, "\n")
+cat("Done:", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n")

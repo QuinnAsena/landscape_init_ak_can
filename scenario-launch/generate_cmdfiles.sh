@@ -4,16 +4,20 @@
 #
 # Matrix (scenario runs only -- the spinup snapshots are an input, not a run):
 #   landscapes 01-06   ssp245, ssp370   fri 60, 120
-#   onlysim=false  fire burns biomass           reps 1-9
-#   onlysim=true   fire simulated, no effect    reps 1-3
+#   onlysim=false  fire burns biomass           reps 1-12
+#   onlysim=true   fire simulated, no effect    rep  1
 #
-# 6 lcp x 2 ssp x 2 fri x (9+3) reps = 288 lines = 864 model runs.
+# 6 lcp x 2 ssp x 2 fri x (12+1) reps = 312 lines = 936 model runs.
 #
-# Revised 2026-08-19: dropped ssp126, added the fri 60 / fri 120 contrast, and cut
-# onlysim=false from 12 reps to 9 to claw back the time the doubled fri axis costs.
+# Revised 2026-08-19: dropped ssp126, added the fri 60 / fri 120 contrast.
 #
-# onlysim=true uses 3 reps because replication does not matter there -- 3 simply
-# fills a node at --steps-per-node 3. onlysim=false carries the replication.
+# Revised 2026-08-25 after the thread-scaling study (thread-scaling-test/report.md):
+# onlysim=true drops from 3 reps to 1 and steps-per-node rises from 3 to 4. The 3
+# reps existed because they "used up no additional resources" -- true only if a node
+# is CPU-saturated, which the ~95% CPU reading appeared to show. It is not: that CPU
+# was 3 steps x 256 threads contending for 128 cores, and the real limit is MEMORY,
+# ~41-53 GB per step. Every extra step therefore consumes a real slot, so a rep that
+# adds nothing scientifically is no longer free. onlysim=false carries replication.
 #
 # fri lives in its own CSV rather than as extra rows inside one. A line loops
 # every row of its CSV, so folding both fri values into one file would put 6 rows
@@ -23,11 +27,12 @@
 # One line = one landscape x one ssp x one fri x one onlysim x one rep. Each line
 # loops the three GCM rows of its CSV, so ~8 h of work inside a 12 h walltime.
 #
-# Batch size must stay a multiple of STEPS_PER_NODE, otherwise a short trailing
-# batch leaves a whole node running fewer reps than it could. That holds here
-# exactly: each landscape-ssp-fri block is 9+3 = 12 lines, so a chain is 96 lines
-# = 8 batches of 12 with no remainder. The check at the bottom re-verifies it if
-# the matrix changes.
+# Every cmdfile must hold a multiple of STEPS_PER_NODE lines, or its last node runs
+# fewer steps than it could. That still holds after 2026-08-25 even though 12+1 = 13
+# is not itself a multiple of 4: lines are flattened before chunking, so a chain of
+# 2 x 2 x 2 x 13 = 104 lines splits into 6 batches of 16 plus one of 8, and both 16
+# and 8 are multiples of 4. The trailing job is simply smaller (2 nodes rather than
+# 4), not under-filled. The check at the bottom re-verifies this if the matrix moves.
 #
 # The three chains are independent and split by landscape, so no two chains
 # touch the same source directory; submit them one at a time to scale
@@ -40,11 +45,11 @@ set -euo pipefail
 DIR="/glade/work/qasena/landscape_init_ak_can"   # path as seen on Derecho
 RUNNER="${DIR}/run_iland_csv_cpxml_apptainer.sh"
 YEARS=86
-STEPS_PER_NODE=3          # must match --steps-per-node in submit_chain.sh
+STEPS_PER_NODE=4          # must match --steps-per-node in submit_chain.sh
 NODES_PER_JOB=4
 BATCH=$(( NODES_PER_JOB * STEPS_PER_NODE ))
-REPS_FALSE=9
-REPS_TRUE=3
+REPS_FALSE=12
+REPS_TRUE=1
 SSPS="245 370"            # ssp126 dropped from this round
 FRIS="60 120"             # fire return interval contrast
 

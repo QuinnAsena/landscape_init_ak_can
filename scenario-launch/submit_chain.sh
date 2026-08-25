@@ -11,13 +11,14 @@
 #   B   landscapes 03, 04    8 batches    96 lines
 #   C   landscapes 05, 06    8 batches    96 lines
 #
-# Each batch is 12 lines = 4 nodes at --steps-per-node 3, so 12 replicates run
-# concurrently per chain (36 with all three chains live). Each line loops the
-# three GCM rows of its CSV, ~8 h inside the 12 h walltime.
+# A full batch is 16 lines = 4 nodes at --steps-per-node 4, so 16 replicates run
+# concurrently per chain (48 with all three chains live). Each line loops the
+# three GCM rows of its CSV, ~8 h inside the 12 h walltime -- but see the note on
+# contention below.
 #
-# Revised 2026-08-19 for the ssp245/ssp370 x fri 60/120 matrix at 9 reps
-# (onlysim=false) and 3 (onlysim=true): 288 lines, 96 per chain, which divides
-# into exactly 8 batches of 12 with no short trailing batch. Keep
+# Revised 2026-08-25: 12 reps (onlysim=false) and 1 (onlysim=true) -> 312 lines,
+# 104 per chain, which chunks into 6 batches of 16 plus one of 8. Both are
+# multiples of 4, so no node is under-filled; the last job is just smaller. Keep
 # --steps-per-node here in step with STEPS_PER_NODE in generate_cmdfiles.sh,
 # which checks that.
 #
@@ -26,12 +27,20 @@
 # sharing the same directory key (earlier ssp245 rounds included) is destroyed
 # by a resubmission. Move it aside first if it is worth keeping.
 #
-# steps-per-node stays at 3 on MEMORY, not CPU. The ~95% node CPU at 3 x 40
-# threads is not evidence the cores are needed: 3 x 40 = 120 threads on 128
-# cores, and thread-scaling-test/report.md measured a replicate reaching its
-# floor at 8 threads, so most of that CPU is threads contending. The real
-# constraint is peak memory -- ~41-53 GB per step, so a 4th step takes the node
-# from ~157 GB to ~209 GB against a 235 GB request.
+# steps-per-node is a MEMORY question, not a CPU one, and it moved 3 -> 4 on
+# 2026-08-25. The ~95% node CPU at the old setting was never evidence the cores
+# were needed: threadCount was inherited as -1, so each step took all 256 logical
+# processors and three steps contended for 128 cores. A replicate stops getting
+# faster at 8 threads (thread-scaling-test/report.md), and threadCount is now set
+# explicitly to 16 by the runner. The binding limit is peak memory at ~41-53 GB
+# per step, so 4 steps is ~165-210 GB against a 235 GB request -- it fits, but
+# check qhist resources_used.mem on the first job rather than trusting that.
+#
+# WATCH THE WALLTIME. The ~8 h/line figure was measured at 3 steps per node. Four
+# instances contend more for memory bandwidth; locally three concurrent instances
+# ran 36% slower per instance than one alone. Derecho has more cores and memory
+# channels so it should be milder, but if a line drifts toward 11 h the 12 h
+# walltime gets tight. Check qhist elapsed on the first chain-A job.
 #
 # Regenerate the cmdfiles with generate_cmdfiles.sh after changing the matrix.
 #
@@ -51,7 +60,7 @@ esac
 # now sets (ILAND_THREADS, default 16). It was 40 here while iLand was actually
 # running 256 threads per step -- that mismatch is what made the node look
 # CPU-bound. Keep the two numbers in step so the next reader is not misled.
-LAUNCH="launch_cf -A UCIE0001 -l walltime=12:00:00 --steps-per-node 3 --ppn 128 --nthreads 16 --mem 235GB -l job_priority=economy"
+LAUNCH="launch_cf -A UCIE0001 -l walltime=12:00:00 --steps-per-node 4 --ppn 128 --nthreads 16 --mem 235GB -l job_priority=economy"
 script_dir=$(cd "$(dirname "$0")" && pwd)
 
 shopt -s nullglob
