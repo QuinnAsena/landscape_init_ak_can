@@ -1,0 +1,35 @@
+# Excerpt from derecho_temp_log.txt (103 MB, git-ignored) -- landscape_alaska_01
+# 300-year spinup on Derecho, 3 steps per node, threadCount inherited as -1.
+# This is the evidence behind the production-log section of report.md. The full
+# log is reproducible only by re-running on Derecho, so keep it somewhere durable.
+
+## The thread-count evidence: machine size present, applied cap ABSENT
+17:00:37:996: Multithreading enabled:  true thread count: 256
+# occurrences of 'set max thread count': 0  <-- zero means threadCount was -1
+
+## Run shape
+running model for 300 years
+
+## Whole-run summary timer block
+"carbon cylce" : "10.982s"
+"growTrees()" : "20m 45.296s"
+"establishment" : "34m 10.221s"
+"ModelController:runYear" : "4h 44m 51s"
+"Model::runYear()" : "4h 44m 51s"
+"applyPattern()" : "20m 47.871s"
+"growRU()" : "2m 6.484s"
+"outputs" : "46m 6.24s"
+"Fire:afterFire" : "3164ms"
+"readPattern()" : "55.79s"
+"Seed dispersal, establishment, sapling growth" : "3h 10m 31s"
+"SpeciesResponse::calculate" : "5m 59.493s"
+"execute javascript" : "18m 6.08s"
+"seed dispersal (all species)" : "2h 22m 42s"
+"Fire:ignition" : "2m 45.543s"
+"response+3pg" : "7m 17.328s"
+"seed dispersal" : "7h 42m 60s"
+"sapling growth" : "13m 37.602s"
+"modules" : "2m 45.551s"
+"OutputManager::execute()" : "27m 24.876s"
+"water:run" : "22m 35.817s"
+Timer "Timer for 301 runs" : "4h 44m 52s"

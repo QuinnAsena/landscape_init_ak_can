@@ -139,3 +139,7 @@ Single-site validation: `cpcrw_test.r` (Caribou-Poker Creeks).
 - `iland_scenarios.csv` — iLand scenario parameters (GCM, SSP, fire, epsilon, DBH, stand/env file variants)
 - `run_iland_csv_cpxml.sh` — shell script to execute iLand locally and on Derecho
 - `issues-codex5.3.md` — GPT code review (Priority 1/2 issues; not urgent, kept for reference)
+- `thread-scaling-test/` — completed performance study (see its own `CLAUDE.md` and `report.md`).
+  Settled: iLand stops scaling past **8 threads** (seed dispersal is parallel over *species*, 4 here);
+  a node is **memory-bound**, and memory grows with simulated years but not with thread count. Read it
+  before proposing any thread or steps-per-node change.

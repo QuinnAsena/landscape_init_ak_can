@@ -56,11 +56,13 @@ ul.task-list li input[type="checkbox"] {
 <p>Threads buy almost nothing beyond 8, and switching the output writers off shows this is not an artefact of output cost: <strong>compute alone does not scale past 8 threads either.</strong> Going from 8 to 32 threads changes total scenario runtime by ~1%.</p>
 <p>In order of how much they matter for the Derecho round:</p>
 <ol type="1">
-<li><strong>Nothing sets <code>threadCount</code> in production.</strong> The XML carries <code>-1</code> and the runner never overrides it, so every step asks for all 128 cores — 384 threads on a 3-step node. Check this first; it is one grep, and it gates everything below.</li>
+<li><strong>Production ran oversubscribed – now set explicitly, for a modest gain.</strong> The XML carries <code>-1</code>, so each step took every logical processor (256 on a Derecho node) and three steps meant 768 threads over 128 cores. Both runners now pass <code>system.settings.threadCount=${ILAND_THREADS}</code>, default <strong>16</strong>. A <em>single</em> instance shows no penalty from oversubscription (421 s at 256 threads vs 433 s at 8), but <strong>three concurrent instances run 6.0% faster at 16 threads than at 256</strong> — separate processes really do compete, where one process’s oversized pool just idles. Expect less than 6% on Derecho, which is 3x oversubscribed against 12x in this test.</li>
 <li><strong>A node is memory-bound, not CPU-bound</strong>, and memory does <em>not</em> depend on thread count (29.71 vs 29.66 GB at 8 vs 32 threads). Steps-per-node is a memory question only.</li>
 <li><strong>4 steps per node is supported, 5 is not.</strong> A production-length replicate peaks at 37.4 GB, so 4 steps is 149 GB locally and 165–210 GB once Derecho’s observed overhead is applied, against a 235 GB budget. Do this only after (1), since packing a node harder while every step requests all its cores makes contention worse.</li>
 <li><strong>8 threads per step is enough</strong> — scenario configuration <em>and</em> spinup. The writers-off sweep was expected to favour more threads and did not.</li>
-<li><strong>GeoTIFF grid inputs are correct</strong> and can replace the <code>.txt</code> grids, but no speed benefit is demonstrable from this data.</li>
+<li><strong>Per-year cost is not constant</strong> – it grows ~10x over a 300-year spinup (10.9 -&gt; 106.5 s/yr), and the growth is concentrated in seed dispersal, the phase threads cannot help. This is why <code>filt_cond</code> matters more than any thread setting.</li>
+<li><strong>Memory grows with simulated years</strong> (27.0 GB at 1 year -&gt; 37.4 GB at 86) and it is model state, not output buffers. So a short run cannot be used to size steps-per-node – the headline consequence being that a 5-year concurrency test would have waved 4 steps through on false evidence.</li>
+<li><strong>GeoTIFF grid inputs are correct</strong> and can replace the <code>.txt</code> grids, but no speed benefit is demonstrable: model creation is dominated by the snapshot load (~85 s) and the climate database, next to which the grids are a rounding error.</li>
 </ol>
 <p>The one thing that does not transfer from a short run is memory: it grows with simulated years, so a 5-year test would have cleared 4 steps far too easily. Timing proportions do transfer, and were confirmed against a full 86-year run.</p>
 </section>
@@ -125,7 +127,63 @@ ul.task-list li input[type="checkbox"] {
 <figcaption>scaling</figcaption>
 </figure>
 </div>
+<section id="what-the-columns-mean" class="level3">
+<h3 class="anchored" data-anchor-id="what-the-columns-mean">What the columns mean</h3>
+<p>Every figure is <strong>cumulative over the whole 5-year run</strong>, not per year — which is why <code>runYear</code> is 260 s for a 5-year simulation rather than 260 s per year. They come from iLand’s own timer block, printed once at the end of a run, and are read by <code>parse_timers.R</code>:</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>column</th>
+<th>iLand timer</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>runYear</code></td>
+<td><code>ModelController:runYear</code></td>
+<td>total time in the simulation loop, all 5 years. The denominator for everything else.</td>
+</tr>
+<tr class="even">
+<td><code>outputs</code></td>
+<td><code>outputs</code></td>
+<td>total time writing output, all years. Includes <code>OutputManager::execute()</code> and any JavaScript.</td>
+</tr>
+<tr class="odd">
+<td><code>compute</code></td>
+<td><em>derived</em></td>
+<td><code>runYear − outputs</code>. Not an iLand timer — my subtraction, on the assumption output and compute do not overlap. The <code>nooutput</code> sweep exists to test exactly that assumption, and confirmed it.</td>
+</tr>
+<tr class="even">
+<td><code>seed_disp</code></td>
+<td><code>seed dispersal</code></td>
+<td>total time in seed dispersal, all years. Reported because it turned out to be the phase that caps scaling.</td>
+</tr>
+<tr class="odd">
+<td><code>sp_total</code></td>
+<td><em>derived</em></td>
+<td>speedup of <code>runYear</code> relative to the 4-thread run: <code>runYear(4) / runYear(n)</code>.</td>
+</tr>
+<tr class="even">
+<td><code>sp_compute</code></td>
+<td><em>derived</em></td>
+<td>same for <code>compute</code>. Higher than <code>sp_total</code> because it excludes the serial output cost.</td>
+</tr>
+<tr class="odd">
+<td><code>ideal</code></td>
+<td><em>derived</em></td>
+<td>what linear scaling would give: <code>threads / 4</code>. The reference the others fail to reach.</td>
+</tr>
+</tbody>
+</table>
+<p>So the two columns to read against each other are <code>sp_compute</code> (what actually happened, 1.46–1.57) and <code>ideal</code> (what perfect scaling would give, 2–8).</p>
 <p><strong>8 threads captures all of the available gain.</strong> The 212–220 s spread across 8/16/24/32 is ~4%, and per-thread RNG gives each config a 0.03% different workload, so 24 threads being nominally fastest is noise rather than a result.</p>
+</section>
 </section>
 <section id="why-it-does-not-scale" class="level2">
 <h2 class="anchored" data-anchor-id="why-it-does-not-scale">Why it does not scale</h2>
@@ -202,8 +260,138 @@ ul.task-list li input[type="checkbox"] {
 188 179 178 174 175   175     146   153 149 150 151 150
 |&lt;------------ .txt -----------&gt;|  tif |&lt;---- .txt ----&gt;|</code></pre>
 <p>The five <code>nooutput</code> runs read the <strong>same <code>.txt</code> grids</strong> and matched <code>fmt_tif</code> at ~150 s. Creation time drifts downward across the session (188 → ~150, a 25% spread) regardless of format — consistent with OS page cache warming on the 10 GB snapshot. The format difference, if any, is smaller than that drift.</p>
-<p>Input volume is 80.2 MB of ASCII against 19.6 MB of GeoTIFF, read once per run. Measuring the real difference would need interleaved repeats (txt, tif, txt, tif, …) to average out the drift, and it is not worth the runs: even the optimistic 29 s is 0.16% of a 5 h replicate.</p>
+<p>Input volume is 80.2 MB of ASCII against 19.6 MB of GeoTIFF, read once per run.</p>
+<p><strong>Decomposing model creation shows why the format cannot matter much.</strong> Splitting three runs at their logged phase boundaries:</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 16%">
+<col style="width: 16%">
+<col style="width: 16%">
+<col style="width: 16%">
+<col style="width: 16%">
+<col style="width: 16%">
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
+<th>grids</th>
+<th>climate setup</th>
+<th>after climate</th>
+<th><code>loadSnapshot</code></th>
+<th>total creation</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>fmt_txt</code></td>
+<td>.txt</td>
+<td>36.6 s</td>
+<td>138.9 s</td>
+<td>85.4 s</td>
+<td>175.5 s</td>
+</tr>
+<tr class="even">
+<td><code>fmt_tif</code></td>
+<td>.tif</td>
+<td><strong>23.6 s</strong></td>
+<td>123.0 s</td>
+<td>84.2 s</td>
+<td>146.7 s</td>
+</tr>
+<tr class="odd">
+<td><code>n8</code></td>
+<td>.txt</td>
+<td>35.9 s</td>
+<td><strong>113.3 s</strong></td>
+<td>84.8 s</td>
+<td>149.2 s</td>
+</tr>
+</tbody>
+</table>
+<p>Two things kill the format explanation:</p>
+<ul>
+<li><strong>13 s of the 29 s “GeoTIFF win” is in the climate setup phase</strong> — loading 736 climate tables from SQLite, which grid format cannot possibly affect.</li>
+<li>In the phase where the grids <em>are</em> read, the <code>.txt</code> run <code>n8</code> was <strong>faster</strong> than the <code>.tif</code> run (113.3 s vs 123.0 s).</li>
+</ul>
+<p>And <code>loadSnapshot</code> is 84–85 s in all three, identical to within 1.4% — <strong>the single biggest component of model creation, ~57% of it, and completely independent of grid format.</strong> Grid reading never even earns its own timer; it is below the noise floor of a phase dominated by pulling 68 M trees out of a 10 GB snapshot and 736 climate tables out of SQLite.</p>
+<p>So your instinct about extent is right in direction but the specific reason is sharper: it is not that 80 MB is too small to matter in absolute terms, it is that model creation is dominated by the snapshot and the climate database, and the grids are a rounding error next to both. A landscape large enough for grid format to matter would have to have grids comparable in size to its snapshot.</p>
 <p>The reason to switch is disk footprint and tidiness, not speed.</p>
+</section>
+<section id="production-log-the-sandbox-conclusions-confirmed-on-derecho" class="level2">
+<h2 class="anchored" data-anchor-id="production-log-the-sandbox-conclusions-confirmed-on-derecho">Production log: the sandbox conclusions, confirmed on Derecho</h2>
+<p>A real 300-year spinup log from Derecho (<code>derecho_temp_log.txt</code>, 103 MB) settles two things the sandbox could only infer. Total run: <strong>4 h 44 m 52 s</strong>.</p>
+<p><strong>1. <code>threadCount = -1</code> resolves to 256 threads.</strong> The log opens with <code>Multithreading enabled: true thread count: 256</code> — Derecho’s 128 physical cores with SMT. So each step requests 256 threads, and three steps on a node is <strong>768 threads competing for 128 cores</strong>, 6× oversubscribed. <code>launch_cf --nthreads 40</code> does not constrain iLand’s thread count; it never reaches the model.</p>
+<p><strong>2. Seed dispersal really is species-capped, and it dominates.</strong> Two timers bracket it:</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>timer</th>
+<th>value</th>
+<th>what it is</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>seed dispersal</code></td>
+<td>7 h 43 m</td>
+<td>summed across the parallel workers</td>
+</tr>
+<tr class="even">
+<td><code>seed dispersal (all species)</code></td>
+<td>2 h 22 m 42 s</td>
+<td>wall-clock for the same work</td>
+</tr>
+</tbody>
+</table>
+<p>The ratio is <strong>3.24× effective parallelism</strong> — against 4 species in this landscape. That is the species-parallel cap from <code>model.cpp</code> measured directly in production, at 81% efficiency across four workers. No thread count raises it, because there is no fifth species to give a fifth thread.</p>
+<p>Where the 300 years actually went:</p>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>phase</th>
+<th>share</th>
+<th>scales with threads?</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>seed dispersal</strong></td>
+<td><strong>50.1%</strong></td>
+<td>no — capped at 4 (species)</td>
+</tr>
+<tr class="even">
+<td>establishment</td>
+<td>12.0%</td>
+<td>partly</td>
+</tr>
+<tr class="odd">
+<td><code>outputs</code></td>
+<td>16.2%</td>
+<td>no — serial</td>
+</tr>
+<tr class="even">
+<td><code>water:run</code></td>
+<td>7.9%</td>
+<td>yes (RU-parallel)</td>
+</tr>
+<tr class="odd">
+<td><code>growTrees()</code></td>
+<td>7.3%</td>
+<td>yes (RU-parallel)</td>
+</tr>
+<tr class="even">
+<td><code>applyPattern()</code></td>
+<td>7.3%</td>
+<td>yes (RU-parallel)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Half the run is a four-thread phase, and the genuinely thread-scalable phases are about 15% of it.</strong> That is the whole answer to “why doesn’t it scale”, and it is much starker in the spinup than in the sandbox scenario runs, where output writing was the bigger share.</p>
 </section>
 <section id="per-year-cost-model" class="level2">
 <h2 class="anchored" data-anchor-id="per-year-cost-model">Per-year cost model</h2>
@@ -231,7 +419,50 @@ ul.task-list li input[type="checkbox"] {
 <li><strong>A long run that writes rarely is cheap.</strong> The 300-year spinup writes on 41 years; the other 259 run at compute cost only. This is why <code>filt_cond = 260</code> matters far more than any thread setting.</li>
 <li><strong>A short run that writes every year is dominated by writing.</strong> 100 output-years is ~42 min of serial writing before any compute, untouchable by cores.</li>
 </ul>
-<p>Per-year compute is not constant either — it grows with standing tree count. In the 300-year spinup the per-year timer rose from ~1.5 s early to ~15.6 s by year 260.</p>
+<section id="per-year-cost-is-not-constant-it-grows-10-over-a-spinup" class="level3">
+<h3 class="anchored" data-anchor-id="per-year-cost-is-not-constant-it-grows-10-over-a-spinup">Per-year cost is not constant — it grows ~10× over a spinup</h3>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="results/per_year_cost.png" class="img-fluid figure-img"></p>
+<figcaption>per-year cost</figcaption>
+</figure>
+</div>
+<p>From the production log, per simulated year:</p>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th></th>
+<th>s/yr</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>mean of years 1–20</td>
+<td>10.9</td>
+</tr>
+<tr class="even">
+<td>mean of the last 20 (excluding the snapshot year)</td>
+<td>106.5</td>
+</tr>
+<tr class="odd">
+<td><strong>growth factor</strong></td>
+<td><strong>9.8×</strong></td>
+</tr>
+<tr class="even">
+<td>the snapshot year (300)</td>
+<td>1178</td>
+</tr>
+</tbody>
+</table>
+<p>So it is <strong>not</strong> linear in simulated years — a 300-year spinup is far more expensive at the end than the start, and the growth is in <em>seed dispersal</em> (the red line tracking the black total), which is what the bottom panel shows: seed dispersal rises from ~20% of a year early on to 40–88% later.</p>
+<p><strong>One correction to an earlier version of this report.</strong> It said per-year compute “grows with standing tree count”. I did not measure tree count — that is an inference about the mechanism, and a plausible one (more trees and more seed sources make dispersal and establishment more expensive), but the only thing measured here is the <em>timers</em>. Treat the tree-count explanation as a hypothesis, not a result.</p>
+<p>Output is a step change rather than a gradient: <strong>41 of the 300 years write output, the first at year 223.</strong> Before that the <code>outputs</code> timer is flat zero; after it, ~40 s/yr, plus the 18 m 6 s snapshot at year 300. That is the <code>filt_cond</code> doing its job, and it is why the spinup is cheap despite being 300 years long.</p>
+</section>
+<section id="on-the-write-queue-clogging-up-hypothesis" class="level3">
+<h3 class="anchored" data-anchor-id="on-the-write-queue-clogging-up-hypothesis">On the “write queue clogging up” hypothesis</h3>
+<p>Worth addressing directly, because it is a reasonable worry and the answer is clean: <strong>it cannot happen, because iLand’s writes are synchronous inside the year loop.</strong> The <code>outputs</code> timer sits <em>within</em> <code>ModelController:runYear</code>, so the model stops and waits for each year’s writing to finish before starting the next year. There is no queue to fall behind, and the simulation can never be “at year 300 while the disk is still on year 280”.</p>
+<p>The <code>nooutput</code> sweep is the direct evidence: switching the writers off dropped <code>outputs</code> from 126.4 s to 0.6 s and dropped total <code>runYear</code> by almost exactly the same amount (220 s → 93 s). If writing were asynchronous, removing it would not have shortened the year loop like that.</p>
+<p>The cost is real, it is just paid immediately rather than accumulating — which is worse for wall-clock but much easier to reason about. Turning on more tables (<code>tree</code>, <code>sapling</code>, <code>water</code>, <code>carbon</code>) makes each output-year proportionally slower, and no thread count helps, because <code>outputs</code> is a single SQLite connection.</p>
 <p><strong>The model was checked against a full production-length run</strong> (86 years, 8 threads), which is the strongest validation available here:</p>
 <table class="caption-top table">
 <thead>
@@ -260,6 +491,7 @@ ul.task-list li input[type="checkbox"] {
 </tbody>
 </table>
 <p>Within 4% on the total, with compute drifting up and output down exactly as the growing tree population predicts. So the per-year proportions do transfer from short runs — it is only <em>memory</em> that does not. The whole 86-year replicate took 1 h 08 m locally at 8 threads, against ~5 h on Derecho: slower cores, a shared node, and output going to the network rather than a local SSD.</p>
+</section>
 </section>
 <section id="what-actually-limits-a-node-memory" class="level2">
 <h2 class="anchored" data-anchor-id="what-actually-limits-a-node-memory">What actually limits a node: memory</h2>
@@ -345,14 +577,48 @@ ul.task-list li input[type="checkbox"] {
 </tr>
 </tbody>
 </table>
-<p>The growth decelerates by 7×, so extrapolating from short runs is badly wrong in both directions: linear from the 1→5 year slope predicts 84 GB at 86 years, more than double the 37.4 GB actually measured. The 86-year run took 1 h 09 m.</p>
+<p>The growth decelerates by 7x, so extrapolating from short runs is badly wrong in both directions: linear from the 1-&gt;5 year slope predicts 84 GB at 86 years, more than double the 37.4 GB actually measured. The 86-year run took 1 h 09 m.</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="results/memory_growth.png" class="img-fluid figure-img"></p>
+<figcaption>memory growth</figcaption>
+</figure>
+</div>
+</section>
+<section id="is-the-growth-the-accumulating-output-no-it-is-model-state" class="level3">
+<h3 class="anchored" data-anchor-id="is-the-growth-the-accumulating-output-no-it-is-model-state">Is the growth the accumulating output? No – it is model state</h3>
+<p>Re-running the same 86 years with every big output writer disabled separates the two. The control is sound: its <code>outputs</code> timer fell to 10.9 s against 2025 s, so the writers really were off.</p>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>86 years, 8 threads</th>
+<th>peak</th>
+<th>wall</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>writers on</td>
+<td>37.37 GB</td>
+<td>4131 s</td>
+</tr>
+<tr class="even">
+<td>writers <strong>off</strong></td>
+<td><strong>35.76 GB</strong></td>
+<td>2079 s</td>
+</tr>
+</tbody>
+</table>
+<p>Output accounts for <strong>1.6 GB of the 37.4 GB footprint</strong> — 4%. Against the +7.66 GB of growth from 5 to 86 years, at most 21% could be output-related and <strong>at least 79% is model state</strong>: more trees, more saplings, more seed sources, more of the landscape’s own bookkeeping. Turning every table off would not meaningfully change how many replicates fit on a node.</p>
+<p>That is worth knowing in its own right, because it means the memory ceiling is a property of the <em>landscape and the run length</em>, not of how much you choose to save. You cannot buy node capacity by writing less.</p>
+<p>The same pair of runs also settles the write-queue question from the other direction: removing output cut wall time by 2052 s, matching the 2025 s <code>outputs</code> timer to within 1.3%. Writing is paid synchronously, in full, inside the year loop.</p>
 <p><strong>This is a trap for local testing, and it changes the experiment worth running.</strong> A 5-year concurrency test would have measured 4 × ~30 GB = ~120 GB, cleared the 235 GB budget comfortably, and been <em>wrong</em> — production 4 steps is 166–210 GB. Any local test used to justify a steps-per-node change has to run at production length.</p>
 <p>It also makes concurrent instances unnecessary. iLand instances are independent OS processes with no shared memory, so the node total is just N × per-instance. Running one production-length instance and multiplying is cheaper than running four, avoids swapping the machine, and measures the same quantity. Runtime under contention is the only thing four concurrent instances would add, and that number does not transfer to Derecho anyway — 4 × 8 threads saturates all 32 physical cores here but is a quarter of Derecho’s 128.</p>
 </section>
 </section>
 <section id="what-this-means-for-derecho" class="level2">
 <h2 class="anchored" data-anchor-id="what-this-means-for-derecho">What this means for Derecho</h2>
-<p>Current production is 3 steps × 40 threads = 120 of 128 cores. Since a replicate reaches its floor at 8 threads, ~32 cores per step are doing no useful work — but freeing them buys nothing, because memory is what fills the node:</p>
+<p>Production <em>was</em> 3 steps each requesting 256 threads — 768 on 128 cores. It is now 3 steps at 16 threads, 48 of 128 cores. That leaves most of the node’s cores idle, and that is fine: a replicate reaches its floor at 8 threads, so the idle cores had nothing to do anyway. Adding them back does not raise throughput, because memory is what fills a node:</p>
 <table class="caption-top table">
 <thead>
 <tr class="header">
@@ -363,8 +629,8 @@ ul.task-list li input[type="checkbox"] {
 </thead>
 <tbody>
 <tr class="odd">
-<td>4 × 8 threads</td>
-<td>32 of 128</td>
+<td>4 × 16 threads</td>
+<td>64 of 128</td>
 <td>4</td>
 </tr>
 <tr class="even">
@@ -412,12 +678,124 @@ ul.task-list li input[type="checkbox"] {
 </tbody>
 </table>
 <p>Derecho’s 3-step job totals ran 11–41% above the local 3-instance prediction of 112 GB — apptainer overhead, landscape variation (this test is landscape 01 only), and PBS accounting. Applying that same inflation to 4 steps gives 165–210 GB, under 235 at both ends. <strong>4 steps per node is supported; 5 is not.</strong></p>
-<section id="first-though-nothing-sets-threadcount-in-production" class="level3">
-<h3 class="anchored" data-anchor-id="first-though-nothing-sets-threadcount-in-production">First, though: nothing sets <code>threadCount</code> in production</h3>
-<p><code>run_iland_csv_cpxml_apptainer.sh</code> never passes <code>system.settings.threadCount</code>, and the scenario XML carries <code>&lt;threadCount&gt;-1&lt;/threadCount&gt;</code> — “use all available cores”. So each step asks for all 128 cores of the node, and 3 steps is 384 threads on 128 cores. That is the same oversubscription that produced the misleading 98% CPU locally, and it means <strong>raising steps per node while <code>threadCount</code> is <code>-1</code> makes contention worse, not better.</strong></p>
-<p>Whether this actually bites depends on whether <code>launch_cf --nthreads 40</code> applies a CPU affinity mask that Qt’s <code>idealThreadCount()</code> respects. That is answerable with one grep on any Derecho iLand log:</p>
-<pre><code>grep -m1 "set max thread count to" &lt;log&gt;</code></pre>
-<p><code>40</code> means affinity is working and the current setup is roughly sane. <code>128</code> means every step has been oversubscribing the node all along, and setting <code>threadCount</code> explicitly is free performance — worth more than the packing change.</p>
+<section id="first-though-threadcount-was-never-set-in-production" class="level3">
+<h3 class="anchored" data-anchor-id="first-though-threadcount-was-never-set-in-production">First, though: <code>threadCount</code> was never set in production</h3>
+<p><code>run_iland_csv_cpxml_apptainer.sh</code> passed no <code>system.settings.threadCount</code>, and the scenario XML carries <code>&lt;threadCount&gt;-1&lt;/threadCount&gt;</code> — “use all available cores”.</p>
+<p><strong>Two different log lines, and it is easy to read the wrong one.</strong> iLand prints both:</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>line</th>
+<th>what it means</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>Multithreading enabled: true thread count: N</code></td>
+<td>the <strong>machine’s</strong> logical processor count. Printed identically whatever you request — verified locally, where it said <code>64</code> for requested thread counts of 8, 64 and 256 alike.</td>
+</tr>
+<tr class="even">
+<td><code>Multithreading: set max thread count to N</code></td>
+<td>the value <strong>actually applied</strong>. Only printed when <code>threadCount</code> is set explicitly.</td>
+</tr>
+</tbody>
+</table>
+<p>The Derecho log says <code>thread count: 256</code> and contains <strong>no <code>set max thread count</code> line at all</strong> — zero occurrences. That combination is the signature of <code>-1</code>: iLand never caps the pool, so it takes Qt’s default, which is every logical processor. A Derecho node has 256 (128 cores with SMT), so three steps shared a node as <strong>768 threads over 128 physical cores</strong>.</p>
+<p>It also means <code>launch_cf --nthreads 40</code> never reached the model. It is placement metadata for <code>launch_cf</code>, nothing more.</p>
+<p>So when checking a log, grep for <strong><code>set max thread count</code></strong>, not <code>thread count:</code>. Its absence is the finding; the other line only tells you how big the machine is.</p>
+<p><strong>Changed:</strong> both runners now pass <code>system.settings.threadCount=${ILAND_THREADS}</code>, defaulting to 16 and overridable per submission. 16 rather than 8 because 8 is the measured floor with no margin, and at 3-4 steps per node 16 still uses only 48-64 of 128 cores.</p>
+<p><strong>But this is a tidiness fix, not a performance fix</strong> — and it is worth being clear about that, because “6x oversubscribed” sounds like it should be costing something. A single instance at 5 years, varying only <code>threadCount</code>:</p>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>threadCount</th>
+<th>wall</th>
+<th>vs 8 threads</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>8</td>
+<td>433 s</td>
+<td>—</td>
+</tr>
+<tr class="even">
+<td>64 (2x this machine’s physical cores)</td>
+<td>458 s</td>
+<td>+5.8%</td>
+</tr>
+<tr class="odd">
+<td>256 (8x, what production requested)</td>
+<td>421 s</td>
+<td>−2.8%</td>
+</tr>
+</tbody>
+</table>
+<p>The whole spread is 9%, <strong>inside the ~10-15% run-to-run variance measured on this model</strong>, so there is no penalty here to recover. That is consistent with how Qt’s thread pool works: threads beyond the available work sit idle rather than spinning, so an oversized pool costs little.</p>
+<p><strong>Under concurrency it does cost something</strong>, which is the case that matters, because production runs <em>three separate processes</em> competing through the OS scheduler rather than one process with an oversized pool. Three concurrent instances, 5 years each:</p>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>threads each</th>
+<th>per-instance wall</th>
+<th>mean</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>256</td>
+<td>608, 633, 642 s</td>
+<td>627.7 s</td>
+</tr>
+<tr class="even">
+<td><strong>16</strong></td>
+<td><strong>580, 594, 596 s</strong></td>
+<td><strong>590.0 s</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>6.0% faster at 16 threads</strong>, and the ranges do not overlap — the slowest 16-thread run beat the fastest 256-thread run (596 vs 608 s). With n=3 per group that is p ≈ 0.05: suggestive, not conclusive, but consistent in direction.</p>
+<p>The mechanism fits: within one process Qt leaves surplus threads idle, but across three processes 768 runnable threads genuinely compete for cores, and the scheduler pays for it in context switches and cache pressure.</p>
+<p><strong>Expect less than 6% on Derecho.</strong> Locally 3 × 256 threads is 768 on 64 logical processors, <strong>12× oversubscribed</strong>; a Derecho node has 256 logical, so the same configuration there is only <strong>3× oversubscribed</strong>. The direction should hold, the magnitude should shrink.</p>
+<p>Memory was unchanged, as everywhere else in this exercise: 88.9 GB summed at 256 threads against 87.9 GB at 16, and per-instance identical to the single-instance runs (29.6 vs 29.1 GB). Running three at once does not change what one costs.</p>
+<p>It is set in <strong>both</strong> places, which is deliberate:</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>where</th>
+<th>value</th>
+<th>who reads it</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>data/shared-xml-create/landscape_master.xml</code></td>
+<td>16</td>
+<td>future project files generated by script 13</td>
+</tr>
+<tr class="even">
+<td>the 24 <code>landscape_alaska_*/*.xml</code></td>
+<td>16</td>
+<td>direct/GUI runs, and any runner that does not override</td>
+</tr>
+<tr class="odd">
+<td>both runners, <code>ILAND_THREADS</code></td>
+<td>16</td>
+<td>every batch run — the CLI override wins</td>
+</tr>
+</tbody>
+</table>
+<p>The CLI override always wins, so the XML value can never change what production does. The reason to set it anyway is that a project file reading <code>-1</code> <em>describes</em> something production does not do, and that mismatch is what made the oversubscription invisible for so long.</p>
+<p>The 24 project files were edited in place rather than regenerated. Script 13 does not touch <code>threadCount</code> — it is inherited from the master — so re-running it would have redeployed <code>saveWorkflow_*.js</code>, <code>lip/</code> and <code>spp_param.sqlite</code> and recomputed <code>KBDIref</code>, all currently correct, for no benefit. The diff is one line per file.</p>
 <p><strong>So concurrency comes from nodes.</strong> The round already reaches 36 concurrent (4 nodes × 3 steps × 3 chains); <code>NODES_PER_JOB</code> in <code>scenario-launch/generate_cmdfiles.sh</code> is the lever, and the limit is allocation and queue time rather than anything technical.</p>
 <p>Only 256 GB nodes are available, so the ceiling is 4–5 replicates per node. An earlier version of this report suggested chasing a large-memory node; that avenue does not exist here.</p>
 </section>
@@ -435,11 +813,9 @@ ul.task-list li input[type="checkbox"] {
 </section>
 <section id="open" class="level2">
 <h2 class="anchored" data-anchor-id="open">Open</h2>
-<p>In order:</p>
 <ol type="1">
-<li><strong><code>grep "set max thread count to"</code> on any Derecho iLand log.</strong> Decides whether production has been running 3 × 128 threads on a 128-core node. Costs nothing.</li>
-<li><strong>Set <code>threadCount</code> explicitly</strong> if that grep says 128 — a CLI override in the runner, same mechanism the sandbox uses. Removing contention is likely worth more than any packing change.</li>
-<li><strong>Then</strong> one job at <code>--steps-per-node 4</code>, reading <code>qhist</code> <code>resources_used.mem</code> to confirm 165–210 GB on the real machine with apptainer overhead included. Only after 1 and 2, because packing a node harder while every step requests all its cores makes the contention worse.</li>
+<li><strong>One Derecho job with the thread fix in place.</strong> Its log should now contain <code>Multithreading: set max thread count to 16</code> — the line that was absent before. (<code>thread count: 256</code> will still be there; that is the node’s size, not the setting.) Its walltime compares against the 4 h 44 m 52 s in <code>derecho_temp_log.txt</code> — same landscape, same 300 years. The comparison is fair only if the new job also runs at 3 steps per node, since a node shared three ways is part of what that baseline measured. Run-to-run variance on this model is ~10-15%, so treat anything under that as no change.</li>
+<li><strong>Then</strong> <code>--steps-per-node 4</code>, reading <code>qhist</code> <code>resources_used.mem</code> to confirm 165–210 GB on the real machine with apptainer overhead included. In that order, because packing a node harder only makes sense once each step stops asking for the whole node.</li>
 </ol>
 </section>
 </section>

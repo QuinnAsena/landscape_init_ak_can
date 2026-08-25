@@ -120,6 +120,18 @@ d$compute_s <- d$runYear - d$outputs
 # fires and "all equal at zero" passes while proving nothing.
 tol <- 0.02   # 2% -- far below the 20-60% timing differences being interpreted
 cat("--- workload check: stand rows across configs (within ", 100 * tol, "%) ---\n", sep = "")
+# The sandbox was deleted on 2026-08-25 once the study finished, so the output
+# databases the workload check queries are gone. Say so plainly rather than
+# quietly reporting NA for every row count -- and point at the archived copy,
+# which is the only remaining record of those counts.
+sandbox_gone <- !dir.exists(file.path(sandbox, "output"))
+if (sandbox_gone) {
+  cat("\nNOTE: sandbox output not found at", file.path(sandbox, "output"), "\n")
+  cat("  Row counts cannot be recomputed. The measured values are preserved in\n")
+  cat("  results/thread_scaling_ARCHIVED.csv -- do not overwrite that file.\n")
+  cat("  Rebuild with setup_sandbox.sh and re-run the harness if you need them live.\n")
+}
+
 counts <- lapply(d$tag, function(tag) {
   db <- file.path(sandbox, "output", tag, paste0(tag, ".sqlite"))
   if (!file.exists(db)) return(c(stand = NA_real_, fire = NA_real_))
@@ -244,8 +256,9 @@ for (fam in sort(unique(d$family))) {
   print(sw[, c("threads", "compute_s", "compute_speedup", "compute_eff")], row.names = FALSE)
 }
 
-write.csv(d, file.path(results, "thread_scaling.csv"), row.names = FALSE)
-cat("\nwritten: ", file.path(results, "thread_scaling.csv"), "\n", sep = "")
+out_csv <- if (sandbox_gone) "thread_scaling_NOCOUNTS.csv" else "thread_scaling.csv"
+write.csv(d, file.path(results, out_csv), row.names = FALSE)
+cat("\nwritten: ", file.path(results, out_csv), "\n", sep = "")
 
 gb <- sum(vapply(d$tag, function(tag) {
   p <- file.path(sandbox, "output", tag)
