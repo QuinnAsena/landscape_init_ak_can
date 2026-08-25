@@ -1,0 +1,4 @@
+=== n8: 8 threads, 86 years, seed 42 output.stand.enabled=false output.saplingdetail.enabled=false output.carbon.enabled=false output.water.enabled=false
+  wall 2079s, peak 35.8 GB
+
+logs in /z/personal_storage/quinn_storage/landscape_init_ak_can/thread-scaling-test/results; now run: Rscript thread-scaling-test/parse_timers.R

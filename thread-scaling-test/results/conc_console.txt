@@ -1,0 +1,20 @@
+### 3 concurrent instances, 256 threads each
+=== c3x256_i2: 256 threads, 5 years, seed 42 
+=== c3x256_i1: 256 threads, 5 years, seed 42 
+=== c3x256_i3: 256 threads, 5 years, seed 42 
+  wall 608s
+  wall 633s
+  wall 642s
+
+awk: cmd. line:1: "'{ g=concurrency/1073741824;
+awk: cmd. line:1: ^ unterminated string
+### 3 concurrent instances, 16 threads each
+=== c3x16_i1: 16 threads, 5 years, seed 42 
+=== c3x16_i3: 16 threads, 5 years, seed 42 
+=== c3x16_i2: 16 threads, 5 years, seed 42 
+  wall 580s
+  wall 594s
+  wall 596s
+
+awk: cmd. line:1: "'{ g=concurrency/1073741824;
+awk: cmd. line:1: ^ unterminated string

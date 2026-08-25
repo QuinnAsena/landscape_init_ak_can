@@ -49,7 +49,7 @@
       <!-- This setting defines the logging intensity. Possible values are Debug, Info, Warning and Error. When running on the Debug logging level, the log output contains many details that may slow down the application. Default is Debug. -->
       <responsive>true</responsive>
       <!-- if true iLand is more responsive during lengthy calculations (i.e. the user interface freezes less frequently) -->
-      <threadCount>-1</threadCount>
+      <threadCount>16</threadCount>
       <!-- number of used threads if multithreading is enabled. -1 uses all available CPU cores. -->
     </settings>
     <javascript>

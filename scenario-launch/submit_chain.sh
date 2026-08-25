@@ -21,14 +21,17 @@
 # --steps-per-node here in step with STEPS_PER_NODE in generate_cmdfiles.sh,
 # which checks that.
 #
-# NOTE: the runner clears each scenario_dir before running a replicate that has
-# no .complete sentinel. Output on scratch from the earlier ssp245 rounds has no
-# sentinel and shares the same directory key, so submitting will overwrite it.
-# Move it aside first if it is worth keeping for comparison.
+# NOTE: the runner has NO resume guard -- it `rm -rf`s each scenario_dir and
+# re-runs, whether or not that replicate already finished. Anything on scratch
+# sharing the same directory key (earlier ssp245 rounds included) is destroyed
+# by a resubmission. Move it aside first if it is worth keeping.
 #
-# steps-per-node stays at 3: at 3 x 40 threads the node already reports ~95%
-# CPU, so packing a 4th step yields the same lines per node-hour while raising
-# peak memory from ~157 GB to ~209 GB against a 235 GB request.
+# steps-per-node stays at 3 on MEMORY, not CPU. The ~95% node CPU at 3 x 40
+# threads is not evidence the cores are needed: 3 x 40 = 120 threads on 128
+# cores, and thread-scaling-test/report.md measured a replicate reaching its
+# floor at 8 threads, so most of that CPU is threads contending. The real
+# constraint is peak memory -- ~41-53 GB per step, so a 4th step takes the node
+# from ~157 GB to ~209 GB against a 235 GB request.
 #
 # Regenerate the cmdfiles with generate_cmdfiles.sh after changing the matrix.
 #
@@ -43,7 +46,12 @@ case "$chain" in
     *) echo "usage: bash scenario-launch/submit_chain.sh <A|B|C>" >&2; exit 1 ;;
 esac
 
-LAUNCH="launch_cf -A UCIE0001 -l walltime=12:00:00 --steps-per-node 3 --ppn 128 --nthreads 40 --mem 235GB -l job_priority=economy"
+# --nthreads is placement metadata for launch_cf and does NOT reach iLand: the
+# model takes its thread count from system.settings.threadCount, which the runner
+# now sets (ILAND_THREADS, default 16). It was 40 here while iLand was actually
+# running 256 threads per step -- that mismatch is what made the node look
+# CPU-bound. Keep the two numbers in step so the next reader is not misled.
+LAUNCH="launch_cf -A UCIE0001 -l walltime=12:00:00 --steps-per-node 3 --ppn 128 --nthreads 16 --mem 235GB -l job_priority=economy"
 script_dir=$(cd "$(dirname "$0")" && pwd)
 
 shopt -s nullglob

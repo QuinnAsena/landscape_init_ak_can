@@ -19,6 +19,14 @@ csv_name="${5:-${script_dir}/iland_scenarios.csv}"
 
 mkdir -p "${output_path}"
 
+# iLand thread count. The project files carry <threadCount>-1</threadCount>, which on
+# Derecho resolves to 256 (128 cores x SMT) -- so with 3 steps per node each requesting
+# 256, the node was 6x oversubscribed. Measured 2026-08-24: a replicate stops getting
+# faster at 8 threads, because ~50% of the run is seed dispersal, which is parallel over
+# SPECIES (4 in these landscapes) and caps at ~3.24x. 16 leaves margin without
+# oversubscribing. NOTE: launch_cf --nthreads does NOT reach iLand; only this does.
+ILAND_THREADS="${ILAND_THREADS:-16}"
+
 module load apptainer
 
 # Clean up temp XML on exit. Note: the while loop runs in a subshell (due to
@@ -43,15 +51,15 @@ do
         scenario_dir="${output_path}/${scenario_id}/rep_${rep}"
         tmp_xml="${xml_path}/${scenario_id}_${rep}.xml"
 
-        # Resume guard. The sentinel is written only after ilandc exits 0, so a
-        # replicate is skipped only if it genuinely finished. Testing for the
-        # output .sqlite instead would also skip walltime-killed reps that got
-        # as far as creating a partial database.
-        if [ -f "${scenario_dir}/.complete" ]; then
-            echo "Skipping gcm $gcm, fri $fri, id $id, rep $rep (already complete)"
-            continue
-        fi
-
+        # NO RESUME GUARD HERE, deliberately: every submitted line always runs.
+        # Completion is tracked by hand on this side, and the .complete marker
+        # below is written purely as a record you can `find`, not read back.
+        #
+        # CONSEQUENCE: resubmitting a chain RE-RUNS AND CLOBBERS replicates that
+        # already finished. Submit only the cmdfiles you actually want redone.
+        # (The local runner keeps its skip -- there it saves stepping through a
+        # whole CSV by hand. See run_iland_csv_cpxml_local.sh.)
+        #
         # Discard partial output from any previous attempt. Fire grids are named
         # by fire event id and burn year (kbdi_<Fire.id>_<year>.txt) and reps are
         # not seeded, so a resumed rep burns differently -- keeping the old files
@@ -81,6 +89,7 @@ do
             modules.fire.fireReturnInterval=${fri} \
             modules.fire.onlySimulation=${onlysim} \
             model.settings.epsilon=${epsilon} \
+            system.settings.threadCount=${ILAND_THREADS} \
             output.saplingdetail.minDbh=${dbh} \
             model.world.standGrid.fileName=${stand_grid}.txt \
             model.world.environmentFile=${env_file}.txt \

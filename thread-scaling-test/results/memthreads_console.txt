@@ -1,0 +1,6 @@
+=== m8: 8 threads, 5 years, seed 42 
+  wall 470s, peak 29.7 GB
+=== m32: 32 threads, 5 years, seed 42 
+  wall 467s, peak 29.7 GB
+
+logs in /z/personal_storage/quinn_storage/landscape_init_ak_can/thread-scaling-test/results; now run: Rscript thread-scaling-test/parse_timers.R

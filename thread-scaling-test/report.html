@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.8.24">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>report</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+</style>
+
+
+<script src="report_files/libs/clipboard/clipboard.min.js"></script>
+<script src="report_files/libs/quarto-html/quarto.js" type="module"></script>
+<script src="report_files/libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="report_files/libs/quarto-html/axe/axe-check.js" type="module"></script>
+<script src="report_files/libs/quarto-html/popper.min.js"></script>
+<script src="report_files/libs/quarto-html/tippy.umd.min.js"></script>
+<script src="report_files/libs/quarto-html/anchor.min.js"></script>
+<link href="report_files/libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="report_files/libs/quarto-html/quarto-syntax-highlighting-dc55a5b9e770e841cd82e46aadbfb9b0.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="report_files/libs/bootstrap/bootstrap.min.js"></script>
+<link href="report_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="report_files/libs/bootstrap/bootstrap-9e3ffae467580fdb927a41352e75a2e0.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+
+
+</head>
+
+<body class="fullcontent quarto-light">
+
+<div id="quarto-content" class="page-columns page-rows-contents page-layout-article">
+
+<main class="content" id="quarto-document-content">
+
+
+
+
+<section id="iland-thread-scaling-where-the-time-actually-goes" class="level1">
+<h1>iLand thread scaling: where the time actually goes</h1>
+<p><strong>2026-08-24 · landscape_alaska_01 · Threadripper 7970X (32 physical / 64 logical cores, 255.5 GB)</strong></p>
+<section id="summary" class="level2">
+<h2 class="anchored" data-anchor-id="summary">Summary</h2>
+<p>Threads buy almost nothing beyond 8, and switching the output writers off shows this is not an artefact of output cost: <strong>compute alone does not scale past 8 threads either.</strong> Going from 8 to 32 threads changes total scenario runtime by ~1%.</p>
+<p>In order of how much they matter for the Derecho round:</p>
+<ol type="1">
+<li><strong>Nothing sets <code>threadCount</code> in production.</strong> The XML carries <code>-1</code> and the runner never overrides it, so every step asks for all 128 cores — 384 threads on a 3-step node. Check this first; it is one grep, and it gates everything below.</li>
+<li><strong>A node is memory-bound, not CPU-bound</strong>, and memory does <em>not</em> depend on thread count (29.71 vs 29.66 GB at 8 vs 32 threads). Steps-per-node is a memory question only.</li>
+<li><strong>4 steps per node is supported, 5 is not.</strong> A production-length replicate peaks at 37.4 GB, so 4 steps is 149 GB locally and 165–210 GB once Derecho’s observed overhead is applied, against a 235 GB budget. Do this only after (1), since packing a node harder while every step requests all its cores makes contention worse.</li>
+<li><strong>8 threads per step is enough</strong> — scenario configuration <em>and</em> spinup. The writers-off sweep was expected to favour more threads and did not.</li>
+<li><strong>GeoTIFF grid inputs are correct</strong> and can replace the <code>.txt</code> grids, but no speed benefit is demonstrable from this data.</li>
+</ol>
+<p>The one thing that does not transfer from a short run is memory: it grows with simulated years, so a 5-year test would have cleared 4 steps far too easily. Timing proportions do transfer, and were confirmed against a full 86-year run.</p>
+</section>
+<section id="method" class="level2">
+<h2 class="anchored" data-anchor-id="method">Method</h2>
+<p>Four sweeps against the same sandbox, all seeded (<code>randomSeed=42</code>) and all 5 simulated years from a snapshot start (68 M trees), so every config does the same work:</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>mode</th>
+<th>configs</th>
+<th>question</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>threads</code></td>
+<td>4, 8, 16, 24, 32 threads</td>
+<td>how does the real scenario configuration scale?</td>
+</tr>
+<tr class="even">
+<td><code>nooutput</code></td>
+<td>4, 8, 16, 24, 32 threads, all big writers off</td>
+<td>does <em>compute</em> scale, with output removed?</td>
+</tr>
+<tr class="odd">
+<td><code>geotiff</code></td>
+<td><code>.txt</code> vs <code>.tif</code> grids</td>
+<td>are GeoTIFF inputs equivalent, and faster?</td>
+</tr>
+<tr class="even">
+<td><code>memthreads</code></td>
+<td>8 vs 32 threads, peak RSS</td>
+<td>does thread count change memory?</td>
+</tr>
+<tr class="odd">
+<td><code>memthreads</code> at <code>YEARS=1</code> / <code>86</code></td>
+<td>8 threads</td>
+<td>does memory grow with simulated years?</td>
+</tr>
+</tbody>
+</table>
+<p>The base config is <code>landscape_alaska_01_2015-2100scenario.xml</code> with <code>stand</code>, <code>saplingdetail</code>, <code>carbon</code> and <code>water</code> writing every year — the real scenario configuration, not a proxy, so the proportions transfer to the 288-line round directly.</p>
+<p>Timings are iLand’s own timer block rather than process wall time, because the block separates output from compute. Output went to a local SSD (D:), so the output timer measures writing and not network latency. Threads were capped at 32, the physical core count; above that is SMT, which a Derecho node does not have.</p>
+</section>
+<section id="results-the-scenario-sweep" class="level2">
+<h2 class="anchored" data-anchor-id="results-the-scenario-sweep">Results: the scenario sweep</h2>
+<pre><code> threads runYear outputs compute seed_disp sp_total sp_compute ideal
+       4   260.5   125.1   135.3      66.5     1.00       1.00     1
+       8   219.9   127.3    92.6      67.1     1.18       1.46     2
+      16   220.5   126.3    94.3      66.7     1.18       1.44     4
+      24   212.5   126.5    86.0      66.8     1.23       1.57     6
+      32   218.4   127.0    91.4      66.8     1.19       1.48     8</code></pre>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="results/thread_scaling.png" class="img-fluid figure-img"></p>
+<figcaption>scaling</figcaption>
+</figure>
+</div>
+<p><strong>8 threads captures all of the available gain.</strong> The 212–220 s spread across 8/16/24/32 is ~4%, and per-thread RNG gives each config a 0.03% different workload, so 24 threads being nominally fastest is noise rather than a result.</p>
+</section>
+<section id="why-it-does-not-scale" class="level2">
+<h2 class="anchored" data-anchor-id="why-it-does-not-scale">Why it does not scale</h2>
+<p>Two components are flat across 4→32 threads, but for <em>different</em> reasons, and the difference matters:</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>component</th>
+<th>mean</th>
+<th>spread</th>
+<th>parallelised over</th>
+<th>max useful threads</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>outputs</code></td>
+<td>126.4 s</td>
+<td>1.7%</td>
+<td>nothing — one SQLite connection</td>
+<td><strong>1</strong></td>
+</tr>
+<tr class="even">
+<td><code>seed dispersal</code></td>
+<td>66.7 s</td>
+<td>0.9%</td>
+<td><strong>species</strong></td>
+<td><strong>4</strong></td>
+</tr>
+<tr class="odd">
+<td><code>applyPattern</code> / <code>readPattern</code> / <code>growTrees</code></td>
+<td>—</td>
+<td>scales ~1.5×</td>
+<td>resource units</td>
+<td>many</td>
+</tr>
+</tbody>
+</table>
+<p>From <code>src/core/model.cpp</code> in the iLand source, seed dispersal runs <code>foreach (SpeciesSet *set, mSpeciesSets) set-&gt;regeneration()</code> — a loop over <em>species</em>, not over resource units. This landscape has four species (Pima, Pigl, Potr, Bene), so seed dispersal saturates at four threads and sits at 66.7 s from 4 threads onward. The pattern and growth phases use <code>threadRunner.run(...)</code> over resource units and do scale, but only ~1.5× on 8× the cores.</p>
+<p>So <code>outputs</code> is genuinely serial; <strong>seed dispersal is not serial, it is 4-way capped.</strong> That distinction explains why Derecho showed ~38.8 average active cores rather than the ~17 a strictly-serial model would predict.</p>
+<p>Together the two account for 194 s of the 220 s at 8 threads. With ~12% of the work scalable, Amdahl caps total speedup at ~1.14× however many cores are added — which is what the plot shows against the dashed ideal.</p>
+<p>The RU-parallel phases scale sub-linearly because of memory bandwidth, not logic: the 2 m light grid is 17,700² ≈ <strong>313 million cells</strong>, streamed every simulated year. More threads do not widen the memory bus.</p>
+<section id="the-98-cpu-observation-resolved" class="level3">
+<h3 class="anchored" data-anchor-id="the-98-cpu-observation-resolved">The 98% CPU observation, resolved</h3>
+<p>Three concurrent local instances pegged the CPU at 98%, which looks like it contradicts “8 threads is enough”. It does not. Those runs used <code>threadCount = -1</code>, so each instance requested <em>all 64 logical cores</em> — 192 threads on 64 cores, 3× oversubscribed. The CPU was saturated by threads contending for cores, not by work that needed them.</p>
+<p>High CPU utilisation is not evidence of useful parallelism. Nothing has been missed here; this is iLand’s architecture meeting a four-species landscape.</p>
+</section>
+</section>
+<section id="results-writers-off" class="level2">
+<h2 class="anchored" data-anchor-id="results-writers-off">Results: writers off</h2>
+<p>The scenario sweep derives compute as <code>runYear − outputs</code>, which assumes output and compute do not overlap. Disabling the writers removes the assumption:</p>
+<pre><code> threads compute_s speedup   note
+       4    109.4    1.00
+       8     92.7    1.18    best
+      16    110.7    0.99    no better than 4 threads
+      24    110.0    0.99
+      32    104.9    1.04</code></pre>
+<p><code>outputs</code> fell from 126.4 s to <strong>0.6 s</strong>, confirming the writers were genuinely off and that writing really is ~126 s — 57% of the 220 s scenario run.</p>
+<p><strong>Compute does not scale past 8 threads even with output removed.</strong> This is the sharper version of the headline result, and it is the outcome the spinup case was hoping against: a spinup writes on only 41 of 300 years, so most of its years look like these runs. They still want 8 threads, not 40.</p>
+<p>One incidental result: at 4 threads compute was 135.3 s with writers on but 109.4 s with them off — 26 s of interference, because the writer competes for one of only four threads. At 8+ threads the difference vanishes (92.6 vs 92.7 s). So the writer needs one spare thread, and gets it from 8 onward.</p>
+</section>
+<section id="results-geotiff-inputs" class="level2">
+<h2 class="anchored" data-anchor-id="results-geotiff-inputs">Results: GeoTIFF inputs</h2>
+<p><strong>Correct.</strong> <code>stand</code> row counts agree to <strong>0.002%</strong> between <code>.txt</code> and <code>.tif</code> (1,367,999 vs 1,367,973) — tighter than the 0.031% spread the threads sweep produces from per-thread RNG alone. The <code>.tif</code> grids are equivalent inputs and are safe to adopt.</p>
+<p><strong>No demonstrable speed benefit.</strong> Model creation was 175 s for <code>.txt</code> and 146 s for <code>.tif</code>, which looks like a 17% win, but it is not attributable to format. Creation time in run order:</p>
+<pre><code>t4  t8  t16 t24 t32 fmt_txt fmt_tif n4  n8  n16 n24 n32
+188 179 178 174 175   175     146   153 149 150 151 150
+|&lt;------------ .txt -----------&gt;|  tif |&lt;---- .txt ----&gt;|</code></pre>
+<p>The five <code>nooutput</code> runs read the <strong>same <code>.txt</code> grids</strong> and matched <code>fmt_tif</code> at ~150 s. Creation time drifts downward across the session (188 → ~150, a 25% spread) regardless of format — consistent with OS page cache warming on the 10 GB snapshot. The format difference, if any, is smaller than that drift.</p>
+<p>Input volume is 80.2 MB of ASCII against 19.6 MB of GeoTIFF, read once per run. Measuring the real difference would need interleaved repeats (txt, tif, txt, tif, …) to average out the drift, and it is not worth the runs: even the optimistic 29 s is 0.16% of a 5 h replicate.</p>
+<p>The reason to switch is disk footprint and tidiness, not speed.</p>
+</section>
+<section id="per-year-cost-model" class="level2">
+<h2 class="anchored" data-anchor-id="per-year-cost-model">Per-year cost model</h2>
+<p>The useful way to use all of this. At 8 threads, per simulated year:</p>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th></th>
+<th>cost</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>compute (measured, writers off)</td>
+<td>~18.5 s</td>
+</tr>
+<tr class="even">
+<td>output written</td>
+<td>~25.5 s on top</td>
+</tr>
+</tbody>
+</table>
+<p>So a <strong>year that writes output costs ~2.4× a year that does not</strong>, and no thread count improves the ratio. Cross-checked against the real 300-year spinup (64 threads, writing to the network drive): compute 13.3 s/yr, output 37.3 s per output-year — same shape, the higher output figure explained by the network destination.</p>
+<ul>
+<li><strong>A long run that writes rarely is cheap.</strong> The 300-year spinup writes on 41 years; the other 259 run at compute cost only. This is why <code>filt_cond = 260</code> matters far more than any thread setting.</li>
+<li><strong>A short run that writes every year is dominated by writing.</strong> 100 output-years is ~42 min of serial writing before any compute, untouchable by cores.</li>
+</ul>
+<p>Per-year compute is not constant either — it grows with standing tree count. In the 300-year spinup the per-year timer rose from ~1.5 s early to ~15.6 s by year 260.</p>
+<p><strong>The model was checked against a full production-length run</strong> (86 years, 8 threads), which is the strongest validation available here:</p>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th></th>
+<th>from the 5-year sweep</th>
+<th>measured over 86 years</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>compute</td>
+<td>18.5 s/yr</td>
+<td>22.0 s/yr</td>
+</tr>
+<tr class="even">
+<td>output</td>
+<td>25.5 s/yr</td>
+<td>23.5 s/yr</td>
+</tr>
+<tr class="odd">
+<td>total</td>
+<td>44.0 s/yr</td>
+<td>45.6 s/yr</td>
+</tr>
+</tbody>
+</table>
+<p>Within 4% on the total, with compute drifting up and output down exactly as the growing tree population predicts. So the per-year proportions do transfer from short runs — it is only <em>memory</em> that does not. The whole 86-year replicate took 1 h 08 m locally at 8 threads, against ~5 h on Derecho: slower cores, a shared node, and output going to the network rather than a local SSD.</p>
+</section>
+<section id="what-actually-limits-a-node-memory" class="level2">
+<h2 class="anchored" data-anchor-id="what-actually-limits-a-node-memory">What actually limits a node: memory</h2>
+<p>From the completed Derecho jobs, <code>resources_used.mem</code> for 3-step jobs ran <strong>124.05–157.64 GB</strong>, i.e.&nbsp;<strong>41.4–52.5 GB per step</strong>. Against 235 GB usable:</p>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>steps/node</th>
+<th>expected total</th>
+<th>headroom</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>3</td>
+<td>124–158 GB</td>
+<td>comfortable</td>
+</tr>
+<tr class="even">
+<td>4</td>
+<td>166–210 GB</td>
+<td>25 GB at the observed maximum — 11%</td>
+</tr>
+<tr class="odd">
+<td>5</td>
+<td>207–263 GB</td>
+<td>over budget at the maximum</td>
+</tr>
+</tbody>
+</table>
+<p>Four steps is plausible but <strong>11% headroom against a 27% spread across observed jobs is not a safe margin</strong>, so staying at 3 was the right call on that evidence alone. Note also that PBS <code>resources_used.mem</code> is a polled high-water mark, so a peak shorter than the polling interval can be missed — the true maximum is at least these figures.</p>
+<section id="does-thread-count-change-the-footprint-no." class="level3">
+<h3 class="anchored" data-anchor-id="does-thread-count-change-the-footprint-no.">Does thread count change the footprint? No.</h3>
+<p>One instance, 5 years, same seed, only <code>threadCount</code> differing:</p>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>threads</th>
+<th>peak working set</th>
+<th>wall</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>8</td>
+<td>29.74 GB</td>
+<td>470 s</td>
+</tr>
+<tr class="even">
+<td>32</td>
+<td>29.66 GB</td>
+<td>467 s</td>
+</tr>
+</tbody>
+</table>
+<p><strong>0.3% apart.</strong> Per-step memory is set by the landscape state — the snapshot’s 68 M trees and the 313 M-cell light grid — not by how many threads walk it. So the steps-per-node ceiling is fixed, and there is no thread setting that fits more replicates on a node. That closes the question the whole exercise was aimed at.</p>
+</section>
+<section id="but-memory-grows-with-simulated-years-and-that-invalidates-short-local-tests" class="level3">
+<h3 class="anchored" data-anchor-id="but-memory-grows-with-simulated-years-and-that-invalidates-short-local-tests">But memory grows with simulated years, and that invalidates short local tests</h3>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>simulated years</th>
+<th>peak</th>
+<th>marginal growth</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1</td>
+<td>27.04 GB</td>
+<td>—</td>
+</tr>
+<tr class="even">
+<td>5</td>
+<td>29.74 GB</td>
+<td>+0.675 GB/yr</td>
+</tr>
+<tr class="odd">
+<td><strong>86 (production length)</strong></td>
+<td><strong>37.37 GB</strong></td>
+<td>+0.094 GB/yr</td>
+</tr>
+</tbody>
+</table>
+<p>The growth decelerates by 7×, so extrapolating from short runs is badly wrong in both directions: linear from the 1→5 year slope predicts 84 GB at 86 years, more than double the 37.4 GB actually measured. The 86-year run took 1 h 09 m.</p>
+<p><strong>This is a trap for local testing, and it changes the experiment worth running.</strong> A 5-year concurrency test would have measured 4 × ~30 GB = ~120 GB, cleared the 235 GB budget comfortably, and been <em>wrong</em> — production 4 steps is 166–210 GB. Any local test used to justify a steps-per-node change has to run at production length.</p>
+<p>It also makes concurrent instances unnecessary. iLand instances are independent OS processes with no shared memory, so the node total is just N × per-instance. Running one production-length instance and multiplying is cheaper than running four, avoids swapping the machine, and measures the same quantity. Runtime under contention is the only thing four concurrent instances would add, and that number does not transfer to Derecho anyway — 4 × 8 threads saturates all 32 physical cores here but is a quarter of Derecho’s 128.</p>
+</section>
+</section>
+<section id="what-this-means-for-derecho" class="level2">
+<h2 class="anchored" data-anchor-id="what-this-means-for-derecho">What this means for Derecho</h2>
+<p>Current production is 3 steps × 40 threads = 120 of 128 cores. Since a replicate reaches its floor at 8 threads, ~32 cores per step are doing no useful work — but freeing them buys nothing, because memory is what fills the node:</p>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>config</th>
+<th>cores used</th>
+<th>replicates/node</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>4 × 8 threads</td>
+<td>32 of 128</td>
+<td>4</td>
+</tr>
+<tr class="even">
+<td>4 × 32 threads</td>
+<td>128 of 128</td>
+<td>4</td>
+</tr>
+</tbody>
+</table>
+<p>Identical throughput at a fixed step count. But the production-length measurement says the step count itself can rise. One instance at 86 years peaks at <strong>37.37 GB</strong>, so:</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>steps/node</th>
+<th>local prediction</th>
+<th>scaled to Derecho’s observed overhead</th>
+<th>vs 235 GB</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>3</td>
+<td>112 GB</td>
+<td>124–158 GB (measured)</td>
+<td>fine</td>
+</tr>
+<tr class="even">
+<td><strong>4</strong></td>
+<td><strong>149 GB</strong></td>
+<td><strong>165–210 GB</strong></td>
+<td><strong>fits</strong></td>
+</tr>
+<tr class="odd">
+<td>5</td>
+<td>187 GB</td>
+<td>208–263 GB</td>
+<td>over at the top</td>
+</tr>
+</tbody>
+</table>
+<p>Derecho’s 3-step job totals ran 11–41% above the local 3-instance prediction of 112 GB — apptainer overhead, landscape variation (this test is landscape 01 only), and PBS accounting. Applying that same inflation to 4 steps gives 165–210 GB, under 235 at both ends. <strong>4 steps per node is supported; 5 is not.</strong></p>
+<section id="first-though-nothing-sets-threadcount-in-production" class="level3">
+<h3 class="anchored" data-anchor-id="first-though-nothing-sets-threadcount-in-production">First, though: nothing sets <code>threadCount</code> in production</h3>
+<p><code>run_iland_csv_cpxml_apptainer.sh</code> never passes <code>system.settings.threadCount</code>, and the scenario XML carries <code>&lt;threadCount&gt;-1&lt;/threadCount&gt;</code> — “use all available cores”. So each step asks for all 128 cores of the node, and 3 steps is 384 threads on 128 cores. That is the same oversubscription that produced the misleading 98% CPU locally, and it means <strong>raising steps per node while <code>threadCount</code> is <code>-1</code> makes contention worse, not better.</strong></p>
+<p>Whether this actually bites depends on whether <code>launch_cf --nthreads 40</code> applies a CPU affinity mask that Qt’s <code>idealThreadCount()</code> respects. That is answerable with one grep on any Derecho iLand log:</p>
+<pre><code>grep -m1 "set max thread count to" &lt;log&gt;</code></pre>
+<p><code>40</code> means affinity is working and the current setup is roughly sane. <code>128</code> means every step has been oversubscribing the node all along, and setting <code>threadCount</code> explicitly is free performance — worth more than the packing change.</p>
+<p><strong>So concurrency comes from nodes.</strong> The round already reaches 36 concurrent (4 nodes × 3 steps × 3 chains); <code>NODES_PER_JOB</code> in <code>scenario-launch/generate_cmdfiles.sh</code> is the lever, and the limit is allocation and queue time rather than anything technical.</p>
+<p>Only 256 GB nodes are available, so the ceiling is 4–5 replicates per node. An earlier version of this report suggested chasing a large-memory node; that avenue does not exist here.</p>
+</section>
+</section>
+<section id="caveats" class="level2">
+<h2 class="anchored" data-anchor-id="caveats">Caveats</h2>
+<ul>
+<li><p><strong>Machine.</strong> Threadripper cores are individually faster than Derecho’s Milan cores, and these runs had the whole machine. The <em>shape</em> of the scaling curve transfers; absolute seconds do not. Memory does transfer — 255.5 GB here against 256 GB per node.</p></li>
+<li><p><strong>Bit-identical results are impossible across thread counts.</strong> iLand uses per-thread RNG streams, so the thread count changes which resource unit draws which numbers. Verified: <code>randomSeed=42</code> applied (<code>result: '42'</code>) and <code>threadCount</code> tracked exactly (<code>set max thread   count to 4/8/16/24/32</code>), yet <code>stand</code> row counts still differ by 0.031%. The workload check is therefore a 2% tolerance, not an equality test.</p></li>
+<li><p><strong>Memory figures are polled</strong>, both here (2 s interval) and in PBS. Brief spikes can be missed.</p></li>
+<li><p><strong>Run-to-run variance is ~10–15% on identical configs</strong>, not just at model creation. <code>m32</code> and <code>t32</code> are the same 32-thread run and differ 218 vs 248 s on <code>runYear</code>; two <code>m8</code> runs gave 470 and 425 s wall. Creation alone ranges 146–188 s. So no timing difference below ~15% here is a result — which is another reason the thread sweep’s 4% spread across 8/16/24/32 is noise. Peak memory, by contrast, reproduced to 0.1% (29.74 then 29.71 GB), so the memory conclusion is on much firmer ground than any of the timings.</p></li>
+<li><p><strong>5 years, not 86, for the timing sweeps.</strong> The timing proportions are per-year and transfer. Memory does not: it grows with simulated years, so the memory question was re-run at production length rather than extrapolated.</p></li>
+<li><p><strong>Landscape 01 only.</strong> Other landscapes may hold more trees and more resource units, and the spread in Derecho’s job totals suggests they do. The 37.4 GB figure is not necessarily the worst case across the six.</p></li>
+</ul>
+</section>
+<section id="open" class="level2">
+<h2 class="anchored" data-anchor-id="open">Open</h2>
+<p>In order:</p>
+<ol type="1">
+<li><strong><code>grep "set max thread count to"</code> on any Derecho iLand log.</strong> Decides whether production has been running 3 × 128 threads on a 128-core node. Costs nothing.</li>
+<li><strong>Set <code>threadCount</code> explicitly</strong> if that grep says 128 — a CLI override in the runner, same mechanism the sandbox uses. Removing contention is likely worth more than any packing change.</li>
+<li><strong>Then</strong> one job at <code>--steps-per-node 4</code>, reading <code>qhist</code> <code>resources_used.mem</code> to confirm 165–210 GB on the real machine with apptainer overhead included. Only after 1 and 2, because packing a node harder while every step requests all its cores makes the contention worse.</li>
+</ol>
+</section>
+</section>
+
+</main>
+<!-- /main column -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+</body></html>

@@ -12,6 +12,6 @@ Line 61 — batches=("${script_dir}/cmdfile_spin_${lcp}.sh") builds a one-elemen
 
 Lines 68–77 — the loop is shared. JID starts empty, so the first iteration takes the -z "$JID" branch and submits with no dependency; only later iterations add -W depend=afterok:${JID}. With one batch the loop runs once, takes the first branch, and you get a standalone job — exactly right for a test.
 
-One practical consequence worth knowing: after 01 succeeds you can just run the script with no argument to do the full six. It resubmits landscape 01, but the runner's .complete sentinel means those nine finished reps are skipped in seconds — so you don't need a "landscapes 02–06 only" mode.
+One practical consequence worth knowing: after 01 succeeds, running the script with no argument to do the full six **re-runs landscape 01 from scratch and destroys its nine finished replicates** — output databases and snapshots alike. The resume guard this note originally relied on was removed from the runner on 2026-08-22, so every submitted line now always runs and `rm -rf`s its scenario directory first. Submit landscapes 02-06 individually, or move landscape 01's output aside before a full-six submission.
 
 Also note shopt -s nullglob on line 55 protects the other branch: without it, a non-matching glob would survive as a literal string and the (( ${#batches[@]} )) count check would pass with one bogus element.

@@ -42,6 +42,7 @@ script_dir=$(cd "$(dirname "$0")" && pwd)
 # directory name will not make it obvious -- so run_iland_local.sh sets this
 # explicitly in every block rather than relying on the default below.
 csv_name="${ILAND_SCENARIO_CSV:-iland_scenarios_onlyfire_historic.csv}"
+
 # Resolve a bare filename against this directory; leave a full path alone.
 [ -f "${csv_name}" ] || csv_name="${script_dir}/${csv_name}"
 if [ ! -f "${csv_name}" ]; then
@@ -50,6 +51,14 @@ if [ ! -f "${csv_name}" ]; then
     exit 1
 fi
 echo "scenario CSV: ${csv_name}"
+
+# iLand thread count. The project files carry <threadCount>-1</threadCount>, i.e. every
+# available core -- 64 logical on this machine, and 256 on a Derecho node. Measured
+# 2026-08-24: a replicate stops getting faster at 8 threads, because ~50% of a run is
+# seed dispersal, which is parallel over SPECIES (4 in these landscapes) and caps at
+# ~3.24x. Leaving it at -1 is why three concurrent local instances pegged the CPU at
+# 98% -- 192 threads on 64 cores -- without running any faster.
+ILAND_THREADS="${ILAND_THREADS:-16}"
 
 mkdir -p "${output_path}"
 
@@ -106,6 +115,7 @@ do
         "${path}" "$tmp_xml" "$simulation_years" \
             system.database.out=${scenario_id}_${rep}.sqlite \
             system.logging.logFile=${scenario_dir}/log/log.txt \
+            system.settings.threadCount=${ILAND_THREADS} \
             system.database.climate=${gcm}.sqlite \
             system.database.in=${sp_param}.sqlite \
             modules.fire.fireReturnInterval=${fri} \

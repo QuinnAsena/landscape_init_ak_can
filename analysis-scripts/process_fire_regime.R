@@ -12,8 +12,8 @@ treatment <- args[2]   # e.g. "NorEsm2-MMssp126_dbh2.5_onlysimfalse_yr_1_iLand2.
 
   # for login node. Remember to comment-out
   # Easy enough to run such a light script on the login node pre landscape.
-  landscape <- "landscape_alaska_06_1950-1980spinup"
-  treatment <- "NorEsm2-MMssp126_dbh2.5_onlysimfalse_yr_1_iLand2.1"
+  landscape <- "landscape_alaska_01_1950-1980spinup"
+  treatment <- "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120"
 
 user       <- "qasena"
 data_path  <- paste0("/glade/derecho/scratch/", user, "/output_ak_can/", landscape, "/")

@@ -41,8 +41,10 @@
 # expect ~3 h of compute plus reduced output time -- call it 3-3.5 h. Walltime was
 # cut 12 h -> 5 h on 2026-08-21 because a shorter request backfills sooner on
 # Derecho; that leaves ~1.5 h of margin. A walltime kill is recoverable (no
-# .complete sentinel means the replicate simply re-runs), but it costs the queue
-# wait, so check qhist elapsed on the first batch before chaining the rest.
+# runner re-runs the replicate unconditionally), but it costs the queue
+# wait, so check qhist elapsed on the first batch before chaining the rest. (Recoverable
+# because the runner has no resume guard at all -- a resubmitted line always re-runs. The
+# flip side is that it also clobbers replicates that DID finish.)
 #
 # Output volume is the thing to watch instead: that timing run produced a 25 GB
 # output database plus a 10 GB snapshot per replicate, and 54 replicates of that
@@ -62,7 +64,12 @@ set -euo pipefail
 
 WALLTIME="10:00:00"
 STEPS_PER_NODE=3          # must match STEPS_PER_NODE in generate_spinup_cmdfiles.sh
-LAUNCH="launch_cf -A UCIE0001 -l walltime=${WALLTIME} --steps-per-node ${STEPS_PER_NODE} --ppn 128 --nthreads 40 --mem 235GB -l job_priority=economy"
+# --nthreads is placement metadata for launch_cf and does NOT reach iLand: the
+# model takes its thread count from system.settings.threadCount, which the runner
+# now sets (ILAND_THREADS, default 16). It was 40 here while iLand was actually
+# running 256 threads per step -- that mismatch is what made the node look
+# CPU-bound. Keep the two numbers in step so the next reader is not misled.
+LAUNCH="launch_cf -A UCIE0001 -l walltime=${WALLTIME} --steps-per-node ${STEPS_PER_NODE} --ppn 128 --nthreads 16 --mem 235GB -l job_priority=economy"
 script_dir=$(cd "$(dirname "$0")" && pwd)
 lcp="${1:-}"
 
