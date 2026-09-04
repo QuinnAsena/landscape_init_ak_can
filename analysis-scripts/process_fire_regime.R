@@ -14,7 +14,7 @@ treatment <- args[2]   # e.g. "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120"
 
   # for login node. Remember to comment-out
   # Easy enough to run such a light script on the login node pre landscape.
-  landscape <- "landscape_alaska_02_1950-1980spinup"
+  landscape <- "landscape_alaska_06_1950-1980spinup"
   treatment <- "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120"
 
 user       <- "qasena"

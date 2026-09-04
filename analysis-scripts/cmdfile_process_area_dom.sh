@@ -15,6 +15,12 @@
 #   node[1]  90.05 GB over 9 real steps = 10.01 GB/step
 #   elapsed 13-17 min against a 2 h walltime
 #
+# CAVEAT: job 7240498 processed landscapes 01 and 02. The lines below are 03 and 04,
+# so those figures are INFERRED to transfer, not measured on them. Basis: the spinup
+# jobs put 03 close to 01 (149-154 vs 146-154 GB/node) and 04 close to 02 (132-139
+# vs 133-138), so processing load should be comparable. Confirm from qhist on the
+# first 03/04 job -- at 18 x ~10 GB there is ~55 GB of slack against 235 GB.
+#
 # That run used only ~45 of 128 cores and ~90 of 235 GB per node. Each step forks
 # plan(multicore, workers = min(nrow(chunks), 10)), and the spinup writes stand and
 # saplingdetail only for year >= 260 -- 41 years, span 10, so 5 chunks and therefore
@@ -40,21 +46,21 @@
 #
 # Current invocation (one line):
 # launch_cf -A UCIE0001 -l walltime=1:00:00 --nthreads 7 --ppn 128 --steps-per-node 18 --mem 235GB -l job_priority=economy /glade/work/qasena/landscape_init_ak_can/analysis-scripts/cmdfile_process_area_dom.sh
-module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_03_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 1
-module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_03_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 2
-module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_03_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 3
-module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_03_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 4
-module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_03_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 5
-module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_03_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 6
-module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_03_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 7
-module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_03_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 8
-module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_03_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 9
-module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_04_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 1
-module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_04_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 2
-module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_04_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 3
-module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_04_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 4
-module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_04_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 5
-module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_04_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 6
-module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_04_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 7
-module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_04_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 8
-module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_04_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 9
+module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_05_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 1
+module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_05_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 2
+module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_05_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 3
+module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_05_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 4
+module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_05_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 5
+module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_05_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 6
+module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_05_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 7
+module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_05_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 8
+module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_05_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 9
+module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_06_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 1
+module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_06_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 2
+module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_06_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 3
+module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_06_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 4
+module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_06_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 5
+module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_06_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 6
+module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_06_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 7
+module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_06_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 8
+module purge; module load conda; conda activate my-r-4.4; Rscript /glade/work/qasena/landscape_init_ak_can/analysis-scripts/process_area_dom.R "landscape_alaska_06_1950-1980spinup" "NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120" 9
