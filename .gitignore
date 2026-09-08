@@ -76,3 +76,8 @@ thread-scaling-test/derecho_temp_log.txt
 thread-scaling-test/results/*_console.txt
 thread-scaling-test/report_files/
 thread-scaling-test/report.html
+
+# Downloaded Derecho job stdout. Useful for diagnosis -- this is how chA_05 was
+# confirmed complete after the 2026-09 maintenance left its array parent stuck --
+# but it is job output, not source, and it arrives as a directory of step-*.out files.
+stdout-*.desched*/

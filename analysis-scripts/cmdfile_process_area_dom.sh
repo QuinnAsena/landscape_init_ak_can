@@ -15,11 +15,13 @@
 #   node[1]  90.05 GB over 9 real steps = 10.01 GB/step
 #   elapsed 13-17 min against a 2 h walltime
 #
-# CAVEAT: job 7240498 processed landscapes 01 and 02. The lines below are 03 and 04,
-# so those figures are INFERRED to transfer, not measured on them. Basis: the spinup
-# jobs put 03 close to 01 (149-154 vs 146-154 GB/node) and 04 close to 02 (132-139
-# vs 133-138), so processing load should be comparable. Confirm from qhist on the
-# first 03/04 job -- at 18 x ~10 GB there is ~55 GB of slack against 235 GB.
+# CAVEAT: job 7240498 processed landscapes 01 and 02. The lines below are 05 and 06,
+# so those figures are INFERRED to transfer, not measured on them -- and unlike the
+# 03/04 round there is no spinup-memory comparison to lean on, because the 05/06
+# spinups ran during the 2026-09 maintenance window and are absent from qhist. The
+# 18 steps/node packing is simply carried over from the 01/02 measurement. It has
+# room: 18 x ~10 GB is ~180 GB, leaving ~55 GB of slack against 235 GB. Confirm from
+# qhist resources_used.mem on the first 05/06 job.
 #
 # That run used only ~45 of 128 cores and ~90 of 235 GB per node. Each step forks
 # plan(multicore, workers = min(nrow(chunks), 10)), and the spinup writes stand and

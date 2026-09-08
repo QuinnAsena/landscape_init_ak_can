@@ -52,7 +52,7 @@ set -euo pipefail
 chain="${1:-}"
 case "$chain" in
     A|B|C) ;;
-    *) echo "usage: bash scenario-launch/submit_chain.sh <A|B|C>" >&2; exit 1 ;;
+    *) echo "usage: bash scenario-launch/submit_chain.sh <A|B|C> [start_batch]" >&2; exit 1 ;;
 esac
 
 # --nthreads is placement metadata for launch_cf and does NOT reach iLand: the
@@ -66,6 +66,43 @@ script_dir=$(cd "$(dirname "$0")" && pwd)
 shopt -s nullglob
 batches=("${script_dir}"/cmdfile_ch${chain}_*.sh)
 (( ${#batches[@]} )) || { echo "no cmdfiles found for chain ${chain}" >&2; exit 1; }
+
+# Optional second argument resumes a partial chain: `submit_chain.sh A 6` submits
+# batches 6 onward only. With no argument the behaviour is exactly as before.
+#
+# WHY THIS EXISTS. On 2026-09-08 the Derecho maintenance window left job 7240530
+# (chA_05) with its array parent stuck in state B even though all four sub-jobs had
+# ended and all 48 model runs had finished cleanly. An afterok on a parent that never
+# reaches a terminal state can never fire, so chA_06 and chA_07 were held forever.
+# Re-running the whole chain was not an option: the runner has NO resume guard, so it
+# would rm -rf and redo the five batches that had already completed.
+#
+# THE SHARP EDGE is not the slicing, it is the consequence. Batches before start_batch
+# are skipped entirely, and the batch you start FROM is re-run in full. For a batch that
+# died part-way that is correct -- the runner clears each scenario_dir first, and a
+# resumed replicate would otherwise mix two fire realisations in one rep_N folder. For a
+# batch that finished, it destroys good output. So start_batch must be the first batch
+# that did NOT complete. Verify with:
+#   bash analysis-scripts/check_cmdfile_complete.sh scenario-launch/cmdfile_ch<X>_<NN>.sh
+start="${2:-1}"
+case "$start" in
+    ''|*[!0-9]*) echo "start_batch must be a positive integer, got: ${start}" >&2; exit 1 ;;
+esac
+(( start >= 1 && start <= ${#batches[@]} )) || {
+    echo "start_batch ${start} out of range: chain ${chain} has ${#batches[@]} batch(es)" >&2
+    exit 1; }
+batches=("${batches[@]:start-1}")
+
+# Echo the list before submitting, so a mistyped start_batch is visible now rather than
+# after the jobs land.
+if (( start > 1 )); then
+    echo "resuming chain ${chain} from batch ${start} -- ${#batches[@]} batch(es) to submit:"
+else
+    echo "submitting chain ${chain} -- ${#batches[@]} batch(es):"
+fi
+for f in "${batches[@]}"; do
+    echo "  $(basename "$f")  ($(grep -vc '^#' "$f") lines)"
+done
 
 JID=""
 for f in "${batches[@]}"; do
