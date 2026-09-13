@@ -81,3 +81,10 @@ thread-scaling-test/report.html
 # confirmed complete after the 2026-09 maintenance left its array parent stuck --
 # but it is job output, not source, and it arrives as a directory of step-*.out files.
 stdout-*.desched*/
+
+# Submission transcripts. `submit_chain.sh ... | tee scenario-launch/submit_log_chC.txt`
+# keeps the job IDs and the qsub line launch_cf prints, which is how a job is mapped back
+# to its cmdfile later -- chain A's mapping had to be INFERRED because this was not kept.
+# Diagnostic output, not source, so it stays out of the repo; copy the useful lines into
+# NOTES.md instead.
+submit_log_*.txt

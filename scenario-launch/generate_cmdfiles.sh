@@ -28,11 +28,11 @@
 # loops the three GCM rows of its CSV, so ~8 h of work inside a 12 h walltime.
 #
 # Every cmdfile must hold a multiple of STEPS_PER_NODE lines, or its last node runs
-# fewer steps than it could. That still holds after 2026-08-25 even though 12+1 = 13
-# is not itself a multiple of 4: lines are flattened before chunking, so a chain of
-# 2 x 2 x 2 x 13 = 104 lines splits into 6 batches of 16 plus one of 8, and both 16
-# and 8 are multiples of 4. The trailing job is simply smaller (2 nodes rather than
-# 4), not under-filled. The check at the bottom re-verifies this if the matrix moves.
+# fewer steps than it could. That still holds even though 12+1 = 13 is not itself a
+# multiple of 4: lines are flattened before chunking, so a chain of 2 x 2 x 2 x 13 =
+# 104 lines splits into 3 batches of 32 plus one of 8, and both 32 and 8 are multiples
+# of 4. The trailing job is simply smaller (2 nodes rather than 8), not under-filled.
+# The check at the bottom re-verifies this if the matrix moves.
 #
 # The three chains are independent and split by landscape, so no two chains
 # touch the same source directory; submit them one at a time to scale
@@ -46,7 +46,15 @@ DIR="/glade/work/qasena/landscape_init_ak_can"   # path as seen on Derecho
 RUNNER="${DIR}/run_iland_csv_cpxml_apptainer.sh"
 YEARS=86
 STEPS_PER_NODE=4          # must match --steps-per-node in submit_chain.sh
-NODES_PER_JOB=4
+# 4 -> 8 on 2026-09-13. 32 concurrent steps is MEASURED, not extrapolated: on 2026-09-09
+# chB_04 (7314029) and chA_06 (7349729) overlapped for ~6h20m with all 8 nodes busy, and
+# cost nothing -- 7.08-9.96 h elapsed and 137-166 GB/node against 8.06-9.91 h and
+# 137-174 GB for a job running alone. Scratch I/O is the only resource two jobs share and
+# it did not bite. This is a batching change only: launch_cf derives the array size from
+# lines / steps-per-node and PBS schedules each subjob as its own 1-node allocation, so a
+# 32-line cmdfile is `-J 0-7`, eight independently scheduled nodes, NOT an 8-node
+# reservation. Queue wait should not worsen; the chain just has 4 turnarounds instead of 7.
+NODES_PER_JOB=8
 BATCH=$(( NODES_PER_JOB * STEPS_PER_NODE ))
 REPS_FALSE=12
 REPS_TRUE=1

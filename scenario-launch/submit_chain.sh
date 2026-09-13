@@ -4,23 +4,24 @@
 # Submits one chain of the current scenario round as a PBS afterok dependency
 # chain -- each batch is held until the previous finishes. The three chains are
 # independent and split by landscape, so they never touch the same source
-# directory. Submit A first; once it is running cleanly add B, then C, to scale
-# concurrency deliberately rather than in one jump.
+# directory. A and B are done; C is the last of this round.
 #
-#   A   landscapes 01, 02    8 batches    96 lines
-#   B   landscapes 03, 04    8 batches    96 lines
-#   C   landscapes 05, 06    8 batches    96 lines
+#   A   landscapes 01, 02    COMPLETE (verified 2026-09-13)
+#   B   landscapes 03, 04    COMPLETE (verified 2026-09-13)
+#   C   landscapes 05, 06    4 batches   104 lines
 #
-# A full batch is 16 lines = 4 nodes at --steps-per-node 4, so 16 replicates run
-# concurrently per chain (48 with all three chains live). Each line loops the
-# three GCM rows of its CSV, ~8 h inside the 12 h walltime -- but see the note on
-# contention below.
+# A full batch is 32 lines = 8 nodes at --steps-per-node 4, so 32 replicates run
+# concurrently per chain. Each line loops the three GCM rows of its CSV, ~8 h inside
+# the 12 h walltime.
 #
-# Revised 2026-08-25: 12 reps (onlysim=false) and 1 (onlysim=true) -> 312 lines,
-# 104 per chain, which chunks into 6 batches of 16 plus one of 8. Both are
-# multiples of 4, so no node is under-filled; the last job is just smaller. Keep
-# --steps-per-node here in step with STEPS_PER_NODE in generate_cmdfiles.sh,
-# which checks that.
+# Revised 2026-09-13: NODES_PER_JOB went 4 -> 8 in generate_cmdfiles.sh, so a chain of
+# 104 lines is now 3 batches of 32 plus one of 8 rather than 6 of 16 plus one of 8.
+# Both 32 and 8 are multiples of 4, so no node is under-filled; the last job is just
+# smaller (2 nodes). 32 concurrent steps was measured on 2026-09-09, when chains A and
+# B overlapped for ~6h20m at 8 nodes with no slowdown and no I/O trouble -- see the
+# comment on NODES_PER_JOB in generate_cmdfiles.sh for the numbers. Keep
+# --steps-per-node here in step with STEPS_PER_NODE in generate_cmdfiles.sh, which
+# checks that; NODES_PER_JOB is the generator's business alone and does not appear here.
 #
 # NOTE: the runner has NO resume guard -- it `rm -rf`s each scenario_dir and
 # re-runs, whether or not that replicate already finished. Anything on scratch
