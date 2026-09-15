@@ -2,7 +2,7 @@
 # Regenerate with:
 #   bash analysis-scripts/generate_process_cmdfiles.sh --kind spinup --analysis area_dom --landscapes "05"
 #
-# area_dom processing for landscape_alaska_05_1950-1980spinup.
+# area_dom processing for landscape_alaska_05_1950-1980spinup -- batch 1 of 1.
 # Treatments are derived from the run CSVs through the runner's naming contract,
 # so they cannot drift from the directories the runs actually produced.
 #
@@ -11,8 +11,8 @@
 # ~10 GB/step, 13-17 min elapsed. 18 steps/node is proven -- 180 GB of 235, and
 # 18 x 5 = 90 of 128 cores. Set --nthreads at or above 5.
 #
-# Suggested invocation (one line):
-# launch_cf -A UCIE0001 -l walltime=2:00:00 --nthreads 9 --ppn 128 --steps-per-node 18 --mem 235GB -l job_priority=economy /glade/work/qasena/landscape_init_ak_can/analysis-scripts/generated/cmdfile_area_dom_spinup_05.sh
+# Submit the whole set as a chain, one batch at a time:
+#   bash analysis-scripts/submit_chain_process.sh area_dom spinup
 #
 # NEVER add a blank line below: launch_cf counts blanks as steps and would
 # silently displace the last command.

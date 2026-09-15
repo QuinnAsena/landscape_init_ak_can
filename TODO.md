@@ -10,11 +10,25 @@
 - [x] `-r n` — **CLOSED, do not do it.** NCAR: `-r y` is hard-coded in `launch_cf` and adding
       `-r n` "may be ill defined"; leave it as is. Mitigation is procedural — have NCAR DELETE
       a job, never requeue it
-- [ ] **area_dom post-processing for landscapes 01–05** (hold 06 until chain C finishes).
-      `generate_process_cmdfiles.sh --kind scenario --analysis area_dom --landscapes "01 02 03 04 05"`
-- [ ] Build the area_dom submission **chain** — beware: spinup processing cmdfiles are 1 node
-      (NOT arrays), scenario ones are 13 nodes. Keep them in separate chains, or detect
-      array-ness before setting the dependency
+- [x] Chain C batches 1–2 verified by sentinel: 96 expected / 96 complete / 0 partial /
+      0 missing each. **Landscapes 01–05 confirmed ready for post-processing**
+- [x] area_dom cmdfiles generated as **batches** for landscapes 01–05. `NODES_PER_JOB=3` in
+      `generate_process_cmdfiles.sh` gives 36 lines / 3 nodes per batch, so 4×36 + 12 per
+      landscape = **25 batches, 780 lines** (verified lossless against the unbatched files)
+- [x] `analysis-scripts/submit_chain_process.sh` — plain glob-and-chain, 41 executable lines
+      against `submit_chain.sh`'s 36. Batching lives in the generator, not the submitter.
+      Takes `<analysis> <kind>`, so scenario and spinup are always separate chains
+- [ ] **Submit the chain, then measure the first batch:**
+      `bash analysis-scripts/submit_chain_process.sh area_dom scenario`
+      Only one batch runs at a time, so batch 1 is measurable on its own — read
+      `qhist -j <first jobid>` for mem/node and elapsed, and `qdel` the held successors if it
+      looks wrong. Per-step memory is UNMEASURED for scenario processing (10–20 GB/step
+      plausible; at 12 steps/node that is 144–240 GB of 235). If it lands near 20 GB/step,
+      drop `--steps-per-node` in **both** the generator and the submitter
+- [ ] area_dom for landscape 06 once 7431376 finishes — generate its batches and chain them;
+      the per-landscape naming makes it additive, nothing else is regenerated
+- [ ] A completeness checker for *processing* output — `check_cmdfile_complete.sh` parses the
+      iLand runner signature and does not work on processing cmdfiles
 - [ ] Adopt `afterokarray` once the processing chain proves it. The helper and reasoning are
       parked in `NOTES.md` (2026-09-13 entry), **not** in the scripts — paste it in and swap
       the one line. **Separate branch of work from the area_dom cmdfiles**
