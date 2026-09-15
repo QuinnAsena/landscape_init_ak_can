@@ -69,6 +69,8 @@ STEPS_PER_NODE=3          # must match STEPS_PER_NODE in generate_spinup_cmdfile
 # now sets (ILAND_THREADS, default 16). It was 40 here while iLand was actually
 # running 256 threads per step -- that mismatch is what made the node look
 # CPU-bound. Keep the two numbers in step so the next reader is not misled.
+# Do NOT add `-r n` -- jobs come out rerunnable and it is not fixable here. See the note in
+# scenario-launch/submit_chain.sh and NOTES.md (2026-09-13 entry).
 LAUNCH="launch_cf -A UCIE0001 -l walltime=${WALLTIME} --steps-per-node ${STEPS_PER_NODE} --ppn 128 --nthreads 16 --mem 235GB -l job_priority=economy"
 script_dir=$(cd "$(dirname "$0")" && pwd)
 lcp="${1:-}"
@@ -86,6 +88,10 @@ else
     (( ${#batches[@]} )) || { echo "no cmdfiles found -- run generate_spinup_cmdfiles.sh" >&2; exit 1; }
 fi
 
+# Plain `afterok`, deliberately -- and so is scenario-launch/submit_chain.sh. UCAR noted on
+# 2026-09-09 that PBS Pro wants `afterokarray` when the predecessor is a job array, which
+# every batch here is (9 lines at 3 steps/node = 3 nodes). Neither script has switched; see
+# NOTES.md (2026-09-13 entry) for the reasoning and the proposed helper.
 JID=""
 for f in "${batches[@]}"; do
     # launch_cf prints diagnostics before the job ID, hence tail -1.

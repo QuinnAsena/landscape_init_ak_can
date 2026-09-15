@@ -61,6 +61,12 @@ esac
 # now sets (ILAND_THREADS, default 16). It was 40 here while iLand was actually
 # running 256 threads per step -- that mismatch is what made the node look
 # CPU-bound. Keep the two numbers in step so the next reader is not misled.
+#
+# DO NOT ADD `-r n` HERE. Jobs come out rerunnable and it is not fixable from this script:
+# the system launch_cf hard-codes `-r y`, and NCAR ruled on 2026-09-15 that also passing
+# `-r n` "may be ill defined", advising we leave it as is. The risk is handled by process
+# instead -- if a job ever has to be cleared, tell NCAR to DELETE it, never requeue it,
+# because the runner has no resume guard. Full account in NOTES.md (2026-09-13 entry).
 LAUNCH="launch_cf -A UCIE0001 -l walltime=12:00:00 --steps-per-node 4 --ppn 128 --nthreads 16 --mem 235GB -l job_priority=economy"
 script_dir=$(cd "$(dirname "$0")" && pwd)
 
@@ -105,6 +111,13 @@ for f in "${batches[@]}"; do
     echo "  $(basename "$f")  ($(grep -vc '^#' "$f") lines)"
 done
 
+# Plain `afterok`, deliberately. UCAR noted on 2026-09-09 that PBS Pro wants `afterokarray`
+# when the predecessor is a job array, which every batch here is. Not adopted: `afterok` has
+# fired correctly on every dependency of chains A, B and C except the two stranded by the
+# stuck array parent on 2026-09-08 -- and that case is the only thing `afterokarray` would
+# change. The proposed helper, the reasoning, and the trap about single-node predecessors
+# are all in NOTES.md (2026-09-13 entry). The area_dom processing chain is the cheap place
+# to test the switch first.
 JID=""
 for f in "${batches[@]}"; do
     # launch_cf prints diagnostics before the job ID, hence tail -1.
