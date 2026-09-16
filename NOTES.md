@@ -161,8 +161,43 @@ So switching copies cannot fix it and there is nothing to pin.
 
 **Two details that avoid future traps.** The generator clears only *the landscape being regenerated* (`cmdfile_<analysis>_<kind>_<NN>_b*.sh` plus the old un-suffixed name), never the whole directory, so generating landscape 06 later cannot delete 01–05's batches. And batch numbers are zero-padded (`_b01`), because at a smaller batch size a landscape would exceed nine batches and `_b10` would sort before `_b2`. Verified lossless: the 780 lines pooled from the batch files sort byte-identical to the pre-change per-landscape files.
 
+**SUBMITTED 2026-09-15 as 7477443–7477467**, 25 batches, consecutive, landscapes 01–05 in order, first `Q` and the other 24 `H`. Per node: `select=1:ncpus=128:mpiprocs=12:ompthreads=9:mem=235GB`, walltime 2 h. The b01–b04 batches are 3 nodes (`-J 0-2`); b05 of each landscape is the 12-line tail.
+
+**And that tail batch turned out to matter for the `afterokarray` question.** 12 lines at 12 steps/node is *exactly one node*, so launch_cf submits it with **no `-J` and an ID with no brackets** — `7477447.desched1`, not `7477443[].desched1`. The chain therefore runs `…7477446[] → 7477447 → 7477448[]…`: a plain job depending on an array, and an array depending on a plain job, **five times over**. `afterokarray` is rejected on a non-array predecessor, so **the unconditional `array_dep` helper would have broken this chain at every b05.** The trap was recorded earlier as "if scenario and spinup processing are ever chained together" — that framing was too narrow; it bites inside a single chain, from the ragged tail batch alone. If `afterokarray` is ever adopted here it must detect per predecessor with `qstat -xf "$JID" | grep -qiE '^[[:space:]]*array[[:space:]]*=[[:space:]]*True'`. Plain `afterok` accepts both forms, which is what the chain uses and why it queued cleanly. The two *model* submit scripts remain all-array — their smallest cmdfile is 8 lines on 2 nodes — so the switch stays viable there.
+
+**MEASURED 2026-09-16 on 7477443–7477446 (landscape 01, b01–b04) — per-step memory was OVERESTIMATED and cores are the real cap.**
+
+| | measured |
+|---|---|
+| per node (12 steps) | 103.43 – 120.68 GB of 235 — **44–51% of the request** |
+| per step | **8.62 – 10.06 GB** |
+| elapsed | **0.44 – 0.68 h** (26–41 min) of a 2 h walltime |
+
+(Range extended 2026-09-16 to cover 7477447 and 7477448. Notably **7477447, the single-node non-array b05 batch, is the highest at 120.68 GB** — same 12 steps as any other node, so nothing about being a plain job changes its footprint.)
+
+The pre-run estimate was 10–20 GB/step, on the reasoning that scenario processing holds 9 year-chunks against the spinup's 5 and would therefore need more memory per step. **It does not** — scenario per-step memory is effectively identical to the spinup's ~10 GB, so the extra chunks cost time and cores rather than resident memory. The `cmdfile_process_area_dom.sh` header carried the same prediction ("per-step memory will exceed 10 GB by an unmeasured amount"); corrected there too. **The binding constraint is cores, exactly as the sizing note said: 12 steps × 9 workers = 108 of 128, capping this at ~14 steps/node.** Memory has ~116 GB of headroom.
+
+**The chain is QUEUE-WAIT dominated, but the wait is BETWEEN batches, not inside them.** Deriving start times as end − elapsed, the three subjobs of a batch start within minutes of each other — 6 min apart for 7477444, 2 min for 7477445, 22 min for 7477446. **The only wide spread is inside 7477443, and it is `[0]` running *early*:** it backfilled at 15-17:54 immediately after submission while `[1]` and `[2]` waited for the overnight window at 16-00:14. That is a first-batch artifact of submitting mid-afternoon, not the steady-state behaviour.
+
+The real cost is the gap from one batch finishing to the next one starting — and it **tracks time of day rather than being a constant**: 7 min, 76 min and 78 min across the overnight transitions, then **~0 min and ~0 min** in the morning (7477447 started the instant 7477446 ended, and 7477448 the instant 7477447 ended). So the 25-batch chain lands somewhere between **~17 h** if gaps stay near zero and **~3 days** at the overnight rate; the three-day figure is the pessimistic end, not the expectation.
+
+Two consequences. **(1) 324 concurrent workers is PROVEN, not merely bounded.** Since a batch's three nodes overlap almost entirely, all 36 lines really do run together — four batches, no I/O errors, memory at 44–51%. *(An earlier version of this entry claimed the opposite — that staggered subjobs meant real peaks of only 108–216 workers, so the I/O cap went untested. That was wrong: it generalised from 7477443 alone. Corrected 2026-09-16.)* Raising `NODES_PER_JOB` is therefore justified by evidence rather than optimism. **(2) Walltime should be 1 h, not 2 h** — the worst batch used 41 minutes, so 1 h leaves ~19 minutes of margin and backfills sooner, which is what the original hand-written `cmdfile_process_area_dom.sh` invocation used. Both are one-line changes (`NODES_PER_JOB` in the generator, `-l walltime=` in the submitter) and neither was made mid-chain.
+
 **Gap worth knowing:** `check_cmdfile_complete.sh` does **not** work on processing cmdfiles. It parses the iLand runner signature (xml, start_rep, end_rep, years, csv); a processing line is `... Rscript process_<analysis>.R "<landscape>" "<treatment>" <rep>`. Completeness of processing output needs its own check, not yet written.
 **Why:** the 18-vs-12 question would otherwise have been settled by analogy with the spinup, which the cores cannot absorb; and the lines-vs-steps distinction is what actually controls the disk I/O risk the chain exists to manage.
+
+---
+
+### 2026-09-16 — Per-replicate fire tables and KBDI gathered alongside area_dom
+**Context:** area_dom processing writes one directory per replicate, but the `fire` table and the annual KBDI grids were still only on scratch in the raw run tree. Both are needed per replicate, on the receiving drive, in the same place as area_dom.
+**Decision/Finding:** Two scripts, `analysis-scripts/gather_fire_kbdi.R` (Derecho login node) and `analysis-scripts/unpack_kbdi.R` (receiving drive). Gather writes `processed/<treatment>/rep_<N>/fire/fire_table.csv` and `processed/<treatment>/rep_<N>/kbdi/kbdi.tar.gz` — beside `area_dom/`. The fire CSV carries landscape/treatment/replicate columns so the files row-bind later without losing provenance.
+
+**KBDI is archived rather than copied.** A scenario replicate writes one grid per simulated year, so the full set across landscapes 01–05 is ~86 × 780 ≈ **67,000 small files**. That many Lustre metadata operations from a login node is slow and antisocial; one archive per replicate is 780 operations, and far quicker to transfer off Derecho. The archives hold **relative** paths (`./kbdi_1.txt`, not `/glade/...`), which is what lets `unpack_kbdi.R` untar them in place on any machine — it uses R's own `untar()`, so Windows works. Both scripts are idempotent: gather skips a replicate whose CSV and archive both exist, unpack skips a directory that already has loose grids, so an interrupted transfer just gets re-run. Tarballs are left in place after unpacking; delete them deliberately with `find <root> -name kbdi.tar.gz -delete`.
+
+**The completeness test is the KBDI grid count, and it is derived rather than hard-coded — because the expected count differs by workflow.** Scenario is **86**, confirmed by the user from the Derecho output, with no empty year-0 grid: `saveWorkflow_scenario.js` calls `saveKBDI()` from `onYearEnd` with no guard, one grid per simulated year. Spinup is **~31**, because `saveWorkflow_spinup.js` wraps the same call in `if (Globals.year % 10 == 0)` over 300 years. Hard-coding 86 would therefore break the moment the script were pointed at spinup output. Instead it counts the grids in every replicate, takes the **mode**, processes the replicates matching it, and lists any that differ. Verified against a synthetic tree of 8 replicates — it derived 86 unaided and flagged the one seeded with 40 grids.
+
+**Worth knowing for diagnosis:** iLand's `Saved KBDI for year N` message goes to its own `log.txt` in the replicate directory, **not** to job stdout, so downloaded `step-*.out` files cannot be used to confirm KBDI behaviour.
+**Why:** the archive-not-copy decision is the difference between a login-node loop that finishes and one that hammers the filesystem for hours; and the derived count is what stops the same script silently discarding every spinup replicate later.
 
 ---
 

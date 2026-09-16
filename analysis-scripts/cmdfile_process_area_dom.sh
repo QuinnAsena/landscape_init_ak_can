@@ -41,10 +41,14 @@
 #   grep -c '^[[:space:]]*$' <file>   # must be 0
 #   grep -vc '^#' <file>              # must equal the expected step count
 #
-# NOT transferable to scenario processing. Scenario runs write all 86 years, so
-# chunks go 5 -> 9 and workers per step 5 -> 9 (cores then allow only ~14 steps per
-# node), and each step holds more data so per-step memory will exceed 10 GB by an
-# unmeasured amount. Re-measure on the first scenario processing job.
+# NOT transferable to scenario processing, but for CORES, not memory. Scenario runs
+# write all 86 years, so chunks go 5 -> 9 and workers per step 5 -> 9, and 18 x 9 = 162
+# workers would oversubscribe the 128 cores -- hence 12 steps/node there, ceiling ~14.
+#
+# MEASURED 2026-09-16 (jobs 7477443-7477446, 12 steps/node): 103.43-118.98 GB/node =
+# 8.62-9.92 GB/step, elapsed 0.44-0.68 h. This line previously predicted per-step memory
+# "will exceed 10 GB by an unmeasured amount" -- that was WRONG. Scenario per-step memory
+# matches the spinup's ~10 GB; the extra chunks cost time and cores, not resident memory.
 #
 # Current invocation (one line):
 # launch_cf -A UCIE0001 -l walltime=1:00:00 --nthreads 7 --ppn 128 --steps-per-node 18 --mem 235GB -l job_priority=economy /glade/work/qasena/landscape_init_ak_can/analysis-scripts/cmdfile_process_area_dom.sh

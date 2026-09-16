@@ -1,3 +1,70 @@
+# =============================================================================
+# NOTES ADDED 2026-09-16 -- why this script failed, and how to fix it
+#
+# Context: this script gave up on programmatic download ("Downloaded the whole
+# dataset to Z") because of an endless redirect loop. That problem is now
+# diagnosed and solved. A working reference implementation against the same
+# ORNL_CLOUD archive is:
+#     D:/quinn/GitHub/JFSP_FireManagement/quinn/download_boreal_tcc.R
+#
+# ---- 1. THE INFINITE REDIRECT (the reason this script was abandoned) --------
+# Earthdata Login authenticates over an OAuth redirect chain:
+#     protected URL -> urs.earthdata.nasa.gov -> back to the app -> S3
+# The app sets a SESSION COOKIE partway through. With no cookie jar, curl
+# discards it, so the app bounces straight back to URS, forever.
+#
+# Reproduced and fixed, verified 2026-09-01:
+#     curl -n -L URL                        -> exit 47, 20 redirects, 0 bytes
+#     curl -n -L -c jar.txt -b jar.txt URL  -> exit  0,  4 redirects, correct bytes
+#
+# So the fix in this script is to add a cookie jar to the curl calls around
+# line 120:
+#     curl -L --netrc -c cookies.txt -b cookies.txt "URL" -o "OUT"
+#
+# It is NOT a credentials problem. And --location-trusted is NOT the fix --
+# that would send your password on to S3.
+#
+# For GDAL/terra the equivalent is GDAL_HTTP_COOKIEFILE + GDAL_HTTP_COOKIEJAR;
+# without them terra::rast(href, vsi=TRUE) fails the same way, which is why the
+# earthdatalogin attempt in earthdata_support.r also came to nothing.
+#
+# ---- 2. .netrc MUST BE ANCHORED ON THE PROFILE, NOT HOME -------------------
+# Verified 2026-09-16. There were TWO .netrc files on this machine with
+# DIFFERENT usernames:
+#     C:/Users/asenaq/.netrc            3 lines, 10-char login -> HTTP 206 (works)
+#     C:/Users/asenaq/Documents/.netrc  1 line,   8-char login -> HTTP 401
+# Rscript from a shell resolves HOME to the profile and picks the good one, but
+# an IDE-launched R session resolves HOME (and "~") to Documents and picks the
+# bad one -- so every download 401s, with valid credentials.
+#
+# The Documents one has since been deleted. To avoid this class of bug, pass the
+# path explicitly instead of relying on discovery:
+#     curl --netrc-file "C:/Users/asenaq/.netrc" ...
+# or in R:  curl::handle_setopt(h, netrc = TRUE, netrc_file = <path>)
+# Anchor on Sys.getenv("USERPROFILE"), never on "~".
+#
+# ---- 3. CMR PAGING -- THIS SCRIPT IS SILENTLY TRUNCATING ITS RESULTS -------
+# Verified 2026-09-01. CMR caps page_size at 2000. The request below uses
+# page_size = 2000 and reads a single response, so if a query matches more than
+# 2000 granules it returns the first 2000 with NO error and NO warning.
+# For scale: the Boreal_CanopyCover_StandAge collection has 8,414 granules over
+# North America, so such a query would silently lose ~75% of its results.
+# Fix: follow the CMR-Search-After response header and keep requesting until a
+# page comes back short. See find_granules() in download_boreal_tcc.R.
+#
+# ---- 4. SECURITY: PLAINTEXT PASSWORD STILL IN THIS FILE --------------------
+# There is a hardcoded Earthdata password below (in the MoreArgs list, and again
+# in the commented block near the bottom), on a shared network drive. The
+# password was rotated on 2026-09-16 so the value is now stale, but it should be
+# deleted rather than left lying around, and the username/password arguments
+# dropped entirely -- .netrc makes them unnecessary.
+#
+# ---- 5. STATUS --------------------------------------------------------------
+# Notes only; no code changed. The fixes above are understood and tested
+# elsewhere, but this script has NOT been updated yet.
+# =============================================================================
+
+
 # Downloading data from ORNL CLOUD specifically gave issues.
 # Other DACs seems accessible programatically more easily
 # Downloaded the whole dataset to Z, it is not that large

@@ -18,20 +18,29 @@
 - [x] `analysis-scripts/submit_chain_process.sh` — plain glob-and-chain, 41 executable lines
       against `submit_chain.sh`'s 36. Batching lives in the generator, not the submitter.
       Takes `<analysis> <kind>`, so scenario and spinup are always separate chains
-- [ ] **Submit the chain, then measure the first batch:**
-      `bash analysis-scripts/submit_chain_process.sh area_dom scenario`
-      Only one batch runs at a time, so batch 1 is measurable on its own — read
-      `qhist -j <first jobid>` for mem/node and elapsed, and `qdel` the held successors if it
-      looks wrong. Per-step memory is UNMEASURED for scenario processing (10–20 GB/step
-      plausible; at 12 steps/node that is 144–240 GB of 235). If it lands near 20 GB/step,
-      drop `--steps-per-node` in **both** the generator and the submitter
+- [x] **area_dom chain SUBMITTED 2026-09-15 as 7477443–7477467** (25 batches, landscapes
+      01–05, first `Q` and 24 `H`). The five b05 tail batches are single-node **plain** jobs,
+      not arrays — see NOTES.md, it changes the `afterokarray` plan
+- [x] **Measured 2026-09-16 (7477443–7477448): 8.62–10.06 GB/step, 103–121 GB/node of 235,
+      elapsed 26–41 min.** The 10–20 GB/step estimate was too high — memory has ~115 GB of
+      headroom and **cores are the cap** (12 × 9 = 108 of 128, ceiling ~14 steps/node)
+- [x] **area_dom landscape 01 COMPLETE** (7477443–7477447, all 156 runs). Landscape 02 under
+      way: 7477448 done, 7477449 running
+- [ ] **Two cheap speed-ups for the NEXT round, both one-liners, not applied mid-chain:**
+      walltime 2 h → 1 h in `submit_chain_process.sh` (worst batch 41 min), and a larger
+      `NODES_PER_JOB` in the generator. Justified because the chain is **queue-wait dominated
+      between batches** — 7, 76 and 78 min from one batch ending to the next starting, against
+      ~35 min of compute, so 25 batches is ~3 days at ~80% queueing. **324 concurrent workers
+      is now proven** (a batch's 3 nodes start within 2–22 min of each other and overlap
+      almost fully, 4 batches, no I/O errors), so a bigger batch is evidence-backed
 - [ ] area_dom for landscape 06 once 7431376 finishes — generate its batches and chain them;
       the per-landscape naming makes it additive, nothing else is regenerated
 - [ ] A completeness checker for *processing* output — `check_cmdfile_complete.sh` parses the
       iLand runner signature and does not work on processing cmdfiles
-- [ ] Adopt `afterokarray` once the processing chain proves it. The helper and reasoning are
-      parked in `NOTES.md` (2026-09-13 entry), **not** in the scripts — paste it in and swap
-      the one line. **Separate branch of work from the area_dom cmdfiles**
+- [ ] `afterokarray` — the helper is parked in `NOTES.md` (2026-09-13 entry), not in the
+      scripts. **Only viable for the two MODEL submit scripts** (all their cmdfiles are 2+
+      nodes). It would break the processing chain, whose b05 tail batches are single-node
+      plain jobs, unless it detects array-ness per predecessor. Separate branch of work
 - [ ] Chain C walltime is at **95% of 12 h** (11.36 h on 7431374[1], vs 90% for chain A and
       83% for B). Fine for the remaining 2-node batch, but treat 12 h as marginal for any
       future round at these settings
