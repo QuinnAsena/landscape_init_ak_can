@@ -196,6 +196,15 @@ Two consequences. **(1) 324 concurrent workers is PROVEN, not merely bounded.** 
 
 **The completeness test is the KBDI grid count, and it is derived rather than hard-coded — because the expected count differs by workflow.** Scenario is **86**, confirmed by the user from the Derecho output, with no empty year-0 grid: `saveWorkflow_scenario.js` calls `saveKBDI()` from `onYearEnd` with no guard, one grid per simulated year. Spinup is **~31**, because `saveWorkflow_spinup.js` wraps the same call in `if (Globals.year % 10 == 0)` over 300 years. Hard-coding 86 would therefore break the moment the script were pointed at spinup output. Instead it counts the grids in every replicate, takes the **mode**, processes the replicates matching it, and lists any that differ. Verified against a synthetic tree of 8 replicates — it derived 86 unaided and flagged the one seeded with 40 grids.
 
+**RUN 2026-09-17 — all six landscapes in one login-node pass: 936 replicates, 86 grids each, 0 with a wrong count, 0 failed.** That is ~80,500 grids read and gzipped, and it completed without troubling the login node. **The result doubles as an independent completeness check on the whole scenario round:** a replicate only writes its 86th grid if it reached the final simulated year, so 936/936 at exactly 86 (936 = 6 × 156) corroborates the `.complete` sentinel audits by an entirely different route.
+
+**KNOWN FLAW in the resume guard, not yet fixed.** The check is `file.exists(fire_csv) && file.exists(kbdi_tar)`, and the CSV is written *before* the tar. A run killed mid-`tar` therefore leaves a complete CSV beside a **truncated archive**, and a re-run would see both files, skip the replicate, and carry the corrupt archive through to transfer unnoticed. The fix is to tar to a temporary name and rename on success, so a partial archive never holds the final name. Until then, verify before transferring:
+```
+find <root> -name kbdi.tar.gz | while read f; do gzip -t "$f" 2>/dev/null || echo "CORRUPT: $f"; done
+```
+
+**The archives stay packed on Derecho by design** — `unpack_kbdi.R` expands them on the receiving drive. Unpacking them in place would recreate the ~80,500 loose files the tarring exists to avoid, though running the unpacker against the scratch root is a valid choice if the grids are wanted there too.
+
 **Worth knowing for diagnosis:** iLand's `Saved KBDI for year N` message goes to its own `log.txt` in the replicate directory, **not** to job stdout, so downloaded `step-*.out` files cannot be used to confirm KBDI behaviour.
 **Why:** the archive-not-copy decision is the difference between a login-node loop that finishes and one that hammers the filesystem for hours; and the derived count is what stops the same script silently discarding every spinup replicate later.
 

@@ -33,8 +33,14 @@
       ~35 min of compute, so 25 batches is ~3 days at ~80% queueing. **324 concurrent workers
       is now proven** (a batch's 3 nodes start within 2–22 min of each other and overlap
       almost fully, 4 batches, no I/O errors), so a bigger batch is evidence-backed
-- [ ] area_dom for landscape 06 once 7431376 finishes — generate its batches and chain them;
-      the per-landscape naming makes it additive, nothing else is regenerated
+- [x] **fire + KBDI gathered for ALL SIX landscapes** (2026-09-17): 936 replicates, 86 grids
+      each, 0 failed. Doubles as a completeness check on the whole scenario round
+- [ ] **Verify the archives before transferring** — the resume guard can hide a truncated
+      tarball if a run is ever interrupted mid-`tar`:
+      `find <root> -name kbdi.tar.gz | while read f; do gzip -t "$f" 2>/dev/null || echo "CORRUPT: $f"; done`
+- [ ] Fix that guard properly: tar to a temp name, rename on success
+- [ ] area_dom for landscape 06 — its iLand runs are done, so generate its batches and chain
+      them; the per-landscape naming makes it additive, nothing else is regenerated
 - [ ] A completeness checker for *processing* output — `check_cmdfile_complete.sh` parses the
       iLand runner signature and does not work on processing cmdfiles
 - [ ] `afterokarray` — the helper is parked in `NOTES.md` (2026-09-13 entry), not in the
