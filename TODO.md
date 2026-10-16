@@ -1,6 +1,28 @@
 # TODO
 
-## In flight — 2026-09-13
+## In flight — 2026-10-15: short-interval fire round (fri 10, 15, 30)
+
+- [x] 12 new CSVs in `scenario-launch/` (`ssp{245,370}_sim{false,true}_fri{10,15,30}`),
+      derived from the fri60 files by rewriting field 3 only; each verified identical to
+      its source in every other field
+- [x] `FRIS="60 120"` → `"10 15 30"` in `generate_cmdfiles.sh` — the only functional change
+- [x] Regenerated: **156 lines per chain → 5 batches [32 32 32 32 28], 468 lines,
+      1404 model runs.** Verified: only fri10/15/30 referenced, all 12 CSVs exist, 0 blank
+      lines, reps 1–12 for onlysim=false and rep 1 for true
+- [ ] **Commit + push, pull on Derecho, then submit chain A ONLY:**
+      `bash scenario-launch/submit_chain.sh A 2>&1 | tee scenario-launch/submit_log_chA_fri.txt`
+      One chain = 32 concurrent models (the proven figure). A+B together would be 64.
+- [ ] **Read `qhist` on chain A batch 1 before letting batches 2–5 run.** Chain C hit 95% of
+      the 12 h walltime and fri 10 is far more fire — runtime effect unknown. Past ~11.5 h,
+      split CSVs to one GCM per line rather than asking for more walltime
+- [ ] Then chain B, then chain C
+- [ ] **Do not put fri 60/120 back into `FRIS`** — it would clobber 936 verified replicates
+- [ ] When processing this round: `generate_process_cmdfiles.sh` globs ALL scenario CSVs, so
+      it now emits 60 treatments instead of 24. Needs a fri filter or a scoped run
+
+---
+
+## Earlier — 2026-09-13
 
 - [x] Chains A + B verified complete (624/624 runs, zero errors in `std_out/`)
 - [x] Batch size collapsed 4 → 8 nodes (`NODES_PER_JOB` in `scenario-launch/generate_cmdfiles.sh`)
