@@ -7,7 +7,23 @@
 #   onlysim=false  fire burns biomass           reps 1-12
 #   onlysim=true   fire simulated, no effect    rep  1
 #
-# 6 lcp x 2 ssp x 3 fri x (12+1) reps = 468 lines = 1404 model runs.
+# 6 lcp x 2 ssp x 3 fri x (12+1) reps = 468 lines.
+# Model runs are NOT 3 per line any more -- see the GCM note below -- so the round
+# is 234 ssp370 lines x 3 GCMs + 234 ssp245 lines x 2 GCMs = 1170 model runs.
+#
+# Revised 2026-10-20: NorEsm2-MM is EXCLUDED FROM ssp245 ONLY, by deleting its row
+# from the six ssp245 fri10/15/30 CSVs. Its downscaled ssp245 climate has three
+# corrupt source files, one of which (vp-2066) leaves vpd NULL for a whole year
+# inside the 2015-2100 window -- see the 2026-10-16 NOTES entry. TaiESM1 and
+# UKESM1-0-LL under ssp245 are clean and are kept, as is all of ssp370 including
+# NorEsm2-MM. An earlier version of this round dropped ssp245 wholesale, which
+# needlessly discarded two good GCMs and the SSP contrast with it.
+#
+# CONSEQUENCE: ssp245 lines now loop TWO CSV rows, ssp370 lines three. An ssp245
+# line is therefore about two thirds the work -- roughly 5-7 h against 8-11 h --
+# which widens the 12 h walltime margin for half the round. The fri 60/120 CSVs are
+# untouched and still carry all three GCMs, so this round's ssp245 has one fewer GCM
+# than the completed one.
 #
 # Revised 2026-08-19: dropped ssp126, added the fri 60 / fri 120 contrast.
 #
@@ -41,6 +57,10 @@
 # multiples of 4. The trailing job is simply smaller (7 nodes rather than 8), not
 # under-filled. The check at the bottom re-verifies this if the matrix moves.
 #
+# (The ssp370-only variant briefly tried on 2026-10-20 gave 78 lines a chain, which
+# is NOT divisible by 4 and warned once per chain. Restoring ssp245 restores the
+# clean split -- a reason to prefer an even number of ssp x fri combinations.)
+#
 # The three chains are independent and split by landscape, so no two chains
 # touch the same source directory; submit them one at a time to scale
 # concurrency deliberately.
@@ -65,7 +85,7 @@ NODES_PER_JOB=8
 BATCH=$(( NODES_PER_JOB * STEPS_PER_NODE ))
 REPS_FALSE=12
 REPS_TRUE=1
-SSPS="245 370"            # ssp126 dropped from this round
+SSPS="245 370"            # ssp126 dropped; NorEsm2-MM excluded from ssp245 CSVs -- see header
 FRIS="10 15 30"           # short-interval round; 60 and 120 are DONE -- see header
 
 chain_landscapes() {
@@ -80,6 +100,7 @@ out_dir=$(cd "$(dirname "$0")" && pwd)
 rm -f "${out_dir}"/cmdfile_ch[ABC]_*.sh
 
 total=0
+runs=0        # actual model runs, accumulated from each CSV's GCM row count
 for chain in A B C; do
     lines=()
     for n in $(chain_landscapes "$chain"); do
@@ -89,8 +110,15 @@ for chain in A B C; do
                 for sim in false true; do
                     if [ "$sim" = "false" ]; then reps=$REPS_FALSE; else reps=$REPS_TRUE; fi
                     csv="${DIR}/scenario-launch/iland_scenarios_ssp${ssp}_sim${sim}_fri${fri}.csv"
+                    # Count the CSV's GCM rows rather than assuming three. Since
+                    # 2026-10-20 the ssp245 CSVs carry two (NorEsm2-MM excluded), so a
+                    # fixed multiplier would misreport the size of the round.
+                    local_csv="${out_dir}/$(basename "$csv")"
+                    [ -f "$local_csv" ] || { echo "  ERROR: missing CSV $(basename "$csv")" >&2; exit 1; }
+                    gcm_rows=$(( $(grep -vc '^[[:space:]]*$' "$local_csv") - 1 ))
                     for rep in $(seq 1 "$reps"); do
                         lines+=("bash ${RUNNER} ${xml} ${rep} ${rep} ${YEARS} ${csv}")
+                        runs=$(( runs + gcm_rows ))
                     done
                 done
             done
@@ -116,4 +144,4 @@ for chain in A B C; do
     printf "chain %s: %3d lines -> %d batches [ %s]\n" "$chain" "$n_lines" "$n_batches" "$sizes"
     total=$((total + n_lines))
 done
-printf "total: %d lines, %d model runs (3 GCMs per line)\n" "$total" "$((total * 3))"
+printf "total: %d lines, %d model runs (GCM rows counted per CSV, not assumed)\n" "$total" "$runs"

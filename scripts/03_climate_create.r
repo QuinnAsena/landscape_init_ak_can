@@ -168,6 +168,16 @@ process_climate_link <- function(gcm, ssp, var, year, landscape_dir, logs = FALS
 
   }, error = function(e) {
     log_msg("ERROR", conditionMessage(e))
+    # The warning is deliberately OUTSIDE the log_msg mechanism. With the default
+    # logs = FALSE, log_msg is `invisible(NULL)`, so for years this handler made a
+    # failure indistinguishable from a success: no file written, nothing reported,
+    # exit status 0. That is how three corrupt NorEsm2-MM/ssp245 .nc files
+    # (tasmin-1958, vp-1958, vp-2066) silently became whole years of NULL climate
+    # in every landscape database -- found months later in a plot, not here.
+    # A missing .nc, a typo'd gcm/ssp/var, and a network dropout all land here too.
+    warning(sprintf("process_climate_link FAILED: %s %s %s %s %s -- %s",
+                    landscape_dir, gcm, ssp, var, year, conditionMessage(e)),
+            call. = FALSE, immediate. = TRUE)
   })
 }
 

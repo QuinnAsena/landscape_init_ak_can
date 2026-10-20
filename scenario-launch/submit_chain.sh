@@ -6,13 +6,19 @@
 # independent and split by landscape, so they never touch the same source
 # directory. A and B are done; C is the last of this round.
 #
-#   A   landscapes 01, 02    COMPLETE (verified 2026-09-13)
-#   B   landscapes 03, 04    COMPLETE (verified 2026-09-13)
-#   C   landscapes 05, 06    4 batches   104 lines
+# Current round (fri 10/15/30, ssp245 + ssp370): each chain is 156 lines -> 5 batches,
+# 32 + 32 + 32 + 32 + 28.
+#
+#   A   landscapes 01, 02
+#   B   landscapes 03, 04
+#   C   landscapes 05, 06
 #
 # A full batch is 32 lines = 8 nodes at --steps-per-node 4, so 32 replicates run
-# concurrently per chain. Each line loops the three GCM rows of its CSV, ~8 h inside
-# the 12 h walltime.
+# concurrently per chain. Line duration now depends on the SSP: an ssp370 line loops
+# three GCM rows (~8-11 h inside the 12 h walltime), an ssp245 line only two (~5-7 h),
+# because NorEsm2-MM is excluded from the ssp245 CSVs -- its ssp245 climate is corrupt.
+# See generate_cmdfiles.sh. Half the round therefore has a wider walltime margin than
+# the fri 60/120 round did.
 #
 # Revised 2026-09-13: NODES_PER_JOB went 4 -> 8 in generate_cmdfiles.sh, so a chain of
 # 104 lines is now 3 batches of 32 plus one of 8 rather than 6 of 16 plus one of 8.
@@ -67,7 +73,14 @@ esac
 # `-r n` "may be ill defined", advising we leave it as is. The risk is handled by process
 # instead -- if a job ever has to be cleared, tell NCAR to DELETE it, never requeue it,
 # because the runner has no resume guard. Full account in NOTES.md (2026-09-13 entry).
-LAUNCH="launch_cf -A UCIE0001 -l walltime=12:00:00 --steps-per-node 4 --ppn 128 --nthreads 16 --mem 235GB -l job_priority=economy"
+#
+# PRIORITY: premium, not economy -- changed 2026-10-20 and deliberately temporary.
+# Premium charges 1.5x against the allocation where economy charges less, bought to
+# cut queue wait with ~10 days left in the project timeline. The timing study showed
+# these chains are queue-wait dominated, so priority buys more here than any further
+# packing change would. Drop back to economy once the deadline passes -- there is no
+# reason to pay 1.5x for an unhurried round.
+LAUNCH="launch_cf -A UCIE0001 -l walltime=12:00:00 --steps-per-node 4 --ppn 128 --nthreads 16 --mem 235GB -l job_priority=premium"
 script_dir=$(cd "$(dirname "$0")" && pwd)
 
 shopt -s nullglob

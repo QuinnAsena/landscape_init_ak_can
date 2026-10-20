@@ -188,6 +188,51 @@ Two consequences. **(1) 324 concurrent workers is PROVEN, not merely bounded.** 
 
 ---
 
+### 2026-10-20 — NorEsm2-MM excluded from ssp245 only; priority raised to premium
+**Context:** Ten days left in the project timeline, the fri 10/15/30 round still unsubmitted, and the NorEsm2-MM/ssp245 climate known corrupt (2026-10-16 entry).
+**Decision/Finding:** **NorEsm2-MM is excluded from ssp245 alone**, by deleting its row from the six `iland_scenarios_ssp245_sim{false,true}_fri{10,15,30}.csv` files. TaiESM1 and UKESM1-0-LL under ssp245 are clean and are kept; all of ssp370 keeps all three GCMs. Priority went `economy` → `premium` in `submit_chain.sh`.
+
+**A first attempt dropped ssp245 wholesale and was wrong** — it discarded two good GCMs and the entire SSP contrast to remove one bad one. The reason the blunt version looked necessary is worth recording: a cmdfile line loops **every row of its CSV**, so the GCM set is a property of the CSV, not of the line. Excluding one GCM from one SSP therefore means editing those CSVs, not the generator. Once that was seen, the targeted fix was six `grep -v` edits.
+
+**Scale: 468 lines, 1170 model runs** — and the run count is no longer 3× the line count. ssp370 lines loop three CSV rows, ssp245 lines two: 234 × 3 + 234 × 2 = 1170. The generator used to print `total * 3`, which would now be wrong by 234 runs, so it **counts each CSV's GCM rows instead of assuming three**. The same stale-multiplier assumption is what the climate guards were added to prevent a fortnight ago.
+
+**Two side effects of keeping ssp245, both good.** The chain is back to 156 lines → **5 batches of 32/32/32/32/28**, which divides cleanly by `STEPS_PER_NODE=4`, so the under-fill warning the ssp370-only variant produced is gone (78 is not a multiple of 4; 156 is). And an ssp245 line is now about two thirds the work — roughly 5–7 h against 8–11 h — so **half the round has a wider margin against the 12 h walltime** than the fri 60/120 round did. That matters because chain C previously peaked at 95% of walltime.
+
+**Premium is deliberately temporary.** It charges 1.5× against the allocation, bought to cut queue wait with the deadline close, and the allocation has the hours. It is the right lever rather than more packing: the 2026-09-16 timing study showed these chains are **queue-wait dominated** (gaps of 7, 76 and 78 minutes between batches against ~35 minutes of compute). **Drop back to economy once the deadline passes.** Only `scenario-launch/submit_chain.sh` changed — `submit_chain_spinup.sh` and `analysis-scripts/submit_chain_process.sh` are still economy, so this round's area_dom processing will queue at the old priority unless raised.
+
+Verified after regeneration: all 12 fri10/15/30 CSVs referenced and no fri60/120 leakage; **NorEsm2-MM present in 6 of 6 ssp370 CSVs and 0 of 6 ssp245 CSVs**; the fri 60/120 CSVs untouched and still carrying three GCMs; 15 cmdfiles, 468 lines, zero blanks, 432 simfalse / 36 simtrue.
+**Why:** removing a whole SSP to avoid one GCM traded away more science than the defect cost. The CSV-per-line structure made the targeted fix cheap once it was recognised.
+
+---
+
+### 2026-10-16 — Three corrupt NorEsm2-MM/ssp245 climate files, and guards so the next ones are loud
+**Context:** `NorEsm2-MMssp245.sqlite` had `min_temp` NULL for all 365 days of 1958 and `vpd` NULL for all 365 days of 1958 and 2066, identically in every climate table and all six landscapes. ssp370, TaiESM1 and UKESM1-0-LL were clean.
+**Decision/Finding:** **Source data, not the pipeline — but the pipeline is why it was invisible for months.** Three defective `.nc` files, all under `Landscapes/Downscaled NorEsm2-MM/ssp245/`:
+
+| file | size | CRS | contents |
+|---|---|---|---|
+| `tasmin-1958.nc` | **48 KB** (neighbours 6.4 GB) | **missing** | header only, no data |
+| `vp-2066.nc` | 6.4 GB, correct dims/extent | **missing** | **every value 0, NA mask gone** |
+| `vp-1958.nc` | 6.4 GB | valid | **all-NA over the Landscapes domain** |
+
+All 151 yearly files exist for every variable, so any count- or size-based check passes — which is why the 2026-08-18 audit, which checked year *coverage*, missed it. `vp-2066` is **not recoverable locally**: the same cell block reads 0.854–1.44 in 2065 and 0–0 in 2066, i.e. a fully written but empty export. `vp-1958` is intact in the `CPCRW` tree, which is why landscape 01 alone escapes that one.
+
+**The failure chain.** A missing CRS makes `project(ext(env), to = crs(r))` fail in script 03; the body is wrapped in `tryCatch(..., error = function(e) log_msg("ERROR", ...))`, and at the default `logs = FALSE` `log_msg` is `invisible(NULL)` — so **a failure was indistinguishable from a success**: no file, no message, exit status 0. Script 04 then left-joins the variables onto `tasmax`, which was complete, so a missing year became a **NULL column on a present row** rather than a missing row. And `vpd = es(tasmin, tasmax) − vp`, so vpd dies if *either* input does — hence 1958 losing both fields and 2066 losing only vpd.
+
+**Scope, audited:** all 54 combinations (6 landscapes × 3 GCMs × 3 SSPs) were checked for variables disagreeing on their year set. **Only NorEsm2-MM/ssp245 is affected.** Landscapes 02–06 are short `tasmin` 1958 and `vp` 1958+2066; landscape 01 is short only `vp` 2066, via the CPCRW fallback.
+
+**Impact:** 1958 is below the 1980 start of every run, so it costs nothing. **2066 is inside the 2015–2100 window**, so every completed NorEsm2-MM/ssp245 replicate ran a year with no vpd — and all 936 runs reported `*** model run finished.`, so iLand accepted it silently. Whether that warrants re-running is a science question for Winslow; **no gap-filling was done**, by decision. The fri 10/15/30 round had not been submitted, so nothing was burning compute on it.
+
+**Three guards added**, each verified to fire against a fixture and to stay silent on clean data:
+1. `03_climate_create.r` — the error handler now also raises a `warning()` naming landscape/gcm/ssp/var/year plus the condition message, **outside** the `log_msg` mechanism so it speaks at the default `logs = FALSE`. A silent handler on a network-dependent loop hides typo'd names and dropouts just as readily as bad files.
+2. `04_climate_create.r` — before joining, assert all five variables share one year set; `stop()` listing each short variable and its missing years. Maps directly onto the observed fault.
+3. `04_climate_create.r` — after assembly and before writing, `stop()` if any of `min_temp, max_temp, prec, rad, vpd` holds an NA, reporting count and years per column. This is the backstop for NA *content* in a file that exists — the `vp-1958` class, which a year-set check cannot see.
+
+Guards 2 and 3 are deliberately separate: 2 gives a precise early diagnosis, 3 catches what nobody predicted. Verified by running the real `process_sqlite` against a fixture: disagreeing year sets stop with both offenders named; an all-NA variable stops reporting `vpd` (not `vp`, since only the columns that reach the database are checked); clean data builds exactly as before.
+**Why:** the data defect was someone else's to fix, but the months of silence were ours. A `tryCatch` whose handler is `invisible(NULL)` is not error handling, and a left join onto a complete anchor turns missing inputs into plausible-looking NULLs.
+
+---
+
 ### 2026-10-15 — Short-interval fire round: fri 10, 15 and 30
 **Context:** The fri 60 / 120 round is complete and post-processed (312 lines, 936 runs, all verified). This round extends the fire-frequency contrast downward with fri **10, 15 and 30**, in exactly the same shape: 6 landscapes × 2 SSPs × 3 GCMs × (12 reps onlysim=false + 1 onlysim=true).
 **Decision/Finding:** **Two files changed and nothing else** — twelve new CSVs in `scenario-launch/`, and `FRIS="60 120"` → `"10 15 30"` in `generate_cmdfiles.sh`. No XML edits, no landscape-directory changes, and no new spinups: `fri` reaches iLand as a command-line override (`modules.fire.fireReturnInterval=${fri}`, runner line 89) read from the CSV's third column, and every CSV points at the same `snapshot/spinup_300`. The new CSVs were derived from their fri60 counterparts by rewriting field 3 with `awk -F, -v OFS=, '{$3=F}'` — field-indexed rather than `sed s/,60,/,10,/`, so nothing else could be touched; verified by diffing each against its source with field 3 masked, which showed no other change.

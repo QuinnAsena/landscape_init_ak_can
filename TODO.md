@@ -1,6 +1,50 @@
 # TODO
 
-## In flight — 2026-10-15: short-interval fire round (fri 10, 15, 30)
+## In flight — 2026-10-20: fri 10/15/30 round, NorEsm2-MM out of ssp245, premium priority
+
+- [x] **NorEsm2-MM removed from the six ssp245 fri10/15/30 CSVs only.** TaiESM1 and
+      UKESM1-0-LL under ssp245 are clean and kept; ssp370 keeps all three GCMs. The
+      fri 60/120 CSVs are untouched and still carry three
+- [x] `job_priority=economy` → `premium` in `scenario-launch/submit_chain.sh` (1.5× charge,
+      bought for queue position with the deadline close)
+- [x] Regenerated: **156 lines per chain → 5 batches [32 32 32 32 28], 468 lines,
+      1170 runs.** No under-fill warning (156 divides by 4). Verified NorEsm2-MM appears in
+      6/6 ssp370 CSVs and 0/6 ssp245, no fri60/120 leakage, 0 blanks, 432 simfalse / 36 simtrue
+- [x] Generator now **counts each CSV's GCM rows** instead of assuming 3 — the old
+      `total * 3` would have over-reported this round by 234 runs
+- [ ] **Commit + push, pull on Derecho, submit chain A:**
+      `bash scenario-launch/submit_chain.sh A 2>&1 | tee scenario-launch/submit_log_chA_fri.txt`
+      Expect 5 jobs — `-J 0-7` ×4 and `-J 0-6` on the 28-line tail
+- [ ] Read `qhist` on batch 1 before releasing the rest — fri 10 runtime is still untested
+      against the 12 h walltime (chain C previously hit 95%). ssp245 lines are now ~2/3 the
+      work, so the tight case is an ssp370 line
+- [ ] **Raise the processing chain to premium too?** `submit_chain_process.sh` is still on
+      economy, so area_dom for this round will queue at the old priority
+- [ ] **Drop back to economy once the deadline passes** — no reason to pay 1.5× afterwards
+
+---
+
+## Earlier — 2026-10-16: corrupt NorEsm2-MM/ssp245 climate files
+
+- [x] Diagnosed: **three bad source `.nc` files** under `Landscapes/Downscaled NorEsm2-MM/ssp245/`
+      — `tasmin-1958` (48 KB stub, no CRS), `vp-2066` (full size, no CRS, **all zeros**),
+      `vp-1958` (full size, valid CRS, **all-NA over the domain**). Audited all 54
+      landscape×GCM×SSP combinations: **only this one is affected**
+- [x] Report to Lora Murphy written as a Claude Doc — exact paths, per-file defect,
+      reproduction steps, and why size/open checks pass two of the three
+- [x] Three guards added and verified against a fixture: script 03 now `warning()`s on failure
+      even at the default `logs = FALSE`; script 04 asserts all five variables share a year set,
+      and refuses to write a database containing any NA
+- [ ] **Send the report to Lora** (and decide on the last paragraph — see the doc comment)
+- [ ] **Winslow:** does one year of missing vpd (2066) warrant re-running the completed
+      NorEsm2-MM/ssp245 replicates? 156 of 936 runs. **No gap-filling** — decided
+- [ ] If re-exported: re-run script 03 for that combination with `logs = TRUE`, confirm all
+      five variables reach 151 `.txt`, then rebuild the six databases — the new guards will
+      refuse to compile until it is genuinely clean
+
+---
+
+## Earlier — 2026-10-15: short-interval fire round (fri 10, 15, 30)
 
 - [x] 12 new CSVs in `scenario-launch/` (`ssp{245,370}_sim{false,true}_fri{10,15,30}`),
       derived from the fri60 files by rewriting field 3 only; each verified identical to
