@@ -7,17 +7,25 @@
       fri 60/120 CSVs are untouched and still carry three
 - [x] `job_priority=economy` → `premium` in `scenario-launch/submit_chain.sh` (1.5× charge,
       bought for queue position with the deadline close)
-- [x] Regenerated: **156 lines per chain → 5 batches [32 32 32 32 28], 468 lines,
-      1170 runs.** No under-fill warning (156 divides by 4). Verified NorEsm2-MM appears in
-      6/6 ssp370 CSVs and 0/6 ssp245, no fri60/120 leakage, 0 blanks, 432 simfalse / 36 simtrue
+- [x] **Collapsed to ONE chain, one submission** — `CHAINS="A"` and `chain_landscapes A`
+      returns all six landscapes. 468 lines → **15 batches (14 × 32 + 20)**, afterok end to
+      end. Same total time as three chains back-to-back (~141 h); it just removes the two
+      manual handoffs that premium made necessary
+- [x] Verified **lossless** against the committed three-chain version — same 468 lines,
+      only regrouped. 0 blanks, every batch divisible by 4, 432 simfalse / 36 simtrue,
+      NorEsm2-MM in 6/6 ssp370 CSVs and 0/6 ssp245, batch order correct across 09 → 10
 - [x] Generator now **counts each CSV's GCM rows** instead of assuming 3 — the old
       `total * 3` would have over-reported this round by 234 runs
-- [ ] **Commit + push, pull on Derecho, submit chain A:**
+- [ ] **Commit + push, pull on Derecho, then submit once:**
       `bash scenario-launch/submit_chain.sh A 2>&1 | tee scenario-launch/submit_log_chA_fri.txt`
-      Expect 5 jobs — `-J 0-7` ×4 and `-J 0-6` on the 28-line tail
-- [ ] Read `qhist` on batch 1 before releasing the rest — fri 10 runtime is still untested
-      against the 12 h walltime (chain C previously hit 95%). ssp245 lines are now ~2/3 the
-      work, so the tight case is an ssp370 line
+      Expect **15 jobs** — first `Q`, 14 `H`; `-J 0-7` on batches 1–14, `-J 0-4` on the
+      20-line tail
+- [ ] Still worth reading `qhist` on batch 1 — fri 10 runtime is untested against the 12 h
+      walltime (chain C previously hit 95%). ssp245 lines are ~2/3 the work, so the tight
+      case is an ssp370 line. Batch 1 is pure ssp245, so **batch 2 is the real test**
+- [ ] **If the chain stalls, `start_batch` matters more now** — a stuck array parent can
+      strand up to 14 batches rather than 4. Find the first batch that did not complete and
+      resume from it; the batch you resume FROM is re-run in full
 - [ ] **Raise the processing chain to premium too?** `submit_chain_process.sh` is still on
       economy, so area_dom for this round will queue at the old priority
 - [ ] **Drop back to economy once the deadline passes** — no reason to pay 1.5× afterwards

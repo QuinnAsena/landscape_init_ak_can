@@ -6,19 +6,26 @@
 # independent and split by landscape, so they never touch the same source
 # directory. A and B are done; C is the last of this round.
 #
-# Current round (fri 10/15/30, ssp245 + ssp370): each chain is 156 lines -> 5 batches,
-# 32 + 32 + 32 + 32 + 28.
+# ONE CHAIN, ONE SUBMISSION as of 2026-10-20:
 #
-#   A   landscapes 01, 02
-#   B   landscapes 03, 04
-#   C   landscapes 05, 06
+#   bash scenario-launch/submit_chain.sh A
 #
-# A full batch is 32 lines = 8 nodes at --steps-per-node 4, so 32 replicates run
-# concurrently per chain. Line duration now depends on the SSP: an ssp370 line loops
-# three GCM rows (~8-11 h inside the 12 h walltime), an ssp245 line only two (~5-7 h),
-# because NorEsm2-MM is excluded from the ssp245 CSVs -- its ssp245 climate is corrupt.
-# See generate_cmdfiles.sh. Half the round therefore has a wider walltime margin than
-# the fri 60/120 round did.
+# Chain A now carries ALL SIX landscapes -- 468 lines -> 15 batches, 14 of 32 plus one
+# of 20, afterok end to end. B and C no longer exist; asking for them hits the
+# "no cmdfiles found" guard below. Submit once and leave it.
+#
+# A full batch is 32 lines = 8 nodes at --steps-per-node 4, so 32 models run
+# concurrently throughout (20 lines = 5 nodes on the last batch). Line duration depends
+# on the SSP: an ssp370 line loops three GCM rows (~9-11 h inside the 12 h walltime), an
+# ssp245 line only two (~6-7.5 h), because NorEsm2-MM is excluded from the ssp245 CSVs
+# -- its ssp245 climate is corrupt. Roughly 141 h of compute end to end, ~6 days plus
+# queue.
+#
+# START_BATCH MATTERS MORE NOW, not less. A stalled array parent strands everything
+# behind it: with three chains that was at most 4 batches, here it is up to 14. If the
+# chain stops dead, find the first batch that did not complete and resume from it --
+# the hazard note further down still applies, and the batch you resume FROM is re-run
+# in full.
 #
 # Revised 2026-09-13: NODES_PER_JOB went 4 -> 8 in generate_cmdfiles.sh, so a chain of
 # 104 lines is now 3 batches of 32 plus one of 8 rather than 6 of 16 plus one of 8.

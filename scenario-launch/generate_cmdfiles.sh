@@ -52,14 +52,14 @@
 #
 # Every cmdfile must hold a multiple of STEPS_PER_NODE lines, or its last node runs
 # fewer steps than it could. That still holds even though 12+1 = 13 is not itself a
-# multiple of 4: lines are flattened before chunking, so a chain of 2 x 2 x 3 x 13 =
-# 156 lines splits into 4 batches of 32 plus one of 28, and both 32 and 28 are
-# multiples of 4. The trailing job is simply smaller (7 nodes rather than 8), not
-# under-filled. The check at the bottom re-verifies this if the matrix moves.
+# multiple of 4: lines are flattened before chunking, so the single chain of
+# 6 x 2 x 3 x 13 = 468 lines splits into 14 batches of 32 plus one of 20, and both 32
+# and 20 are multiples of 4. The trailing job is simply smaller (5 nodes rather than
+# 8), not under-filled. The check at the bottom re-verifies this if the matrix moves.
 #
-# (The ssp370-only variant briefly tried on 2026-10-20 gave 78 lines a chain, which
-# is NOT divisible by 4 and warned once per chain. Restoring ssp245 restores the
-# clean split -- a reason to prefer an even number of ssp x fri combinations.)
+# (The ssp370-only variant briefly tried on 2026-10-20 gave 78 lines a chain, which is
+# NOT divisible by 4 and warned every time. Restoring ssp245 restored the clean split
+# -- a reason to prefer an even number of ssp x fri combinations.)
 #
 # The three chains are independent and split by landscape, so no two chains
 # touch the same source directory; submit them one at a time to scale
@@ -88,11 +88,31 @@ REPS_TRUE=1
 SSPS="245 370"            # ssp126 dropped; NorEsm2-MM excluded from ssp245 CSVs -- see header
 FRIS="10 15 30"           # short-interval round; 60 and 120 are DONE -- see header
 
+# ONE CHAIN covering all six landscapes, as of 2026-10-20. Previously three chains of
+# two landscapes each (A 01/02, B 03/04, C 05/06), submitted one at a time.
+#
+# Why the split existed, and why it no longer earns its keep: at `economy` the queue
+# wait was so long that submitting the next chain while the current one ran meant it
+# arrived roughly as that one finished -- accidental staggering that held concurrency
+# near 32 without anyone managing it. At `premium` that feedback is gone, so holding 32
+# would mean deliberately waiting for each chain to finish and submitting the next by
+# hand. One chain self-sequences instead: 15 batches, afterok end to end, submit once.
+#
+# Total time is UNCHANGED -- one chain of 15 batches and three chains of 5 run
+# back-to-back are the same ~141 h of compute. The split only ever bought optionality.
+#
+# WHAT IS GIVEN UP, so it is a known trade and not a surprise:
+#   - A stall strands everything behind it. The 2026-09-08 stuck array parent stranded
+#     2 batches; here it could strand up to 14. `start_batch` is the recovery, and it
+#     matters more now, not less -- see submit_chain.sh.
+#   - No clean way to add parallelism mid-flight. With separate chains a second could
+#     be submitted alongside the first (disjoint landscapes, no shared source dirs);
+#     within one chain, start_batch would re-run batches the running stream will reach.
+# To go back, restore the three-way case below and set CHAINS="A B C".
+CHAINS="A"
 chain_landscapes() {
     case "$1" in
-        A) echo "01 02" ;;
-        B) echo "03 04" ;;
-        C) echo "05 06" ;;
+        A) echo "01 02 03 04 05 06" ;;
     esac
 }
 
@@ -101,7 +121,7 @@ rm -f "${out_dir}"/cmdfile_ch[ABC]_*.sh
 
 total=0
 runs=0        # actual model runs, accumulated from each CSV's GCM row count
-for chain in A B C; do
+for chain in $CHAINS; do
     lines=()
     for n in $(chain_landscapes "$chain"); do
         xml="${DIR}/landscape_alaska_${n}/landscape_alaska_${n}_2015-2100scenario.xml"

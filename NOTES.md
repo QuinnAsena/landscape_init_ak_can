@@ -188,7 +188,7 @@ Two consequences. **(1) 324 concurrent workers is PROVEN, not merely bounded.** 
 
 ---
 
-### 2026-10-20 — NorEsm2-MM excluded from ssp245 only; priority raised to premium
+### 2026-10-20 — NorEsm2-MM out of ssp245, premium priority, and one chain instead of three
 **Context:** Ten days left in the project timeline, the fri 10/15/30 round still unsubmitted, and the NorEsm2-MM/ssp245 climate known corrupt (2026-10-16 entry).
 **Decision/Finding:** **NorEsm2-MM is excluded from ssp245 alone**, by deleting its row from the six `iland_scenarios_ssp245_sim{false,true}_fri{10,15,30}.csv` files. TaiESM1 and UKESM1-0-LL under ssp245 are clean and are kept; all of ssp370 keeps all three GCMs. Priority went `economy` → `premium` in `submit_chain.sh`.
 
@@ -200,7 +200,13 @@ Two consequences. **(1) 324 concurrent workers is PROVEN, not merely bounded.** 
 
 **Premium is deliberately temporary.** It charges 1.5× against the allocation, bought to cut queue wait with the deadline close, and the allocation has the hours. It is the right lever rather than more packing: the 2026-09-16 timing study showed these chains are **queue-wait dominated** (gaps of 7, 76 and 78 minutes between batches against ~35 minutes of compute). **Drop back to economy once the deadline passes.** Only `scenario-launch/submit_chain.sh` changed — `submit_chain_spinup.sh` and `analysis-scripts/submit_chain_process.sh` are still economy, so this round's area_dom processing will queue at the old priority unless raised.
 
-Verified after regeneration: all 12 fri10/15/30 CSVs referenced and no fri60/120 leakage; **NorEsm2-MM present in 6 of 6 ssp370 CSVs and 0 of 6 ssp245 CSVs**; the fri 60/120 CSVs untouched and still carrying three GCMs; 15 cmdfiles, 468 lines, zero blanks, 432 simfalse / 36 simtrue.
+**Then collapsed to ONE CHAIN, one submission.** `CHAINS="A"` and `chain_landscapes A` now returns all six landscapes, so the round is a single 468-line chain of **15 batches (14 × 32 + 20)** rather than three chains of five. Total time is **unchanged** — one chain of 15 batches and three chains of 5 run back-to-back are the same ~141 h of compute; merging only removes the two manual handoffs.
+
+**The split had a real rationale that premium retired.** At `economy` the queue wait was long enough that submitting the next chain while the current one ran meant it arrived roughly as that one finished — accidental staggering that held concurrency near 32 with nobody managing it. At `premium` that feedback is gone: submitting chain B while A ran would give 64 concurrent models, not a handoff. So the choice became *deliberately wait and submit by hand* versus *one self-sequencing chain*, and the second won.
+
+**What that trades away, recorded so it is a known cost:** a stall now strands everything behind it — the 2026-09-08 stuck array parent stranded 2 batches, here it could strand up to 14, which makes `start_batch` more important, not less. And there is no longer a clean way to add parallelism mid-flight; with separate chains a second could be submitted alongside the first (disjoint landscapes, no shared source directories), whereas within one chain `start_batch` would re-run batches the running stream will reach. Restoring the split is two lines: the three-way `case` and `CHAINS="A B C"`.
+
+Verified after regeneration: **lossless against the committed three-chain version** — the 468 command lines sorted are byte-identical, only the grouping moved; all 12 fri10/15/30 CSVs referenced with no fri60/120 leakage; **NorEsm2-MM in 6 of 6 ssp370 CSVs and 0 of 6 ssp245**; the fri 60/120 CSVs untouched and still carrying three GCMs; 15 cmdfiles, 468 lines, zero blanks, every batch divisible by 4, 432 simfalse / 36 simtrue. Batch numbers now reach `_15`, the first time the model chain has exceeded nine — the generator's `%02d` keeps the submitter's lexical glob in order across 09 → 10, which was checked rather than assumed.
 **Why:** removing a whole SSP to avoid one GCM traded away more science than the defect cost. The CSV-per-line structure made the targeted fix cheap once it was recognised.
 
 ---
