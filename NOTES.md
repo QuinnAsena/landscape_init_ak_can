@@ -188,6 +188,79 @@ Two consequences. **(1) 324 concurrent workers is PROVEN, not merely bounded.** 
 
 ---
 
+### 2026-11-02 — Processing the short-FRI round: `--fri` scoping, 6 nodes per batch, 1 h walltime, premium
+**Context:** The fri 10/15/30 round finished on 1 November with 1170 runs across 30 new treatments. `generate_process_cmdfiles.sh` globs every scenario CSV, so an unscoped run would have emitted 54 treatments — the 30 new ones plus the 24 fri60/120 ones already processed in September.
+**Changes:**
+- **`--fri "10 15 30"`** scopes the generator to one round. It filters the **CSV glob**, not the assembled treatment names, because a treatment can carry an optional `id` suffix *after* the fri token (`..._fri10_<id>`) which would defeat a `grep _fri10$`. Omitting `--fri` keeps the original behaviour of emitting every round.
+- **`--landscapes` is now validated** — two digits, and a matching `landscape_alaska_NN` directory must exist. The `--landscapes bash` typo of 2026-09-17 silently produced a full set of cmdfiles addressed to `landscape_alaska_bash_...`, which look perfectly normal until every step fails on Derecho.
+- **`NODES_PER_JOB` 3 → 6, scenario only.** Spinup stays at 3; its processing is finished and there was no reason to disturb it.
+- **`submit_chain_process.sh`: walltime 2 h → 1 h, `job_priority` economy → premium.**
+
+**On the walltime.** 1 h is what the original hand-written `cmdfile_process_*.sh` invocations used at 9 and 18 steps/node. The 2 h this submitter shipped with on 2026-09-15 was never backed by a measurement, and the 2026-09-16 entry above had already concluded it should be 1 h on measured margin — the worst batch used **41 minutes**, so 1 h leaves ~19 min. That reasoning rests on margin, not on the walltime-backfill hypothesis retracted on 27 October, so the retraction does not void it.
+
+**648 concurrent workers is a test, not a confirmed setting.** What is proven is 324 (2026-09-16 entry: four batches at 36 lines, no I/O errors, memory 44–51%). 648 ran once, on 2026-09-17, when the lcp05 and lcp06 chains overlapped — but that outcome was never written down and Derecho's `qhist` has since aged out, so the evidence is recollection plus the absence of any recorded failure. Acceptable because **failure here is cheap**: a processing step only overwrites its own parquet, so a stall costs one `submit_chain_process.sh area_dom scenario <start_batch>` and no primary data. The two risks share one check — if the first batch lands near 50 min, both the walltime and the concurrency are too aggressive. **Capture `qhist -j <first jobid>` and the first batch's `step-*.out` this time**: September's evidence evaporated for want of that, which is the same lesson as "always keep the submit echo".
+
+**Generated:** 18 cmdfiles, 1170 lines, 3 batches per landscape (72/72/51), 0 blanks, 390 lines per fri value, 180 `onlysimfalse` + 15 `onlysimtrue` lines per landscape. `git status` shows 18 modified and 12 deleted, because the new set is 3 batches per landscape against the old 5.
+
+**fire/KBDI needed no changes at all.** `gather_fire_kbdi.R` discovers treatments by listing directories on scratch rather than reading the CSVs, so the new treatments appear automatically, and it skips any replicate whose fire CSV and KBDI archive both already exist — so re-running it picks up only the new 1170. It runs on a login node with no allocation, which is why it goes first while the allocation position is uncertain.
+
+---
+
+### 2026-11-02 — The fri round completed in full; held jobs ran past the allocation end date
+**Context:** The 15-batch chain (7884487–7884503) was expected to lose batches 14 and 15 to the 31 October end of UCIE0001 — see the superseded entry below.
+**What happened:** All 15 batches ran. `7884503` **started 1 November ~08:53 and finished 19:18**, so a job still held in the queue at the allocation's end date was dispatched afterwards and ran to completion. The round is done: 468 lines, 1170 model runs, landscapes 01–06 at fri 10/15/30. No mop-up and no second project ID were needed.
+**Correction:** the 29 October plan assumed queued jobs would stop being eligible to start at the project end. That was flagged as an inference at the time, and it was wrong. **One observation, mechanism unconfirmed** — a grace period, or queued jobs keeping eligibility — so it should not be relied on for the next deadline without asking UCAR.
+**The 16 h walltime extension was load-bearing, by about one minute.** `7884500[2]`, an lcp05 ssp370 `onlysim=true` line, ran **12.02 h**. At the default 12 h cap it would have been killed, its array subjob would have gone non-zero, `afterok` would never have fired, and batches 13–15 would have stayed held indefinitely. `7884501[1]` (lcp05 ssp370 simtrue, fri30) came in at 11.74 h — inside 12 h by 16 minutes.
+**For future rounds: lcp05 ssp370 `onlysim=true` does not fit a 12 h walltime.** Request 16 h up front, or split those CSVs to one GCM per line (~4 h each, same node-hours, better backfill). It is the only configuration that has ever exceeded 12 h; everything else peaked at 11.52 h.
+**Prediction method validated on all six landscapes.** `fri60 baseline × 1.043` predicted the fri10 cost within ~1.5% everywhere: lcp02 8.89/8.66–8.89, lcp04 9.78/9.79, lcp03 10.34/10.41, lcp06 10.45/10.52, lcp01 11.51/11.52, lcp05 11.84/12.02. lcp05 is the only landscape that came in above prediction.
+**Queue gaps closed the round at 8.2, 9.2 and 7.3 h**, shorter than the 10–22 h of late October — consistent with cluster load rather than anything about the jobs, as the retracted walltime-backfill hypothesis already concluded.
+
+---
+
+### 2026-10-29 — The fri round will not finish inside the UCIE0001 allocation; mop-up is chA_14 + chA_15
+**SUPERSEDED 2026-11-02 — no mop-up was needed; the chain completed in full. Kept for the serial-vs-parallel reasoning and the resume runbook, which is still the correct procedure if a chain is ever cut short.**
+**Context:** The single 15-batch chain (7884487–7884503) submitted 2026-10-20 is 10 batches in. Queue wait, not run time, set the pace throughout: gaps between batches ran 0.95–22.7 h with no relationship to the walltime requested, and the project ends 31 October.
+**Finding:** Batches 11–13 should complete under UCIE0001; **batches 14 and 15 will not start in time.** Both are entirely `landscape_alaska_06` (52 lines), so the break falls on a clean landscape boundary with no partial-landscape bookkeeping.
+**To resume on a new project ID:**
+1. Edit `-A UCIE0001` in `scenario-launch/submit_chain.sh` — it is hard-coded there, and likewise in `submit_chain_spinup.sh` and `analysis-scripts/submit_chain_process.sh`.
+2. Confirm what actually landed: `bash analysis-scripts/check_cmdfile_complete.sh scenario-launch/cmdfile_chA_13.sh` — it tests the `.complete` sentinel, which is proof; line arithmetic is not.
+3. `bash scenario-launch/submit_chain.sh A 14`. The existing `cmdfile_chA_*.sh` are reusable as-is and nothing needs regenerating. The batch you start *from* is re-run in full, so start at the first batch that did not complete.
+**Walltime:** the mop-up does **not** need an admin raise. Both batches' slowest lines are lcp06 ssp370 `onlysim=true` at ~10.45 h, inside the default 12 h cap. Only lcp05 (chA_12/13) needed the 16 h UCAR granted, and those run before the cut.
+**Why not parallelise instead:** splitting the tail into independent chains would have landed ~30 October, but at 64–96 concurrent models against a measured-safe 32, with untested disk-I/O risk and added contention on the lcp05 lines that already project to 11.84 h of a 12 h wall. Having a fallback allocation makes the serial path the better trade.
+
+---
+
+### 2026-10-23 — Measured per-run costs, and how cmdfiles should be packed in future
+**Context:** The fri 10/15/30 round produced per-step timings across several landscapes and every fire configuration, which is the first dataset good enough to reason about cmdfile packing properly. Recorded for future rounds; **nothing was changed while the chain was running.**
+
+**The structural fact everything follows from: a node's `--steps-per-node` steps run CONCURRENTLY, not sequentially.** So a node's elapsed time is the **max** of its steps, and a batch's wall time is the max over all its steps. A step is one cmdfile line, and its duration is the **sum** of its CSV's rows, which run sequentially inside the step.
+
+Two separate consequences, often confused:
+
+**1. For WALL TIME, the only lever is rows per CSV.** Node packing is irrelevant — the batch cannot finish before its longest single line. The longest lines this round were the `onlysim=true` ones at 3 rows × ~3.8 h = **11.52 h**, which is what forced the 16 h walltime extension. Splitting just the simtrue CSVs to 1–2 rows would have capped every line near **9 h** (ssp370 fri30 simfalse, 3 × ~3.0 h, becomes the new longest) and made the extension unnecessary.
+
+**2. For NODE-HOURS, cluster slow with slow — do NOT mix fast with slow.** Mixing is actively counterproductive: four slow steps on one node and four fast on another costs 11.5 + 6 = 17.5 node-hours, where spreading them one-per-node costs 2 × 11.5 = 23. Measured on batch 2: 214.5 step-hours of work consumed **61.2 node-hours against an ideal of 53.6 — 12% wasted** on imbalance. The current line ordering causes this almost perfectly badly: each landscape's 6 simtrue lines sit at positions 13, 26, 39, 52, 65 and 78 of its 78-line block, so at 4 steps/node they reliably land one per node, each stranding three idle slots for ~5 h.
+
+**What can and cannot be mixed in one CSV.** The runner reads `fri` and `onlysim` from each row individually (`modules.fire.fireReturnInterval=${fri}`, `modules.fire.onlySimulation=${onlysim}`), so a CSV mixing fri values works today with no code change. **But simtrue and simfalse rows cannot share a CSV:** `start_rep`/`end_rep` are line arguments applied to every row, so a mixed CSV run for reps 1–12 would produce 12 replicates of the simtrue row, which is meant to have exactly 1.
+
+**Measured cost per model run** — the basis for any future packing. It depends on landscape, fri and onlysim, and **barely on SSP**: lcp02 ssp245 fri10 is 1.35–1.43 h/run against ssp370 fri10 at 1.38–1.42. So "ssp245 lines are two-thirds the work" is entirely a row-count effect (2 GCM rows vs 3), not a per-run one.
+
+| configuration | lcp01 | lcp02 |
+|---|---|---|
+| fri10 simfalse | 2.02 | 1.35–1.43 |
+| fri15 simfalse | 2.45 | 1.69–1.89 |
+| fri30 simfalse | 2.90–3.02 | 2.04–2.23 |
+| **simTRUE, any fri** | **3.71–3.84** | **2.89–2.96** |
+
+Two patterns hold across both landscapes. **More fire makes a run faster** — mortality cuts the tree count that growth, pattern and seed dispersal all scale with — monotonically from fri10 to fri30. And **`onlysim=true` costs ~3.7–3.8 h/run on lcp01 regardless of fri**, because fire never kills anything, so it is effectively a no-fire run; it matches the previous round's fri60/120 peak of 3.79 h/run.
+
+**Landscapes differ by ~30%, and only lcp01 is expensive** — lcp02 runs at 0.69–0.77× lcp01 on every configuration. Last round's chain A combined 01 and 02 in one chain, so this was invisible; one landscape per batch separates them cleanly. First lcp03 datapoint is ~1.25× lcp02.
+
+**If the generator is revisited:** split the simtrue CSVs (caps lines near 9 h, biggest win, smallest change), and emit each landscape's 6 simtrue lines **together** rather than one per fri-group, which clusters them onto shared nodes and recovers most of the 12%. Both preserve the sequential-by-landscape ordering that makes outputs readable as they appear.
+**Why:** 12% of allocation and a walltime extension were both avoidable, and the data to avoid them next time only exists because this round ran one landscape per batch.
+
+---
+
 ### 2026-10-20 — NorEsm2-MM out of ssp245, premium priority, and one chain instead of three
 **Context:** Ten days left in the project timeline, the fri 10/15/30 round still unsubmitted, and the NorEsm2-MM/ssp245 climate known corrupt (2026-10-16 entry).
 **Decision/Finding:** **NorEsm2-MM is excluded from ssp245 alone**, by deleting its row from the six `iland_scenarios_ssp245_sim{false,true}_fri{10,15,30}.csv` files. TaiESM1 and UKESM1-0-LL under ssp245 are clean and are kept; all of ssp370 keeps all three GCMs. Priority went `economy` → `premium` in `submit_chain.sh`.

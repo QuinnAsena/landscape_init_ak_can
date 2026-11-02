@@ -4,6 +4,15 @@
 #   bash analysis-scripts/generate_process_cmdfiles.sh --kind scenario --landscapes "01 02"
 #   bash analysis-scripts/generate_process_cmdfiles.sh --kind spinup   --landscapes "05 06"
 #   bash analysis-scripts/generate_process_cmdfiles.sh --kind scenario --analysis seed_dens --landscapes "01"
+#   bash analysis-scripts/generate_process_cmdfiles.sh --kind scenario --fri "10 15 30" --landscapes "01 02"
+#
+# --fri SCOPES TO ONE ROUND, and exists because the CSV glob below picks up EVERY scenario
+# CSV in scenario-launch/ -- including rounds that have already been processed. After the
+# 2026-11 short-FRI round that glob yields 54 treatments: the 30 new fri 10/15/30 ones plus
+# the 24 fri 60/120 ones finished in September. Filtering happens at the GLOB, not on the
+# assembled treatment names, because a treatment can carry an optional `id` suffix AFTER the
+# fri token (`..._fri10_<id>`), which would defeat a `grep _fri10$`. Omitting --fri keeps
+# the original behaviour of emitting every round.
 #
 # WHY THIS EXISTS. Chain A's scenario output alone needs 312 processing lines and all
 # six landscapes need 936, which is not hand-writable. The hand-maintained
@@ -37,11 +46,13 @@ PRE="module purge; module load conda; conda activate my-r-4.4; Rscript"
 kind=""
 analysis="area_dom"
 landscapes=""
+fris=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --kind)       kind="$2"; shift 2 ;;
         --analysis)   analysis="$2"; shift 2 ;;
         --landscapes) landscapes="$2"; shift 2 ;;
+        --fri)        fris="$2"; shift 2 ;;
         *) echo "unknown argument: $1" >&2; exit 1 ;;
     esac
 done
@@ -56,6 +67,28 @@ case "$analysis" in
        echo "  process_fire_regime.R is per-treatment, not per-rep -- not handled here." >&2; exit 1 ;;
 esac
 [ -n "${landscapes}" ] || { echo "--landscapes is required, e.g. --landscapes \"01 02\"" >&2; exit 1; }
+
+# VALIDATE THE LANDSCAPE NUMBERS. Without this a typo is silent: `--landscapes bash` on
+# 2026-09-17 produced a full set of cmdfiles addressed to landscape_alaska_bash_..., which
+# look perfectly normal until every step fails on Derecho.
+for n in ${landscapes}; do
+    case "$n" in
+        [0-9][0-9]) ;;
+        *) echo "--landscapes takes two-digit numbers, got: '${n}'" >&2; exit 1 ;;
+    esac
+    [ -d "${repo_dir}/landscape_alaska_${n}" ] || {
+        echo "no such landscape: ${repo_dir}/landscape_alaska_${n}" >&2; exit 1; }
+done
+
+# --fri is a scenario-only filter; the spinup round is a single CSV with no fri contrast.
+if [ -n "${fris}" ]; then
+    [ "$kind" = "scenario" ] || { echo "--fri applies to --kind scenario only" >&2; exit 1; }
+    for f in ${fris}; do
+        case "$f" in
+            ''|*[!0-9]*) echo "--fri takes numbers, got: '${f}'" >&2; exit 1 ;;
+        esac
+    done
+fi
 
 rscript="${repo_dir}/analysis-scripts/process_${analysis}.R"
 [ -f "${rscript}" ] || { echo "no such analysis script: ${rscript}" >&2; exit 1; }
@@ -78,8 +111,24 @@ if [ "$kind" = "scenario" ]; then
         exit 1; }
     period="2015-2100scenario"
 
-    csvs=("${gen_dir}"/iland_scenarios_ssp*_sim*_fri*.csv)
-    (( ${#csvs[@]} )) || { echo "no scenario CSVs found in ${gen_dir}" >&2; exit 1; }
+    # Build the CSV list, optionally scoped by --fri. The [ -f ] test matters: nullglob is
+    # not set, so an unmatched pattern survives as a literal string and would otherwise sail
+    # past the emptiness check below and yield a treatment list of nonsense.
+    csvs=()
+    if [ -n "${fris}" ]; then
+        for f in ${fris}; do
+            for c in "${gen_dir}"/iland_scenarios_ssp*_sim*_fri"${f}".csv; do
+                [ -f "$c" ] && csvs+=("$c")
+            done
+        done
+    else
+        for c in "${gen_dir}"/iland_scenarios_ssp*_sim*_fri*.csv; do
+            [ -f "$c" ] && csvs+=("$c")
+        done
+    fi
+    (( ${#csvs[@]} )) || {
+        echo "no scenario CSVs found in ${gen_dir}${fris:+ for fri ${fris}}" >&2; exit 1; }
+    echo "  reading ${#csvs[@]} scenario CSV(s)${fris:+, scoped to fri ${fris}}"
     for csv in "${csvs[@]}"; do
         # columns: sp_param,gcm,fri,epsilon,dbh,stand_grid,env_file,id,snapshot_file,onlysim
         tail -n +2 "$csv" | while IFS=, read -r sp_param gcm fri epsilon dbh stand_grid env_file id snapshot_file onlysim; do
@@ -119,6 +168,7 @@ if [ "$kind" = "spinup" ]; then
       "# 18 x 5 = 90 of 128 cores. Set --nthreads at or above 5."
     )
     spn=18
+    nodes_per_job=3          # spinup processing is finished; left at the proven setting
 else
     size_note=(
       "# SIZING. Scenario output has NO year condition on stand/saplingdetail, so all 86"
@@ -133,6 +183,7 @@ else
       "# per-step lands near 20 GB. Do NOT carry the spinup's 18 across."
     )
     spn=12
+    nodes_per_job=6          # see the BATCH note below
 fi
 
 # BATCH is the I/O dial, and it is the number of LINES in a cmdfile -- not --steps-per-node.
@@ -141,10 +192,20 @@ fi
 # spinup), and every worker opens its OWN sqlite connection and writes its own parquet. So a
 # whole landscape in one file (156 lines) would be ~1400 concurrent readers/writers on
 # scratch, against the 90 that job 7349725 actually proved (18 lines x 5 workers, one node).
-# 3 nodes keeps it near 320. --steps-per-node only decides how many steps share a node, i.e.
-# memory and cores per node. Same chunking pattern as scenario-launch/generate_cmdfiles.sh.
-NODES_PER_JOB=3
-BATCH=$(( NODES_PER_JOB * spn ))      # 36 lines for scenario (spn 12), 54 for spinup (spn 18)
+# --steps-per-node only decides how many steps share a node, i.e. memory and cores per node.
+# Same chunking pattern as scenario-launch/generate_cmdfiles.sh.
+#
+# SCENARIO RAISED 3 -> 6 NODES on 2026-11-02, i.e. 72 lines = 648 concurrent workers.
+# What is actually proven is 324 (NOTES.md 2026-09-16: four batches at 36 lines, no I/O
+# errors, memory 44-51%). 648 ran once, on 2026-09-17, when the lcp05 and lcp06 chains
+# overlapped -- but that outcome was never recorded and Derecho's job history has since
+# aged out, so this doubling is a deliberate test rather than a confirmed setting. It is an
+# acceptable one because failure here is cheap: a processing step only overwrites its own
+# parquet, so a stall costs one `submit_chain_process.sh <analysis> <kind> <start_batch>`
+# and no primary data. CAPTURE qhist AND step-*.out FOR THE FIRST BATCH -- September's
+# evidence evaporated for want of that. Drop back to 3 if I/O errors appear.
+NODES_PER_JOB=${nodes_per_job}
+BATCH=$(( NODES_PER_JOB * spn ))      # 72 lines for scenario (spn 12), 54 for spinup (spn 18)
 
 total=0
 for n in ${landscapes}; do

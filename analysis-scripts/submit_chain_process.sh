@@ -26,7 +26,17 @@ if [ "$kind" = "scenario" ]; then
 else
     STEPS_PER_NODE=18; NTHREADS=5
 fi
-LAUNCH="launch_cf -A UCIE0001 -l walltime=2:00:00 --steps-per-node ${STEPS_PER_NODE} --ppn 128 --nthreads ${NTHREADS} --mem 235GB -l job_priority=economy"
+# WALLTIME IS 1 h, NOT 2. Measured elapsed for area_dom scenario batches is 0.44-0.68 h, i.e.
+# 26-41 min (NOTES.md 2026-09-16), and the original hand-written cmdfile_process_*.sh
+# invocations all used 1 h -- the 2 h this script shipped with on 2026-09-15 was never backed
+# by a measurement. 41 of 60 min leaves ~19 min of margin. The caveat: that 41 min was at 324
+# concurrent workers and the generator now emits 648, so READ qhist ON THE FIRST BATCH. If it
+# lands near 50 min, qdel the held successors and resubmit at 2 h -- a processing batch only
+# overwrites its own parquet, so re-running one costs nothing but time.
+#
+# PREMIUM (1.5x charge) since 2026-11-02, to cut queue wait while the allocation position is
+# uncertain. Drop back to economy once there is no deadline pressure.
+LAUNCH="launch_cf -A UCIE0001 -l walltime=1:00:00 --steps-per-node ${STEPS_PER_NODE} --ppn 128 --nthreads ${NTHREADS} --mem 235GB -l job_priority=premium"
 
 script_dir=$(cd "$(dirname "$0")" && pwd)
 shopt -s nullglob

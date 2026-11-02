@@ -16,13 +16,68 @@
       NorEsm2-MM in 6/6 ssp370 CSVs and 0/6 ssp245, batch order correct across 09 → 10
 - [x] Generator now **counts each CSV's GCM rows** instead of assuming 3 — the old
       `total * 3` would have over-reported this round by 234 runs
-- [ ] **Commit + push, pull on Derecho, then submit once:**
-      `bash scenario-launch/submit_chain.sh A 2>&1 | tee scenario-launch/submit_log_chA_fri.txt`
-      Expect **15 jobs** — first `Q`, 14 `H`; `-J 0-7` on batches 1–14, `-J 0-4` on the
-      20-line tail
-- [ ] Still worth reading `qhist` on batch 1 — fri 10 runtime is untested against the 12 h
-      walltime (chain C previously hit 95%). ssp245 lines are ~2/3 the work, so the tight
-      case is an ssp370 line. Batch 1 is pure ssp245, so **batch 2 is the real test**
+- [x] **SUBMITTED 2026-10-20: 7884487–7884503**, 15 batches, first `Q` and 14 `H`.
+      Job IDs are **not consecutive** — 7884496 and 7884498 went to other users, so
+      chA_10 = 7884497 and chA_11 = 7884499. The submit echo is the only reliable mapping
+- [x] **Batch 2 measured: 11.53 h = 96% of walltime, 28 min spare.** Diagnosis: the long pole
+      is **`onlysim=true`**, not fri. Nodes of 4× fri10 simfalse ran 6.3–6.5 h; the otherwise
+      identical node carrying one fri10 **simtrue** line ran 11.53 h. `onlysim=true` simulates
+      fire but kills nothing, so the stand keeps every tree. More fire is *faster* when it
+      burns (fri10 simfalse 6.3–6.5 h < fri15 simfalse 7.6–8.0 h), slower when it doesn't
+- [x] **RESOLVED 2026-10-22: UCAR raised all remaining jobs to 16 h.** No resubmission or CSV
+      splitting needed. Batch 3 then confirmed the model — its two ssp370 simtrue nodes ran
+      11.20 h (fri15) and 11.38 h (fri30) against 11.1–11.5 h predicted from fri10's 11.52 h
+- [ ] **DEADLINE AT RISK (2026-10-26, 7 of 15 done).** Queue gaps jumped **4.7×** exactly when
+      the 16 h walltime was applied: 2.30/8.50/0.95 h at a 12 h request, then
+      10.60/21.20/22.70 h at 16 h. A 16 h request backfills far worse. At ~27–31 h per cycle
+      the remaining 8 batches finish **3–5 Nov, missing 31 Oct by 3–5 days**. Need ~18 h per
+      cycle; the pre-extension rate was ~13.5 h
+- [x] **`qalter -l walltime=12:00:00 '<jobid>[]'` works as the user** (only *raising* needs an
+      admin). Quote the ID — `[]` is a shell glob. Takes ~a minute to show in `qstat`
+- [x] **Hypothesis looks confirmed:** 7884494 had queued ~12 h at 16 h and started almost
+      immediately once lowered to 12 h. Before/after/before reversal, so not just a busy cluster
+- [x] **Four lowered to 12 h** (7884494/95/97/99 — lcp03/04, longest line ≤10.4 h).
+      **7884500–7884503 left at 16 h on purpose**
+- [x] **Full review of all 336 steps on record (2026-10-26).** simtrue is *nearly* fri-independent
+      but **+4.3% from fri60 to fri10**; a fri60 baseline × 1.043 predicts fri10 within 1%
+      (validated out-of-sample on lcp02 and lcp03). **lcp05 is the most expensive landscape, not
+      lcp01** — 11.35 h at fri60, so **~11.84 h at fri10, only ~10 min under a 12 h wall**
+- [x] **Walltime–backfill hypothesis RETRACTED (2026-10-27).** 7884495 sat at a 12 h request and
+      still waited ≥14 h. The 7884494 reversal was coincidence; cluster load explains the series
+      better (short gaps 20–22 Oct, worst gaps over the 24–25 Oct weekend, regardless of request)
+- [x] **DECISION: leave the chain as-is, mop up the remainder on another project ID.** Single
+      chain lands 3–4 Nov vs a 31 Oct end. Parallelising into 3 chains would land ~30 Oct but
+      means **64–96 concurrent models against a measured-safe 32** — untested I/O risk, and
+      contention could push the lcp05 simtrue lines past their wall
+- [ ] **For the mop-up:** (a) `-A UCIE0001` is hard-coded in `submit_chain.sh` — change it for a
+      new project ID; (b) the existing `cmdfile_chA_*.sh` are reusable as-is, use
+      `check_cmdfile_complete.sh` to find what finished then `submit_chain.sh A <start_batch>`
+      (the batch you start FROM re-runs in full); (c) lcp05's simtrue lines (chA_12/13) still
+      need 16 h or a one-GCM-per-line split — they project to 11.84 h against a 12 h wall
+- [ ] **Watch the next gaps.** If cycles return to ~13.5 h, the remaining batches land ~30 Oct
+      with about a day of margin and the parallel split is not needed. If gaps stay long,
+      split batches 12–15 into a second chain
+- [x] **Landscapes differ ~30%, and only lcp01 is slow.** Per run, lcp02 is 0.69–0.77× lcp01
+      across every configuration; its ssp370 simtrue lines ran 8.66–8.89 h vs lcp01's 11.52 h.
+      Last round's chain A combined 01+02 so this was invisible. Batch 4's fast 5.95 h is fully
+      explained: all lcp02, 21 of 32 lines ssp245 (2 GCM rows), at fri15/fri30
+- [ ] **If it slips, split the tail:** `qdel` batches 11–15 (7884499–7884503, landscapes
+      05/06), regenerate as a separate chain and run it in parallel — disjoint scenario_dirs,
+      so no clobber risk. Finishes both streams in ~5 days at 64 concurrent models (2× the
+      measured-safe 32)
+- [x] **CONFIRMED from `stdout-7884488.desched1`:** step-00020 = ssp370 fri10 onlysim=true,
+      **11.52 h**, which alone set its node's 11.53 h. Per model run: simtrue **3.71–3.84 h
+      regardless of fri**, simfalse 2.02 / 2.45 / 2.90 h at fri 10 / 15 / 30 (more fire =
+      faster, monotonic). simtrue is effectively a no-fire run, so fri barely touches it
+- [ ] **Risk set is 18 lines, not 6** — every ssp370 simtrue line is ~11.1–11.5 h, not just
+      the fri10 ones, across 10 of the 13 remaining batches (chA_03, 05, 07, 08, 09, 10, 12,
+      13, 14, 15). 7884491 (batch 5) is still the earliest warning
+- [ ] **Everything simfalse is safe in 12 h** (slowest measured 8.00 h; ssp370 fri30 simfalse
+      projects to ~8.7 h). So if the 16 h request is refused, only the **18 ssp370 simtrue
+      lines** need splitting to one GCM per line — 54 lines at ~3.8 h each
+- [ ] **If one is killed:** the chain stalls (subjob non-zero → `afterok` never fires). Fix by
+      splitting the simtrue CSVs to one GCM per line (~3.8 h instead of ~11.5) and resuming
+      with `start_batch` at the first incomplete batch — which is re-run in full
 - [ ] **If the chain stalls, `start_batch` matters more now** — a stuck array parent can
       strand up to 14 batches rather than 4. Find the first batch that did not complete and
       resume from it; the batch you resume FROM is re-run in full
