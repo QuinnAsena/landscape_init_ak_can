@@ -183,7 +183,7 @@ else
       "# per-step lands near 20 GB. Do NOT carry the spinup's 18 across."
     )
     spn=12
-    nodes_per_job=6          # see the BATCH note below
+    nodes_per_job=3          # the proven setting -- see the BATCH note below
 fi
 
 # BATCH is the I/O dial, and it is the number of LINES in a cmdfile -- not --steps-per-node.
@@ -195,17 +195,21 @@ fi
 # --steps-per-node only decides how many steps share a node, i.e. memory and cores per node.
 # Same chunking pattern as scenario-launch/generate_cmdfiles.sh.
 #
-# SCENARIO RAISED 3 -> 6 NODES on 2026-11-02, i.e. 72 lines = 648 concurrent workers.
-# What is actually proven is 324 (NOTES.md 2026-09-16: four batches at 36 lines, no I/O
-# errors, memory 44-51%). 648 ran once, on 2026-09-17, when the lcp05 and lcp06 chains
-# overlapped -- but that outcome was never recorded and Derecho's job history has since
-# aged out, so this doubling is a deliberate test rather than a confirmed setting. It is an
-# acceptable one because failure here is cheap: a processing step only overwrites its own
-# parquet, so a stall costs one `submit_chain_process.sh <analysis> <kind> <start_batch>`
-# and no primary data. CAPTURE qhist AND step-*.out FOR THE FIRST BATCH -- September's
-# evidence evaporated for want of that. Drop back to 3 if I/O errors appear.
+# SCENARIO IS 3 NODES = 36 LINES = 324 CONCURRENT WORKERS, THE PROVEN SETTING.
+# Proven in NOTES.md 2026-09-16: four batches at 36 lines, all three nodes genuinely
+# overlapping, no I/O errors, memory 44-51% of the request.
+#
+# It was briefly raised to 6 (648 workers) on 2026-11-02, to halve the batch count against
+# what looked like a closing allocation window. REVERTED 2026-11-13: the deadline pressure
+# is gone, so there is no reason to spend a known-good setting on an untested one. 648 did
+# run once, on 2026-09-17, when the lcp05 and lcp06 chains overlapped -- but that outcome
+# was never recorded and Derecho's job history has since aged out, so it remains untested
+# rather than confirmed. The cost of staying at 3 is only more batches, and queue wait is
+# wall-clock, not allocation: a longer chain is free when there is time to let it run.
+# If a future round is ever deadline-bound again, 6 is the dial to turn, and the thing to
+# capture is qhist + step-*.out on the first batch.
 NODES_PER_JOB=${nodes_per_job}
-BATCH=$(( NODES_PER_JOB * spn ))      # 72 lines for scenario (spn 12), 54 for spinup (spn 18)
+BATCH=$(( NODES_PER_JOB * spn ))      # 36 lines for scenario (spn 12), 54 for spinup (spn 18)
 
 total=0
 for n in ${landscapes}; do

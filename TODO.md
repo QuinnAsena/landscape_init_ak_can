@@ -1,5 +1,52 @@
 # TODO
 
+## In flight — 2026-11-13: new project ID UCEM0001, area_dom for fri 10/15/30 ready to submit
+
+- [x] **`-A UCIE0001` → `-A UCEM0001`** in all three submit scripts:
+      `analysis-scripts/submit_chain_process.sh`, `scenario-launch/submit_chain.sh`,
+      `spin-up-launch/submit_chain_spinup.sh`. UCIE0001 expired 31 Oct — a queued job keeps
+      its eligibility and runs to completion, but **no new job can be submitted after the end
+      date**, confirmed by `qsub: Account is in state: Expired` on 2 Nov
+- [x] **`NODES_PER_JOB` 6 → 3 REVERTED 2026-11-13** — back to 36 lines per batch =
+      **324 concurrent workers**, the setting proven in NOTES.md 2026-09-16. The raise to 6 was
+      bought against a closing allocation window; that pressure is gone, so there is no reason
+      to spend a known-good setting on an untested one. Cost is only more batches, and queue
+      wait is wall-clock, not allocation
+- [x] **area_dom cmdfiles regenerated: 36 files, 1170 lines**, six batches per landscape
+      (5 × 36 + 15), 0 blanks, 390 lines each at fri10/15/30, 5 GCM×SSP combinations
+      (NorEsm2-MMssp245 absent by design). Verified **lossless** against the committed
+      18-file version — identical command set, only regrouped. No fri60/120 anywhere.
+      Every batch is ≥2 nodes, so all are arrays; no single-node plain-job tails this time
+- [ ] **Submit:** `bash analysis-scripts/submit_chain_process.sh area_dom scenario`
+      — plain, no tee. The submitter echoes each batch's job ID as it goes, and a processing
+      job is cheap to re-run, so the job→cmdfile mapping is not worth protecting the way it is
+      for multi-day model runs; `stdout-<jobid>.*` names the landscape and treatment per step
+- [ ] **Read the first batch** (only one runs at a time): `qhist -j <jobid>` for elapsed against
+      the **1 h** wall (expect 26–41 min at this size) and memory against 235 GB. Lower stakes
+      now that concurrency is back on the proven setting
+- [ ] **`Rscript analysis-scripts/gather_fire_kbdi.R`** — ONE run, no arguments, no allocation
+      needed. It finds treatments by listing scratch, not from the CSVs, and skips any replicate
+      that already has both `fire_table.csv` and `kbdi.tar.gz`, so the 936 September replicates
+      are skipped and only the new 1170 are gathered
+- [ ] **Verify the model runs** with `check_cmdfile_complete.sh` across the 15
+      `scenario-launch/cmdfile_chA_*.sh` — the `.complete` sentinel, not line arithmetic
+- [ ] **After the chain:** count `processed/*/rep_*/area_dom/*.parquet`, expect **1170**.
+      There is still no completeness checker for *processing* output
+
+### Blocked on new climate data — NorEsm2-MM/ssp245
+
+- [ ] **Old FRIs (60, 120): re-run.** Already completed, but every replicate ran 2066 with no
+      vpd (`vp-2066.nc` is all zeros). **156 runs** = 6 landscapes × 2 fri × (12 simfalse + 1 simtrue)
+- [ ] **New FRIs (10, 15, 30): never run at all.** NorEsm2-MM was removed from the six ssp245
+      fri10/15/30 CSVs on 2026-10-20, so those CSVs carry 2 GCMs where ssp370 carries 3.
+      **234 runs** = 6 × 3 × 13. Re-adding the row to those six CSVs is the whole change
+- [ ] Before either: re-run script 03 for that combination with `logs = TRUE`, confirm all five
+      variables reach 151 `.txt`, rebuild the six databases. The 2026-10-16 guards will refuse
+      to compile anything still carrying NAs
+- [ ] Both sets then need area_dom + fire/KBDI processing afterwards
+
+---
+
 ## In flight — 2026-10-20: fri 10/15/30 round, NorEsm2-MM out of ssp245, premium priority
 
 - [x] **NorEsm2-MM removed from the six ssp245 fri10/15/30 CSVs only.** TaiESM1 and

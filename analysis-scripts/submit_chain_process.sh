@@ -36,7 +36,7 @@ fi
 #
 # PREMIUM (1.5x charge) since 2026-11-02, to cut queue wait while the allocation position is
 # uncertain. Drop back to economy once there is no deadline pressure.
-LAUNCH="launch_cf -A UCIE0001 -l walltime=1:00:00 --steps-per-node ${STEPS_PER_NODE} --ppn 128 --nthreads ${NTHREADS} --mem 235GB -l job_priority=premium"
+LAUNCH="launch_cf -A UCEM0001 -l walltime=1:00:00 --steps-per-node ${STEPS_PER_NODE} --ppn 128 --nthreads ${NTHREADS} --mem 235GB -l job_priority=premium"
 
 script_dir=$(cd "$(dirname "$0")" && pwd)
 shopt -s nullglob

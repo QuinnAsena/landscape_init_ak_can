@@ -87,7 +87,7 @@ esac
 # these chains are queue-wait dominated, so priority buys more here than any further
 # packing change would. Drop back to economy once the deadline passes -- there is no
 # reason to pay 1.5x for an unhurried round.
-LAUNCH="launch_cf -A UCIE0001 -l walltime=12:00:00 --steps-per-node 4 --ppn 128 --nthreads 16 --mem 235GB -l job_priority=premium"
+LAUNCH="launch_cf -A UCEM0001 -l walltime=12:00:00 --steps-per-node 4 --ppn 128 --nthreads 16 --mem 235GB -l job_priority=premium"
 script_dir=$(cd "$(dirname "$0")" && pwd)
 
 shopt -s nullglob

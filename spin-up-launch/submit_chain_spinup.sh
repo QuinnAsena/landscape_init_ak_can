@@ -71,7 +71,7 @@ STEPS_PER_NODE=3          # must match STEPS_PER_NODE in generate_spinup_cmdfile
 # CPU-bound. Keep the two numbers in step so the next reader is not misled.
 # Do NOT add `-r n` -- jobs come out rerunnable and it is not fixable here. See the note in
 # scenario-launch/submit_chain.sh and NOTES.md (2026-09-13 entry).
-LAUNCH="launch_cf -A UCIE0001 -l walltime=${WALLTIME} --steps-per-node ${STEPS_PER_NODE} --ppn 128 --nthreads 16 --mem 235GB -l job_priority=economy"
+LAUNCH="launch_cf -A UCEM0001 -l walltime=${WALLTIME} --steps-per-node ${STEPS_PER_NODE} --ppn 128 --nthreads 16 --mem 235GB -l job_priority=economy"
 script_dir=$(cd "$(dirname "$0")" && pwd)
 lcp="${1:-}"
 
