@@ -3,13 +3,43 @@
 #   bash scenario-launch/generate_cmdfiles.sh
 #
 # Matrix (scenario runs only -- the spinup snapshots are an input, not a run):
-#   landscapes 01-06   ssp245, ssp370   fri 10, 15, 30
+#   landscapes 01-06   ssp245 NorEsm2-MM ONLY   fri 10, 15, 30, 60, 120
 #   onlysim=false  fire burns biomass           reps 1-12
 #   onlysim=true   fire simulated, no effect    rep  1
 #
-# 6 lcp x 2 ssp x 3 fri x (12+1) reps = 468 lines.
-# Model runs are NOT 3 per line any more -- see the GCM note below -- so the round
-# is 234 ssp370 lines x 3 GCMs + 234 ssp245 lines x 2 GCMs = 1170 model runs.
+# 6 lcp x 1 ssp x 5 fri x (12+1) reps = 390 lines.
+# Each line loops a ONE-ROW CSV, so 390 lines = 390 model runs.
+#
+# Revised 2026-11-17: THE NorEsm2-MM/ssp245 CATCH-UP ROUND. The three corrupt source
+# .nc files were re-exported on 2026-11-16 and the six climate databases rebuilt and
+# verified (0 NULLs in 234M rows), so the GCM pulled on 2026-10-20 can now run. This
+# round covers BOTH jobs it was blocked on: 156 re-runs at fri 60/120, which ran with a
+# null-vpd 2066, and 234 runs at fri 10/15/30 that were never started at all.
+#
+# A DEDICATED CSV SET IS MANDATORY, NOT TIDINESS. A line loops EVERY row of its CSV, and
+# run_iland_csv_cpxml_apptainer.sh does `rm -rf "{scenario_dir}"` with no resume guard.
+# Re-using the existing ssp245 fri60/120 CSVs would therefore re-run and DESTROY the good
+# TaiESM1 and UKESM replicates in those directories. Hence CSV_TAG below and the ten
+# one-row iland_scenarios_ssp245_noresm_sim*_fri*.csv files. The NorEsm2-MM row was
+# simultaneously REMOVED from the four ssp245 fri60/120 CSVs, so no treatment is listed in
+# two CSVs -- which also makes ssp245 uniformly 2 GCMs across all five fri.
+#
+# LOOP ORDER CHANGED: sim is now OUTERMOST (sim -> landscape -> ssp -> fri -> rep). A
+# node's steps run CONCURRENTLY, so its wall time is the LONGEST line on it and the whole
+# node is billed for that long. The old order nested landscape -> ssp -> fri -> sim, which
+# emitted 13 lines per (lcp, fri) -- 12 simfalse then 1 simtrue. 13 is not a multiple of 4,
+# so each single ~3.8 h simtrue line landed on a node with three ~2-3 h simfalse lines from
+# the next config, and that node billed ~3.8 h for all four. That is the ~12% waste
+# measured on an earlier round. With sim outermost, 12 reps is an exact multiple of
+# STEPS_PER_NODE, so every (lcp, fri) simfalse block fills exactly 3 nodes with four
+# IDENTICAL runs, and all 30 simtrue lines group together at the end. Within each sim,
+# landscape sits above fri so the simtrue tail groups each landscape's five lines --
+# simtrue is effectively fri-independent (~3.7-3.8 h), so landscape spread (~30%,
+# lcp05/lcp01 slowest, lcp02 fastest) is the only variation left to cluster.
+#
+# 360 simfalse is a multiple of 4, so the simfalse->simtrue boundary falls on a node
+# boundary. The final batch holds 6 lines and WILL warn -- that is the check being correct,
+# not a problem to fix: 30 simtrue lines cannot divide into fours.
 #
 # Revised 2026-10-20: NorEsm2-MM is EXCLUDED FROM ssp245 ONLY, by deleting its row
 # from the six ssp245 fri10/15/30 CSVs. Its downscaled ssp245 climate has three
@@ -81,12 +111,28 @@ STEPS_PER_NODE=4          # must match --steps-per-node in submit_chain.sh
 # lines / steps-per-node and PBS schedules each subjob as its own 1-node allocation, so a
 # 32-line cmdfile is `-J 0-7`, eight independently scheduled nodes, NOT an 8-node
 # reservation. Queue wait should not worsen; the chain just has 4 turnarounds instead of 7.
-NODES_PER_JOB=8
+#
+# 8 -> 16 on 2026-11-17, for the same reason one step further, and because THIS CHAIN IS
+# QUEUE-GAP DOMINATED, NOT COMPUTE DOMINATED. Measured inter-batch gaps on the fri round
+# were 2.3, 8.5, 0.95, 10.6, 21.2, 22.7, 10.3 and >=14 h, and it closed at 8.2/9.2/7.3 h --
+# call it ~8 h a barrier. At 390 lines that is 13 batches (~47 h compute + ~104 h of gaps)
+# against 7 batches (~47 h + ~56 h): roughly a third off the chain, almost entirely queue.
+# Batch wall-time is UNCHANGED -- 64 lines on 64 concurrent steps is still one run deep,
+# ~4 h -- so this buys turnarounds, not speed.
+#
+# 64 concurrent steps is MEASURED, not extrapolated, and it is the same 2026-09-09
+# observation read properly: chB_04 and chA_06 each had all 8 nodes busy, so sixteen nodes
+# and sixty-four steps were running together, with elapsed and memory indistinguishable
+# from a job running alone. DO NOT GO PAST 16 without new evidence -- that is where the
+# measurement ends. The cost of the change is that the afterok barrier now waits on the
+# slowest of 16 schedulings instead of 8; halving the number of barriers should dominate.
+NODES_PER_JOB=16
 BATCH=$(( NODES_PER_JOB * STEPS_PER_NODE ))
 REPS_FALSE=12
 REPS_TRUE=1
-SSPS="245 370"            # ssp126 dropped; NorEsm2-MM excluded from ssp245 CSVs -- see header
-FRIS="10 15 30"           # short-interval round; 60 and 120 are DONE -- see header
+CSV_TAG="_noresm"         # "" reproduces the pre-2026-11-17 behaviour (all-GCM CSVs)
+SSPS="245"                # NorEsm2-MM catch-up round is ssp245 only -- see header
+FRIS="10 15 30 60 120"    # both blocked jobs in one round: 60/120 re-runs + 10/15/30 new
 
 # ONE CHAIN covering all six landscapes, as of 2026-10-20. Previously three chains of
 # two landscapes each (A 01/02, B 03/04, C 05/06), submitted one at a time.
@@ -123,15 +169,16 @@ total=0
 runs=0        # actual model runs, accumulated from each CSV's GCM row count
 for chain in $CHAINS; do
     lines=()
-    for n in $(chain_landscapes "$chain"); do
-        xml="${DIR}/landscape_alaska_${n}/landscape_alaska_${n}_2015-2100scenario.xml"
-        for ssp in $SSPS; do
-            for fri in $FRIS; do
-                for sim in false true; do
-                    if [ "$sim" = "false" ]; then reps=$REPS_FALSE; else reps=$REPS_TRUE; fi
-                    csv="${DIR}/scenario-launch/iland_scenarios_ssp${ssp}_sim${sim}_fri${fri}.csv"
-                    # Count the CSV's GCM rows rather than assuming three. Since
-                    # 2026-10-20 the ssp245 CSVs carry two (NorEsm2-MM excluded), so a
+    # sim OUTERMOST as of 2026-11-17 -- cluster slow with slow; see the header note.
+    for sim in false true; do
+        if [ "$sim" = "false" ]; then reps=$REPS_FALSE; else reps=$REPS_TRUE; fi
+        for n in $(chain_landscapes "$chain"); do
+            xml="${DIR}/landscape_alaska_${n}/landscape_alaska_${n}_2015-2100scenario.xml"
+            for ssp in $SSPS; do
+                for fri in $FRIS; do
+                    csv="${DIR}/scenario-launch/iland_scenarios_ssp${ssp}${CSV_TAG}_sim${sim}_fri${fri}.csv"
+                    # Count the CSV's GCM rows rather than assuming three. The _noresm
+                    # CSVs carry ONE row, the plain ssp245 ones two and ssp370 three, so a
                     # fixed multiplier would misreport the size of the round.
                     local_csv="${out_dir}/$(basename "$csv")"
                     [ -f "$local_csv" ] || { echo "  ERROR: missing CSV $(basename "$csv")" >&2; exit 1; }
