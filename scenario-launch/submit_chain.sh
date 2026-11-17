@@ -81,13 +81,17 @@ esac
 # instead -- if a job ever has to be cleared, tell NCAR to DELETE it, never requeue it,
 # because the runner has no resume guard. Full account in NOTES.md (2026-09-13 entry).
 #
-# PRIORITY: premium, not economy -- changed 2026-10-20 and deliberately temporary.
-# Premium charges 1.5x against the allocation where economy charges less, bought to
-# cut queue wait with ~10 days left in the project timeline. The timing study showed
-# these chains are queue-wait dominated, so priority buys more here than any further
-# packing change would. Drop back to economy once the deadline passes -- there is no
-# reason to pay 1.5x for an unhurried round.
-LAUNCH="launch_cf -A UCEM0001 -l walltime=12:00:00 --steps-per-node 4 --ppn 128 --nthreads 16 --mem 235GB -l job_priority=premium"
+# PRIORITY: economy -- reverted 2026-11-17, as the 2026-10-20 note always said to.
+# Premium was set 2026-10-20 and was deliberately temporary: it charges 1.5x against the
+# allocation, bought to cut queue wait with ~10 days left in the project timeline. That
+# deadline has passed and the NorEsm2-MM catch-up round is not time-pressed, so there is
+# no reason to keep paying 1.5x.
+#
+# The finding that bought it still stands -- these chains ARE queue-wait dominated, and
+# priority buys more than any further packing change would. So expect longer inter-batch
+# gaps than the 2026-10 rounds. That is the trade being made deliberately, not a
+# regression to debug. Raise it back to premium only for a round that is against a clock.
+LAUNCH="launch_cf -A UCEM0001 -l walltime=12:00:00 --steps-per-node 4 --ppn 128 --nthreads 16 --mem 235GB -l job_priority=economy"
 script_dir=$(cd "$(dirname "$0")" && pwd)
 
 shopt -s nullglob
