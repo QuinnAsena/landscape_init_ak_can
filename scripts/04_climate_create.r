@@ -133,7 +133,8 @@ process_sqlite <- function(gcm, ssp, var, ak_landscape_dirs,
 # ssp <- c("ssp126", "ssp245", "ssp370", "ssp585")
 gcm <- "NorEsm2-MM"
 # ssp <- "ssp126"
-ssp <- c("ssp245", "ssp370")
+# ssp <- c("ssp245", "ssp370")
+ssp <- "ssp245"
 # var <- c("tasmax", "hurs", "pr", "rsds", "tasmin", "vp")
 var <- c("tasmax", "pr", "rsds", "tasmin", "vp")
 

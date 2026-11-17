@@ -11,10 +11,11 @@ landscape_names <- basename(dirs[grepl("landscape_", basename(dirs))])
 # gcm <- c("NorEsm2-MM", "TaiESM1", "UKESM1-0-LL", "EC-Earth3-Veg", "GFDL-ESM4")
 # ssp <- c("ssp126", "ssp245", "ssp370", "ssp585")
 
-gcm <- c("TaiESM1", "UKESM1-0-LL")
-# gcm <- "NorEsm2-MM"
-ssp <- "ssp126"
+# gcm <- c("TaiESM1", "UKESM1-0-LL")
+gcm <- "NorEsm2-MM"
+# ssp <- "ssp126"
 # ssp <- c("ssp245", "ssp370")
+ssp <- "ssp245"
 # var <- c("tasmax", "hurs", "pr", "rsds", "tasmin", "vp")
 var <- c("tasmax", "pr", "rsds", "tasmin", "vp")
 # Coverage is NOT uniform across gcm x ssp x domain -- audited 2026-08-18, source
@@ -248,7 +249,7 @@ future_lapply(
       var  = param_grid$var[i],
       year = param_grid$year[i],
       landscape_dir = param_grid$landscape_dir[i],
-      logs = FALSE
+      logs = TRUE
     )
   },
   future.seed = TRUE

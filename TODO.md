@@ -17,21 +17,53 @@
       (NorEsm2-MMssp245 absent by design). Verified **lossless** against the committed
       18-file version — identical command set, only regrouped. No fri60/120 anywhere.
       Every batch is ≥2 nodes, so all are arrays; no single-node plain-job tails this time
-- [ ] **Submit:** `bash analysis-scripts/submit_chain_process.sh area_dom scenario`
-      — plain, no tee. The submitter echoes each batch's job ID as it goes, and a processing
-      job is cheap to re-run, so the job→cmdfile mapping is not worth protecting the way it is
-      for multi-day model runs; `stdout-<jobid>.*` names the landscape and treatment per step
-- [ ] **Read the first batch** (only one runs at a time): `qhist -j <jobid>` for elapsed against
-      the **1 h** wall (expect 26–41 min at this size) and memory against 235 GB. Lower stakes
-      now that concurrency is back on the proven setting
-- [ ] **`Rscript analysis-scripts/gather_fire_kbdi.R`** — ONE run, no arguments, no allocation
-      needed. It finds treatments by listing scratch, not from the CSVs, and skips any replicate
-      that already has both `fire_table.csv` and `kbdi.tar.gz`, so the 936 September replicates
-      are skipped and only the new 1170 are gathered
-- [ ] **Verify the model runs** with `check_cmdfile_complete.sh` across the 15
-      `scenario-launch/cmdfile_chA_*.sh` — the `.complete` sentinel, not line arithmetic
-- [ ] **After the chain:** count `processed/*/rep_*/area_dom/*.parquet`, expect **1170**.
-      There is still no completeness checker for *processing* output
+- [x] **SUBMITTED 2026-11-13: 8176545–8176580**, 36 batches, first `Q` and 35 `H`.
+      **The IDs are consecutive this round** — unlike 7884487–7884503, where 7884496 and
+      7884498 went to other users. So the mapping is six per landscape in order:
+      01 = 8176545–50, 02 = –56, 03 = –62, 04 = –68, 05 = –74, 06 = 8176575–80.
+      *Inferred from the consecutive block plus sorted glob order, not read from a submit echo*
+- [x] **ALL 36 BATCHES COMPLETE 2026-11-14 19:20**, `afterok` released 35 times with no stall.
+      102 nodes = 30 × 3 + 6 × 2 (the `b06` tails), exactly as generated. Measured:
+      batch wall **0.27–0.66 h** (worst node 40 min = **66% of the 1 h wall**), memory
+      65–112 GB (**48%** of 235), CPU **20–41%, mean 32%**. Total **31.8 h, ~53 min/cycle,
+      48% queueing** — premium roughly halved September's queue share
+- [x] **1 h walltime confirmed correct**; 40 min worst against September's 41 min at the same
+      concurrency, a clean reproduction. 324 workers reproduced September exactly, so reverting
+      6 → 3 cost nothing measurable
+- [x] **Corrected: the nodes are NOT core-bound.** The 2026-09-16 "cores are the cap, ceiling
+      ~14 steps/node" was arithmetic (12 × 9 = 108 of 128), not measurement. Real utilisation
+      is 32% mean / 41% peak — the workers are **I/O-bound on Lustre**. Headroom on cores and
+      memory does NOT mean `--steps-per-node` should rise; the binding resource is the
+      filesystem, which more steps per node would contend for harder
+- [x] **`gather_fire_kbdi.R` started 2026-11-13** on the login node alongside the chain.
+      ONE run, no arguments, no allocation. It skips any replicate that already has both
+      `fire_table.csv` and `kbdi.tar.gz`, so September's 936 are skipped and only the new
+      1170 are gathered
+- [x] **ALL 1170 NEW MODEL RUNS CONFIRMED COMPLETE** — the gather's inventory found
+      **2106 replicates, every one with 86 KBDI grids**, a single-valued distribution with no
+      odd counts at all. 2106 = 936 (fri 60/120, September) + 1170 (fri 10/15/30). That is a
+      stronger check than `check_cmdfile_complete.sh` and it supersedes it: the sentinel says a
+      run exited cleanly, 86 grids says it reached 2100
+- [ ] **IF THE GATHER IS KILLED MID-`tar`, the resume guard will skip the truncated archive.**
+      This is the live form of the known defect — the guard tests existence, not integrity.
+      Before transferring anything off Derecho:
+      `find <root> -name kbdi.tar.gz | while read f; do gzip -t "$f" 2>/dev/null || echo "CORRUPT: $f"; done`
+      Proper fix is to tar to a temp name and rename on success
+- [x] **OUTPUT VERIFIED 2026-11-16: 19,224 parquet, reconciled exactly, zero residual.**
+      The unit is the **parquet file, not the replicate** — `process_area_dom.R` writes one per
+      10-year chunk, so a scenario replicate gives **9** and a spinup replicate **5**. Expecting
+      "1170" was wrong by 9×. Cumulative, because the `find` is landscape-wide:
+      936×9 (Sept scenario) + 1170×9 (this round) + 54×5 (spinup, 6 landscapes × 9 reps) = 19,224
+- [x] **`gather_fire_kbdi.R` CONFIRMED FINISHED** — re-run reported `gathered: 0,
+      already present: 2106, wrong KBDI count: 0, failed: 0`. **The 0 gathered is what closes
+      the truncated-tarball worry**: the re-run cannot detect truncation (the guard tests
+      existence, not integrity), but a mid-`tar` kill would have left later replicates
+      ungathered, and none were
+- [x] **THE WHOLE fri 10/15/30 ROUND IS COMPLETE AND VERIFIED** — 1170 model runs,
+      10,530 parquet, 1170 fire tables + KBDI archives
+- [ ] `gzip -t` across the KBDI archives before transferring off Derecho — now insurance
+      rather than a live risk. Still worth fixing the guard properly: tar to a temp name,
+      rename on success
 
 ### Blocked on new climate data — NorEsm2-MM/ssp245
 

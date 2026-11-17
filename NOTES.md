@@ -188,6 +188,121 @@ Two consequences. **(1) 324 concurrent workers is PROVEN, not merely bounded.** 
 
 ---
 
+### 2026-11-16 — Re-audit of the NorEsm2-MM/ssp245 source files: all three STILL broken, and CPCRW holds good copies
+**Context:** Asked whether the source `.nc` files had been re-exported, i.e. whether re-running scripts 03 and 04 would now fix the databases. Re-ran the audit's own tests against the share from a machine that can see `Z:/project_data/downscaling/`.
+
+**Answer: nothing has been re-exported. All three files are unchanged.**
+
+| file | mtime | size | CRS | data |
+|---|---|---|---|---|
+| `tasmin-1958.nc` | 2026-03-09 18:12 | **48,420 B** (stub) | **EMPTY** | 0 readable values |
+| `vp-1958.nc` | 2026-03-12 14:56 | 6.42 GB | ok | **0 non-NA in the entire layer**; 0 of 930 cells over the lcp02 extent |
+| `vp-2066.nc` | **2024-11-15 07:46** | 6.42 GB | **EMPTY** | NA mask gone (**3,972,314** non-NA vs 916,466 for healthy years) |
+
+`vp-2066` has not been touched since the original November 2024 export. And `project(ext(env), to = crs(r))` — the call at script 03 line 104 — still throws `[project] output crs is not valid` for `tasmin-1958` and `vp-2066`, exactly as before.
+
+**Swept the whole combination:** all 755 files (5 variables × 151 years) checked for empty CRS and stub size. **Only those two.** No new defects of that class. *Caveat: this sweep cannot catch the `vp-1958` class — valid CRS, correct size, all-NA content — without reading a layer from every file (~13 GB over the share). Script 04's NA guard catches that class at compile time instead.*
+
+**Refinement to the audit PDF's wording.** It describes `vp-2066` as "Every value 0". Measured: over the lcp02 extent every cell is a **constant 5.302e-05**, not literally zero, and **no cell anywhere in layer 1 is exactly 0** (healthy 2065 over the same cells reads 1.033–1.223). Physically that is indistinguishable from zero vapour pressure and would round to 0.00 at script 04's 2 dp, so no conclusion changes — but "a constant 5.3e-05 with the NA mask destroyed" is the more exact and more diagnostic description if that document goes back to the data producer.
+
+**NEW AND USEFUL: the CPCRW tree holds intact copies of all three.**
+
+| CPCRW file | CRS | non-NA | range |
+|---|---|---|---|
+| `vp-1958` | ok | 3249/3249 | 1.015–1.428 |
+| `vp-2066` | ok | 3249/3249 | 1.078–1.631 |
+| `tasmin-1958` | ok | 3249/3249 | 249–253.1 K |
+
+So **landscape 01's data exists and is fine** — the pipeline simply cannot reach it, because `project()` throws on the Landscapes file before the fallback test on line 106 is ever evaluated.
+
+**The built databases confirm it — queried directly 2026-11-16, lcp01 and lcp02 are IDENTICAL in defect.** Probing one climate table from each `NorEsm2-MMssp245.sqlite` (lcp01 has 736 tables, lcp02 has 676), for years 1957–1959 and 2065–2067:
+
+| year | NULL `min_temp` | NULL `vpd` | other columns |
+|---|---|---|---|
+| 1958 | **365** | **365** | clean |
+| 2066 | 0 | **365** | clean |
+| 1957, 1959, 2065, 2067 | 0 | 0 | clean |
+
+Both tables span 1950–2100. **So landscape 01's one win from CPCRW — a good `vp-1958` — is invisible in the database**, because `vpd = es(tasmin, tasmax) − vp` and its `tasmin` 1958 is missing anyway. **In practice lcp01 is in exactly the same state as 02–06: no difference at all.** The source data for lcp01 is good and the processed tables are not; the whole gap is the code path.
+
+**Can scripts 03 + 04 be re-run to fix the databases? No, not as the code stands.** Script 03 would fail on the same two files (loudly now, thanks to the October `warning()`), and script 04's year-set and NA guards would then refuse to write. That refusal is the guard working, not a new fault.
+
+**Landscape 01 alone could be fixed by code**, by routing an empty CRS to CPCRW rather than letting `project()` throw. Two cautions before anyone does that: (1) a naive "empty CRS → use CPCRW" is **wrong for landscapes 02–06**, which CPCRW does not cover — the crop would be all-NA and script 03 would write a file of NAs, downgrading a loud failure to one only script 04 catches; it would need a coverage check that fails loudly otherwise. (2) It would leave lcp01 with real 2066 data while 02–06 are still missing it, an inconsistency *across* landscapes within the same scenario comparison, which may be worse for the science than all six being affected the same way. **Science call, not a code call.**
+
+---
+
+### 2026-11-16 — How to check processing output for completeness: count parquet, not replicates
+**Context:** The long-standing TODO "a completeness checker for *processing* output" — `check_cmdfile_complete.sh` parses the iLand runner signature and does not work on processing cmdfiles. There is now an exact arithmetic check, and it reconciled to zero on the first try.
+
+**The unit is the parquet file, not the replicate.** `process_area_dom.R` chunks years with `span = 10` and writes one `chunk_<start>_area_dom.parquet` per chunk (line ~163). So **a 2015–2100 scenario replicate writes 9** (`seq(2015, 2100, by = 10)`), and **a spinup replicate writes 5**. Expecting "1170 parquet" for a 1170-run round is wrong by a factor of 9.
+
+```
+find /glade/derecho/scratch/qasena/output_ak_can -path '*/area_dom/*.parquet' | wc -l
+```
+
+**Reconciled 2026-11-16 — 19,224, exactly, no residual:**
+
+| | replicates | × chunks | parquet |
+|---|---|---|---|
+| scenario, fri 60/120 (September) | 936 | 9 | 8,424 |
+| scenario, fri 10/15/30 (this round) | 1,170 | 9 | 10,530 |
+| spinup, 6 landscapes × 9 reps, 1 treatment | 54 | 5 | 270 |
+| **total** | | | **19,224** |
+
+**Note the `find` is landscape-wide and counts every round ever processed**, scenario and spinup together, so the expected figure must be built the same way — cumulatively — rather than from the round just submitted. The spinup contribution is easy to forget: `cmdfile_area_dom_spinup_NN_b01.sh` is 9 lines, one treatment (`NorEsm2-MMssp126_dbh2.5_onlysimfalse_fri120`) × reps 1–9, for each of the 6 landscapes.
+**Why it is a real check:** an exact match with zero residual says both that nothing is missing and that nothing stray is present — stronger than a lower-bound count.
+
+**The KBDI gather is self-checking in the same spirit.** Re-running it on 2026-11-16 reported `gathered: 0, already present: 2106, wrong KBDI count: 0, failed: 0`. **That is what closes the truncated-tarball worry**, and the reasoning matters: the re-run itself cannot detect truncation, because the resume guard tests whether `kbdi.tar.gz` *exists*, not whether it is intact. What rules a mid-`tar` kill out is that **0 were gathered** — a kill partway would have left every later replicate ungathered. `gzip -t` across the archives remains worthwhile as insurance before transferring off Derecho, but it is no longer a live concern.
+
+---
+
+### 2026-11-16 — The area_dom chain finished in 32 h; 1 h walltime vindicated, and the nodes are NOT core-bound
+**Context:** All 36 batches (8176545–8176580) ran to completion over 13–14 November. `afterok` released 35 times without a stall. Structure confirmed from `qhist`: **102 nodes = 30 batches × 3 + 6 batches × 2**, the six 2-node jobs being exactly the `b06` tails (15 lines at 12 steps/node).
+
+**Measured, 102 nodes at 324 concurrent workers:**
+
+| | measured | against |
+|---|---|---|
+| batch wall (max of its nodes) | **0.27–0.66 h**, mean 0.46 h | 1 h request |
+| worst single node | **40 min = 66% of the wall** | ≈20 min margin |
+| memory | 65–112 GB, peak **48%** | 235 GB |
+| CPU utilisation | **20–41%, mean 32%** | 128 cores |
+
+**The 1 h walltime was right, and 2 h would have been dead weight.** The worst batch used 40 of 60 minutes — almost exactly September's 41 min at the same concurrency, which is a clean reproduction a round later. Nothing came close to the wall.
+
+**324 workers reproduced September exactly.** Reverting `NODES_PER_JOB` 6 → 3 cost nothing measurable: same per-batch elapsed, same memory profile. The proven setting stayed proven.
+
+**CORRECTION TO THE 2026-09-16 ENTRY: the nodes are not core-bound.** That entry inferred "cores are the cap, ceiling ~14 steps/node" from the arithmetic 12 steps × 9 workers = 108 of 128 cores. The measurement says otherwise — **mean CPU utilisation is 32%, never above 41%**, so the 108 forked workers are nowhere near saturating 128 cores. They are **I/O-bound on Lustre**, not compute-bound. Memory tells the same story at 48% of the request.
+
+**What that does and does not imply.** Headroom on both cores and memory means `--steps-per-node` *could* go above 12 — but it does not follow that throughput would improve, because the limiting resource is the filesystem, which more steps per node would contend for harder, not less. Treat this as a correction to the *diagnosis*, not a licence to raise the dial. If it is ever worth testing, the honest experiment is one batch at a higher `spn` with elapsed compared like for like.
+
+**Wall-clock: 31.8 h for 36 batches, ~53 min per cycle, 48% queueing.** Compute averaged 28 min per batch, queue wait ~25 min, with gaps of 25–159 min (median 35). **My estimate of 2.5–4.5 days was too pessimistic** — it extrapolated September's ~2.9 h cycle, which was measured at *economy*. Premium roughly halved the queueing (48% here against ~80% then). For planning: **at premium a 36-batch processing chain is a ~1.5-day job, not a 3-day one.**
+
+---
+
+### 2026-11-13 — area_dom submitted on UCEM0001; concurrency reverted to the proven 324; the round is verified complete
+**Context:** Resuming after the UCIE0001 expiry. Three things settled: the new allocation, the batch size, and — unexpectedly — whether the 1170 model runs actually finished.
+
+**New allocation `UCEM0001`.** Substituted for the expired `UCIE0001` in all three submit scripts: `analysis-scripts/submit_chain_process.sh`, `scenario-launch/submit_chain.sh`, `spin-up-launch/submit_chain_spinup.sh`. UCIE0001 is dead — it can now only return `Account is in state: Expired`. Editing all three at once is deliberate: the NorEsm2-MM re-runs will need the model submitters, and a stale ID there fails at submission rather than quietly.
+
+**`NODES_PER_JOB` 6 → 3, reverted.** Back to 36 lines per batch = **324 concurrent workers**, the setting proven on 2026-09-16. The raise to 6 (648 workers) was bought on 2 November against what looked like a closing allocation window; with that pressure gone there is no reason to spend a known-good setting on an untested one. **The general rule, and it is the user's:** a longer chain costs **wall-clock, not allocation**, so when there is time to let it queue, more batches is the cheap side of the trade. 648 remains untested — it ran once on 2026-09-17 with the outcome unrecorded and `qhist` has since aged out. Turn that dial only when a round is deadline-bound, and capture `qhist` + `step-*.out` on the first batch if so.
+
+**Regenerated: 36 cmdfiles, 1170 lines**, six batches per landscape (5 × 36 + 15), 0 blanks, verified **lossless** against the committed 18-file version — identical command set, only regrouped. Every batch is ≥ 2 nodes, so all are arrays; none of the single-node plain-job tails that complicated the September `afterokarray` question.
+
+**Submitted: 8176545–8176580**, 36 batches, first `Q` and 35 `H`. **These IDs are consecutive**, unlike 7884487–7884503 where two IDs went to other users mid-chain — so the mapping is six per landscape in sorted glob order (01 = 8176545–50 … 06 = 8176575–80). That is inferred from the consecutive block plus the glob order; consecutiveness is a property of this submission, not a rule.
+
+**No `| tee` on a processing submission, and the reasoning generalises.** The habit comes from the model chains, where a job runs for days, IDs are not consecutive, and losing the job→cmdfile mapping is expensive. None of it applies here: the submitter already echoes each job ID, `stdout-<jobid>.*` names the landscape and treatment per step, and a processing batch is cheap to re-run. The companion `2>&1` exists only because `launch_cf` writes diagnostics to stderr, which is not worth capturing for this.
+
+**THE ROUND IS VERIFIED COMPLETE — and `gather_fire_kbdi.R` is the better check.** Its inventory found **2106 replicates, every one with 86 KBDI grids**, a single-valued distribution with no odd counts. 2106 = 936 (fri 60/120, September) + 1170 (fri 10/15/30). This **supersedes running `check_cmdfile_complete.sh` over the 15 `cmdfile_chA_*.sh`**: the `.complete` sentinel says a run exited cleanly, whereas a full set of 86 annual grids says it actually reached 2100. Worth reusing — the gather's inventory is a free completeness audit of the whole scenario round, and it needs no allocation.
+
+**One live risk while the gather runs on a login node.** If it is killed mid-`tar`, the resume guard will skip the truncated archive on the next run, because it tests whether `kbdi.tar.gz` **exists**, not whether it is intact. A kill is otherwise free. Before transferring anything off Derecho:
+```
+find /glade/derecho/scratch/qasena/output_ak_can -name kbdi.tar.gz   | while read f; do gzip -t "$f" 2>/dev/null || echo "CORRUPT: $f"; done
+```
+The proper fix is to tar to a temp name and rename on success; not applied here because the script was already running.
+
+---
+
 ### 2026-11-02 — Processing the short-FRI round: `--fri` scoping, 6 nodes per batch, 1 h walltime, premium
 **Context:** The fri 10/15/30 round finished on 1 November with 1170 runs across 30 new treatments. `generate_process_cmdfiles.sh` globs every scenario CSV, so an unscoped run would have emitted 54 treatments — the 30 new ones plus the 24 fri60/120 ones already processed in September.
 **Changes:**
@@ -298,7 +413,21 @@ All 151 yearly files exist for every variable, so any count- or size-based check
 
 **The failure chain.** A missing CRS makes `project(ext(env), to = crs(r))` fail in script 03; the body is wrapped in `tryCatch(..., error = function(e) log_msg("ERROR", ...))`, and at the default `logs = FALSE` `log_msg` is `invisible(NULL)` — so **a failure was indistinguishable from a success**: no file, no message, exit status 0. Script 04 then left-joins the variables onto `tasmax`, which was complete, so a missing year became a **NULL column on a present row** rather than a missing row. And `vpd = es(tasmin, tasmax) − vp`, so vpd dies if *either* input does — hence 1958 losing both fields and 2066 losing only vpd.
 
-**Scope, audited:** all 54 combinations (6 landscapes × 3 GCMs × 3 SSPs) were checked for variables disagreeing on their year set. **Only NorEsm2-MM/ssp245 is affected.** Landscapes 02–06 are short `tasmin` 1958 and `vp` 1958+2066; landscape 01 is short only `vp` 2066, via the CPCRW fallback.
+**Scope, audited:** all 54 combinations (6 landscapes × 3 GCMs × 3 SSPs) were checked for variables disagreeing on their year set. **Only NorEsm2-MM/ssp245 is affected.** Landscapes 02–06 are short `tasmin` 1958 and `vp` 1958+2066. **Landscape 01 escapes exactly one of the three files — `vp-1958`, via the CPCRW fallback — and nothing else.**
+
+*(Corrected 2026-11-16 against the audit PDF `Corrupt downscaled climate files — NorEsm2-MM ssp245.pdf`, which is the authoritative record: "min_temp is absent for all 365 days of 1958, and vpd for all 365 days of 1958 and 2066, **in all six landscape databases**." An earlier wording here said landscape 01 was "short only vp 2066", which reads as though it also escaped `tasmin` 1958. It does not: `tasmin-1958` has no CRS either, so no fallback is reachable for it. And because `vpd = es(tasmin, tasmax) − vp`, landscape 01 still loses vpd for 1958 despite holding a good `vp-1958` — the intact file cannot compensate for the missing `tasmin`.)*
+
+**LANDSCAPE 01 IS NOT EXEMPT — flagged again 2026-11-16, because it is easy to assume it is.** CPCRW having "its own climate source" rescues it from the two **1958** defects, which fall below the 1980 run start anyway, but **not from `vp-2066`, the only one inside the 2015–2100 window**. Landscape 01's NorEsm2-MM/ssp245 replicates ran 2066 with no vpd exactly like 02–06, so it is included in both re-run sets.
+
+**Why the fallback cannot help, and the general rule.** `03_climate_create.r` (~lines 99–109) is not a per-landscape source switch: it loads the **Landscapes** file first for every landscape, then drops to CPCRW only if the crop over the landscape extent is all-NA.
+```r
+ak_climate_var <- rast(clim_in)                                            # Landscapes, always first
+env_ext_clim_crs <- project(ext(env_rast), ..., to = crs(ak_climate_var))  # THROWS if CRS missing
+if (all(is.na(values(crop(ak_climate_var[[1]], env_ext_clim_crs))))) {
+  ak_climate_var <- rast(cpcrw_clim_in)                                    # only if the crop is all-NA
+}
+```
+`vp-1958`'s defect **is** all-NA over the domain, so the fallback fires and CPCRW's intact copy is used. `vp-2066`'s defect is a **missing CRS**, so `project()` throws on the line *before* the fallback test, `tryCatch` swallows it, and the year is never written — the intact CPCRW copy is never reached. **So: the CPCRW fallback rescues the all-NA failure mode only, never the missing-CRS one.**
 
 **Impact:** 1958 is below the 1980 start of every run, so it costs nothing. **2066 is inside the 2015–2100 window**, so every completed NorEsm2-MM/ssp245 replicate ran a year with no vpd — and all 936 runs reported `*** model run finished.`, so iLand accepted it silently. Whether that warrants re-running is a science question for Winslow; **no gap-filling was done**, by decision. The fri 10/15/30 round had not been submitted, so nothing was burning compute on it.
 
