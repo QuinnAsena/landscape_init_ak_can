@@ -33,8 +33,8 @@ if (length(fire_files) < 1) {
   stop("no crownkill files!")
 }
 
-# Soil organic layer is read at these offsets from the fire year. pre/post give
-# the loss; the later ones give its recovery. Trim or extend as needed.
+# Soil organic layer and moss are read at these offsets from the fire year. pre
+# is the baseline, yr0 is immediately post-fire, yr1..yr10 the recovery window.
 sol_offsets <- c(pre = -1, setNames(0:10, paste0("yr", 0:10)), yr15 = 15, yr20 = 20)
 
 cat(
@@ -85,12 +85,9 @@ for (i in seq_len(nrow(fire))) {
       stop("no crownkill layer named ", lyr, " -- check the file naming")
     }
 
-    # Take the fire map for this fire, and make everything but the fire cells NA
     fire_mask <- fire_maps[[lyr]]
     fire_mask <- ifel(fire_mask == 0, NA, fire_mask)
 
-    # Use the mask to extract the rids for burned grids. mask() is NA wherever
-    # either layer is NA, so the same index pulls the matching crownkill values.
     burned_rids <- terra::values(terra::mask(env_grid, fire_mask))
     burned_ck   <- terra::values(fire_mask)
     keep        <- !is.na(burned_rids)
@@ -118,14 +115,20 @@ if (is.null(burned_dat)) {
   # Ran, but nothing burned. Write the empty table anyway, so a replicate that
   # never burned stays distinguishable from one that was never processed.
   burned_dat <- data.frame(rid = numeric(0), crownkill = numeric(0),
-                           fireId = numeric(0), year = numeric(0))
+                           fireId = numeric(0), year = numeric(0),
+                           gap_to_next = numeric(0), gap_from_prev = numeric(0))
   for (nm in names(sol_offsets)) {
     burned_dat[[paste0("sol_", nm)]]  <- numeric(0)
     burned_dat[[paste0("moss_", nm)]] <- numeric(0)
   }
 } else {
-  # One join per offset over the whole table, rather than filtering water inside
-  # the loop. Years off the end of the run come back NA, which is correct.
+  burned_dat <- burned_dat |>
+    arrange(rid, year) |>
+    group_by(rid) |>
+    mutate(gap_to_next   = coalesce(lead(year) - year, Inf),
+           gap_from_prev = year - lag(year)) |>
+    ungroup()
+
   for (nm in names(sol_offsets)) {
     w <- water
     names(w) <- c("join_year", "rid", paste0("sol_", nm), paste0("moss_", nm))
@@ -151,6 +154,10 @@ cat(
   "fires:      ", sum(fire$area_m2 > 0), " of ", nrow(fire), " logged\n",
   "rows:       ", nrow(burned_dat), "\n",
   "rids:       ", length(unique(burned_dat$rid)), " distinct burned\n",
+  "sol NA:     ", paste(names(sol_offsets),
+                        sapply(paste0("sol_", names(sol_offsets)),
+                               function(x) sum(is.na(burned_dat[[x]]))),
+                        sep = "=", collapse = " "), "\n",
   "output_dir: ", output_dir, "\n",
   "end time:   ", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n"
 )
