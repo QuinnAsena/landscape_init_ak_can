@@ -35,7 +35,7 @@ if (length(fire_files) < 1) {
 
 # Soil organic layer is read at these offsets from the fire year. pre/post give
 # the loss; the later ones give its recovery. Trim or extend as needed.
-sol_offsets <- c(pre = -1, post = 0, yr5 = 5, yr10 = 10, yr20 = 20)
+sol_offsets <- c(pre = -1, setNames(0:10, paste0("yr", 0:10)), yr15 = 15, yr20 = 20)
 
 cat(
   "--- process_burned_rids ---\n",
