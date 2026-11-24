@@ -5,6 +5,15 @@
 #   bash analysis-scripts/generate_process_cmdfiles.sh --kind spinup   --landscapes "05 06"
 #   bash analysis-scripts/generate_process_cmdfiles.sh --kind scenario --analysis seed_dens --landscapes "01"
 #   bash analysis-scripts/generate_process_cmdfiles.sh --kind scenario --fri "10 15 30" --landscapes "01 02"
+#   bash analysis-scripts/generate_process_cmdfiles.sh --kind scenario --gcm NorEsm2-MMssp245 --sim false --landscapes "01 02"
+#
+# --gcm AND --sim FILTER CSV ROWS (added 2026-11-24), for processing a round in STAGES as its
+# model batches finish. --fri alone cannot do that: it selects whole CSVs, and every ssp245
+# and ssp370 CSV carries other GCMs whose output is already processed. --gcm matches the
+# CSV's gcm column exactly (e.g. NorEsm2-MMssp245); --sim matches onlysim (true|false).
+# Emitting a treatment whose runs have not happened yet is not harmless -- process_*.R
+# stop()s on a missing sqlite, which can take the step and the chain behind it down.
+# Both are optional; omitting them keeps the original behaviour.
 #
 # --fri SCOPES TO ONE ROUND, and exists because the CSV glob below picks up EVERY scenario
 # CSV in scenario-launch/ -- including rounds that have already been processed. After the
@@ -47,12 +56,16 @@ kind=""
 analysis="area_dom"
 landscapes=""
 fris=""
+gcm_filter=""
+sim_filter=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --kind)       kind="$2"; shift 2 ;;
         --analysis)   analysis="$2"; shift 2 ;;
         --landscapes) landscapes="$2"; shift 2 ;;
         --fri)        fris="$2"; shift 2 ;;
+        --gcm)        gcm_filter="$2"; shift 2 ;;
+        --sim)        sim_filter="$2"; shift 2 ;;
         *) echo "unknown argument: $1" >&2; exit 1 ;;
     esac
 done
@@ -89,6 +102,16 @@ if [ -n "${fris}" ]; then
         esac
     done
 fi
+
+# --gcm / --sim are scenario-only for the same reason as --fri. A --gcm typo needs no check
+# here: it matches no row, and the "no treatments derived" guard below stops the run.
+if [ -n "${gcm_filter}${sim_filter}" ]; then
+    [ "$kind" = "scenario" ] || { echo "--gcm and --sim apply to --kind scenario only" >&2; exit 1; }
+fi
+case "${sim_filter}" in
+    ''|true|false) ;;
+    *) echo "--sim takes true or false, got: '${sim_filter}'" >&2; exit 1 ;;
+esac
 
 rscript="${repo_dir}/analysis-scripts/process_${analysis}.R"
 [ -f "${rscript}" ] || { echo "no such analysis script: ${rscript}" >&2; exit 1; }
@@ -128,12 +151,14 @@ if [ "$kind" = "scenario" ]; then
     fi
     (( ${#csvs[@]} )) || {
         echo "no scenario CSVs found in ${gen_dir}${fris:+ for fri ${fris}}" >&2; exit 1; }
-    echo "  reading ${#csvs[@]} scenario CSV(s)${fris:+, scoped to fri ${fris}}"
+    echo "  reading ${#csvs[@]} scenario CSV(s)${fris:+, scoped to fri ${fris}}${gcm_filter:+, gcm ${gcm_filter}}${sim_filter:+, onlysim ${sim_filter}}"
     for csv in "${csvs[@]}"; do
         # columns: sp_param,gcm,fri,epsilon,dbh,stand_grid,env_file,id,snapshot_file,onlysim
         tail -n +2 "$csv" | while IFS=, read -r sp_param gcm fri epsilon dbh stand_grid env_file id snapshot_file onlysim; do
             [ -n "${gcm}" ] || continue
             onlysim=$(echo "${onlysim}" | tr -d ' \r')
+            [ -z "${gcm_filter}" ] || [ "${gcm}" = "${gcm_filter}" ] || continue
+            [ -z "${sim_filter}" ] || [ "${onlysim}" = "${sim_filter}" ] || continue
             suffix=""
             [ -n "${id}" ] && suffix="_${id}"
             if [ "${onlysim}" = "false" ]; then reps="${reps_false}"; else reps="${reps_true}"; fi
@@ -172,15 +197,13 @@ if [ "$kind" = "spinup" ]; then
 else
     size_note=(
       "# SIZING. Scenario output has NO year condition on stand/saplingdetail, so all 86"
-      "# years are written: 9 chunks = 9 workers per step, against the spinup's 5. Cores"
-      "# therefore cap this near 14 steps/node (14 x 9 = 126 of 128)."
+      "# years are written: 9 chunks = 9 workers per step, against the spinup's 5."
       "#"
-      "# PER-STEP MEMORY IS UNMEASURED for scenario processing. The spinup measured ~10"
-      "# GB/step over 41 output years; 86 years is roughly double the table volume, so"
-      "# 10-20 GB/step is the plausible range -- inferred, not observed. At 12 steps/node"
-      "# that is 144-240 GB against 235, i.e. the top of the range does not fit."
-      "# Start at 12, read qhist resources_used.mem on the first job, and drop to 8-10 if"
-      "# per-step lands near 20 GB. Do NOT carry the spinup's 18 across."
+      "# MEASURED (NOTES.md 2026-09-16 and 2026-11-16) at 12 steps/node, 36 lines/batch:"
+      "# ~10 GB/step, 103-121 GB per node (~51% of 235), worst node 40-41 min of the 1 h"
+      "# walltime -- the 41 min was landscape 01 at fri60/120, the heaviest case. CPU is"
+      "# 20-41%: the workers are I/O-bound on scratch, NOT core-bound, so do not raise"
+      "# --steps-per-node on CPU headroom alone. Do NOT carry the spinup's 18 across."
     )
     spn=12
     nodes_per_job=3          # the proven setting -- see the BATCH note below
@@ -212,6 +235,7 @@ NODES_PER_JOB=${nodes_per_job}
 BATCH=$(( NODES_PER_JOB * spn ))      # 36 lines for scenario (spn 12), 54 for spinup (spn 18)
 
 total=0
+written=()
 for n in ${landscapes}; do
     landscape="landscape_alaska_${n}_${period}"
 
@@ -237,7 +261,7 @@ for n in ${landscapes}; do
         {
             echo "# GENERATED by analysis-scripts/generate_process_cmdfiles.sh -- do not hand-edit."
             echo "# Regenerate with:"
-            echo "#   bash analysis-scripts/generate_process_cmdfiles.sh --kind ${kind} --analysis ${analysis} --landscapes \"${n}\""
+            echo "#   bash analysis-scripts/generate_process_cmdfiles.sh --kind ${kind} --analysis ${analysis} --landscapes \"${n}\"${fris:+ --fri \"${fris}\"}${gcm_filter:+ --gcm ${gcm_filter}}${sim_filter:+ --sim ${sim_filter}}"
             echo "#"
             echo "# ${analysis} processing for ${landscape} -- batch $((b+1)) of ${n_batches}."
             echo "# Treatments are derived from the run CSVs through the runner's naming contract,"
@@ -254,6 +278,7 @@ for n in ${landscapes}; do
                 printf '%s\n' "${lines[$i]}"
             done
         } > "$f"
+        written+=("$f")
 
         # Pre-flight, every time, on the file just written.
         blanks=$(grep -c '^[[:space:]]*$' "$f" || true)
@@ -275,5 +300,23 @@ for n in ${landscapes}; do
 done
 
 echo "  ${n_treat} treatment(s) x reps, ${total} processing line(s) total in ${out_dir}"
+
+# STALE-FILE CHECK (2026-11-24). submit_chain_process.sh globs EVERY
+# cmdfile_<analysis>_<kind>_*_b*.sh in generated/, but this script clears only the landscapes
+# it was given. When a round is processed in stages, the previous stage's files survive and
+# would be resubmitted. Warn rather than delete: whether they are spent is the user's call.
+stale=()
+for g in "${out_dir}"/cmdfile_${analysis}_${kind}_*_b*.sh; do
+    [ -f "$g" ] || continue
+    keep=0
+    for w in ${written[@]+"${written[@]}"}; do [ "$g" = "$w" ] && { keep=1; break; }; done
+    (( keep )) || stale+=("$(basename "$g")")
+done
+if (( ${#stale[@]} )); then
+    echo "  WARNING: 'submit_chain_process.sh ${analysis} ${kind}' submits EVERY matching file in"
+    echo "  generated/, and ${#stale[@]} were not written by this run -- they would be resubmitted:"
+    printf '    %s\n' "${stale[@]}"
+    echo "  Delete them first if their processing is already done."
+fi
 echo "  Spot-check before submitting: the treatment strings must match directories that"
 echo "  exist under /glade/derecho/scratch/qasena/output_ak_can/<landscape>/"

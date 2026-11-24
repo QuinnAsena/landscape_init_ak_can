@@ -188,6 +188,23 @@ Two consequences. **(1) 324 concurrent workers is PROVEN, not merely bounded.** 
 
 ---
 
+### 2026-11-24 — Catch-up round: fri60/120 measured, queue is the cost, walltime cut to 6 h, processing staged
+**Context:** a week after submission only batches 1–2 (8218700, 8218701) had run. Run times were as predicted; the queue was not.
+
+**fri60/120 `simfalse` is now MEASURED** (node elapsed = longest of four identical runs): lcp01 **3.15–3.25 h** at fri60 and **3.26–3.37 h** at fri120; lcp02 **2.23–2.39** and **2.58–2.69 h**. The inferred band was 3.3–3.7 h, so it came in at the low end. fri10/15/30 matched October exactly (lcp01 2.09–2.22 / 2.50–2.58 / 2.90–2.98 h), so SSP and GCM barely matter. Memory 135–199 GB of 235. Subjob `[k]` is the k-th group of four cmdfile lines, 0-based — confirmed by `8218700[15]` = lcp02 fri10 at 1.46 h.
+
+**The queue, on economy at a 12 h request:** batch 1 waited ~3 days (Tue 17 → Fri 20, 12:29); batch 1 end → batch 2 start was **29.4 h**; batch 3 queued from Sun 22, 02:27. ~8.5 h of compute against 5+ days of waiting. A batch's 16 subjobs started over 86 min (batch 1) and ~2 h (batch 2), so PBS places them **individually** — the 16-node count is not what holds them.
+
+**Walltime lowered 12 h → 6 h on all five queued jobs** with `qalter -l walltime=06:00:00 '<id>[]'` (lowering works as the user). Reasoning, a **hypothesis, not proven**: a job only backfills into a hole at least as long as its *requested* walltime. On premium a job reaches the front and gets a reservation, so walltime barely matters — consistent with the 2026-10-27 finding that 12 h vs 16 h did not explain those gaps. On economy, backfill is how jobs run at all, and each subjob was asking for a 12 h hole to do ~3.4 h of work. Alternatives not ruled out: pre-Thanksgiving machine load, and fair-share after October's premium spend. 6 h is safe on data: simfalse peaks ~3.4 h (lcp05 perhaps ~3.5), and the worst simtrue ever measured is lcp05 at ~4.0 h/run (12.02 h for three GCMs in October), with simtrue's run-to-run spread small. **`submit_chain.sh` still says 12 h** — the `qalter` fixes this round only. If batch 3 still waits a day, the next lever is `regular` priority, not premium.
+
+**Processing is staged as model batches finish.** `generate_process_cmdfiles.sh` gained `--gcm` and `--sim`, filtering CSV rows. `--fri` alone could not scope this: it selects whole CSVs, and each carries other GCMs whose output is already processed — it would have re-emitted ~100 finished TaiESM/UKESM treatments for lcp01/02 *and* NorEsm simtrue lines whose runs do not exist yet (`process_*.R` `stop()`s on a missing sqlite). Stage 1 = `--gcm NorEsm2-MMssp245 --sim false --landscapes "01 02"` → 5 treatments × 12 reps × 2 = **120 lines, 4 cmdfiles** (36 + 24 each). The generated header's "Regenerate with" line now carries all filters; it previously dropped `--fri` silently.
+
+**`submit_chain_process.sh` submits EVERY `cmdfile_<analysis>_<kind>_*_b*.sh` in `generated/`**, but the generator only clears the landscapes it is given. The 24 spent lcp03–06 cmdfiles from the 2026-11-13 round (verified 11-16; their only NorEsm lines are ssp370) were still there and would have reprocessed that whole round. Deleted (tracked, regenerable). **For later stages, delete the previous stage's files before generating** — the generator now prints a WARNING listing any matching file it did not write, but it does not delete them.
+
+**Processing priority reverted premium → economy** (`submit_chain_process.sh`), on the same reasoning as the model chain: premium was bought 2026-11-02 against an uncertain allocation position that no longer applies. Expect ~2.9 h per batch cycle (September's economy rate) rather than premium's ~53 min, so stage 1's four batches take roughly half a day instead of ~3.5 h. Stage 1's settings were checked against the proven ones before submitting: 36 lines/batch = 324 workers, 12 steps/node, 9 threads, 1 h — and the 1 h was measured at 41 min worst on landscape 01 at fri60/120, the heaviest case and the one this stage contains. Three stale comments corrected at the same time: "the generator now emits 648" (reverted 11-13), "per-step memory is UNMEASURED" (measured ~10 GB/step since September), and "cores cap this near 14 steps/node" (the nodes are I/O-bound at 20–41% CPU).
+
+---
+
 ### 2026-11-17 — NorEsm2-MM/ssp245 rebuilt and the catch-up round configured: 16 nodes a batch, 12 h walltime kept, priority back to economy
 **Context:** Lora re-exported the three corrupt `.nc` files on 2026-11-16 (**superseding the re-audit entry below**, which concluded nothing had been re-exported). Scripts 03 and 04 were re-run against them and the round that had been blocked since 2026-10-20 was set up.
 

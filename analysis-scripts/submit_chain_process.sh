@@ -18,7 +18,9 @@ case "$kind" in scenario|spinup) ;; *)
     exit 1 ;;
 esac
 
-# Scenario writes all 86 years -> 9 workers per step, so cores cap it near 14 steps/node.
+# Scenario writes all 86 years -> 9 workers per step, so 12 steps use 108 of 128 cores. The
+# nodes are I/O-bound, not core-bound (CPU 20-41%, NOTES.md 2026-11-16) -- do not raise the
+# steps on CPU headroom alone; more steps per node contend harder for scratch.
 # Spinup writes only year >= 260 -> 5 workers, which is why 18 is fine there and not here.
 # Keep in step with generate_process_cmdfiles.sh.
 if [ "$kind" = "scenario" ]; then
@@ -29,14 +31,16 @@ fi
 # WALLTIME IS 1 h, NOT 2. Measured elapsed for area_dom scenario batches is 0.44-0.68 h, i.e.
 # 26-41 min (NOTES.md 2026-09-16), and the original hand-written cmdfile_process_*.sh
 # invocations all used 1 h -- the 2 h this script shipped with on 2026-09-15 was never backed
-# by a measurement. 41 of 60 min leaves ~19 min of margin. The caveat: that 41 min was at 324
-# concurrent workers and the generator now emits 648, so READ qhist ON THE FIRST BATCH. If it
-# lands near 50 min, qdel the held successors and resubmit at 2 h -- a processing batch only
-# overwrites its own parquet, so re-running one costs nothing but time.
+# by a measurement. 41 of 60 min leaves ~19 min of margin, and the full 36-batch chain of
+# 2026-11-13/14 confirmed it at the same 324 concurrent workers (worst node 40 min). If a batch
+# ever lands near 50 min, qdel the held successors and resubmit at 2 h -- a processing batch
+# only overwrites its own parquet, so re-running one costs nothing but time.
 #
-# PREMIUM (1.5x charge) since 2026-11-02, to cut queue wait while the allocation position is
-# uncertain. Drop back to economy once there is no deadline pressure.
-LAUNCH="launch_cf -A UCEM0001 -l walltime=1:00:00 --steps-per-node ${STEPS_PER_NODE} --ppn 128 --nthreads ${NTHREADS} --mem 235GB -l job_priority=premium"
+# PRIORITY: economy -- reverted 2026-11-24. Premium (1.5x charge) was set 2026-11-02 to cut
+# queue wait while the allocation position was uncertain; that pressure is gone. Expect a
+# slower chain: September's economy chain ran ~2.9 h per batch cycle against premium's
+# ~53 min (2026-11-13/14), and the difference is almost entirely queue.
+LAUNCH="launch_cf -A UCEM0001 -l walltime=1:00:00 --steps-per-node ${STEPS_PER_NODE} --ppn 128 --nthreads ${NTHREADS} --mem 235GB -l job_priority=economy"
 
 script_dir=$(cd "$(dirname "$0")" && pwd)
 shopt -s nullglob
