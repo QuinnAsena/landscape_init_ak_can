@@ -27,14 +27,25 @@
 # is still writing has no sentinel, so it is skipped rather than read half-written. Run
 # this again after the batch ends to pick it up.
 #
-# RESUMABLE: a replicate is skipped when its log contains "--- Done ---", which
-# process_fire_sol.R prints only after write_parquet returns. A run killed mid-write
-# (walltime, Ctrl-C) has no such line and is redone next time, so re-running is always
-# safe and never trusts a truncated parquet. Delete a replicate's fire_sol.log to force
-# it to rerun.
+# RESUMABLE: a replicate is skipped when its burned_rids.parquet exists. That is safe
+# ONLY because process_fire_sol.R writes to burned_rids.parquet.tmp and renames, so the
+# final name never holds a truncated file -- a run killed mid-write (walltime, Ctrl-C)
+# leaves just the .tmp and is redone next time. Keep that write-then-rename if the R
+# script is edited. To force replicates to rerun (e.g. after changing the R logic),
+# delete their burned_rids.parquet.
+#
+# LOGS ARE KEPT ONLY FOR FAILURES. Each run logs to a temp file that is deleted on
+# success and moved to burned_rids/fire_sol.log on failure -- no clutter from ~2,400
+# successes, and a failure's log is there first time without a rerun. A success also
+# removes any fire_sol.log left by an earlier failure. KEEP_LOGS=1 keeps every log:
+#   KEEP_LOGS=1 bash analysis-scripts/run_fire_sol.sh 2 '<filter>'
 #
 # ISOLATED: one Rscript per replicate, so a stop() in one replicate fails that replicate
 # only. Failures are listed at the end with the path to their log.
+#
+# ENVIRONMENT: Rscript is whatever is on PATH. On a login node, `module load conda;
+# conda activate my-r-4.4` first -- without it every replicate fails (2026-11-27). The
+# qsub line above activates it itself.
 #
 # SCOPE: scenario output only (landscape_*_2015-2100scenario). The depth limit means the
 # processed/ tree and any tmp/ quarantine, which sit one level deeper, are never matched.
@@ -52,15 +63,24 @@ case "$P" in ''|*[!0-9]*|0) echo "P must be a positive integer, got: $P" >&2; ex
 run_one() {
     local lcp=$1 trt=$2 n=$3
     local out="${ROOT}/${lcp}/processed/${trt}/rep_${n}/burned_rids"
-    mkdir -p "$out"
-    if Rscript "$SCRIPT" "$lcp" "$trt" "$n" > "${out}/fire_sol.log" 2>&1; then
+    local log
+    log=$(mktemp)
+    if Rscript "$SCRIPT" "$lcp" "$trt" "$n" > "$log" 2>&1; then
+        if [ "$KEEP_LOGS" = 1 ]; then
+            mv -f "$log" "${out}/fire_sol.log"
+        else
+            rm -f "$log" "${out}/fire_sol.log"
+        fi
         echo "ok   ${lcp} ${trt} ${n}"
     else
+        mkdir -p "$out"
+        mv -f "$log" "${out}/fire_sol.log"
         echo "FAIL ${lcp} ${trt} ${n}   ${out}/fire_sol.log"
     fi
 }
+KEEP_LOGS="${KEEP_LOGS:-0}"
 export -f run_one
-export ROOT SCRIPT
+export ROOT SCRIPT KEEP_LOGS
 
 # <landscape>/<treatment>/rep_<N>/.complete is exactly depth 4.
 tasks=$(cd "$ROOT" && find . -mindepth 4 -maxdepth 4 -name .complete \
@@ -73,8 +93,7 @@ fi
 
 todo=$(while read -r lcp trt n; do
            [ -n "$lcp" ] || continue
-           grep -qs -e '--- Done ---' \
-               "${ROOT}/${lcp}/processed/${trt}/rep_${n}/burned_rids/fire_sol.log" ||
+           [ -f "${ROOT}/${lcp}/processed/${trt}/rep_${n}/burned_rids/burned_rids.parquet" ] ||
                echo "$lcp $trt $n"
        done <<< "$tasks")
 

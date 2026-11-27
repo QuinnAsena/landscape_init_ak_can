@@ -144,10 +144,14 @@ burned_dat <- burned_dat |>
          treatment = treatment,
          replicate = replicate)
 
-arrow::write_parquet(
-  burned_dat,
-  file.path(output_dir, "burned_rids.parquet")
-)
+# Write under a temporary name, then rename: a rename is atomic, so burned_rids.parquet
+# only ever exists complete. run_fire_sol.sh treats its existence as "this replicate is
+# done", so a run killed mid-write (walltime, Ctrl-C) must not leave a truncated file
+# under the final name -- it leaves only the .tmp, and the replicate is redone next time.
+out_file <- file.path(output_dir, "burned_rids.parquet")
+tmp_file <- paste0(out_file, ".tmp")
+arrow::write_parquet(burned_dat, tmp_file)
+if (!file.rename(tmp_file, out_file)) stop("could not rename ", tmp_file, " to ", out_file)
 
 cat(
   "\n--- Done ---\n",
