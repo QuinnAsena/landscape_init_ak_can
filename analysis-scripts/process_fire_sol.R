@@ -35,7 +35,8 @@ if (length(fire_files) < 1) {
 
 # Soil organic layer and moss are read at these offsets from the fire year. pre
 # is the baseline, yr0 is immediately post-fire, yr1..yr10 the recovery window.
-sol_offsets <- c(pre = -1, setNames(0:10, paste0("yr", 0:10)), yr15 = 15, yr20 = 20)
+sol_offsets <- c(pre = -1, setNames(0:10, paste0("yr", 0:10)),
+                 yr15 = 15, yr20 = 20, yr30 = 30, yr40 = 40, yr50 = 50)
 
 cat(
   "--- process_burned_rids ---\n",
