@@ -188,6 +188,37 @@ Two consequences. **(1) 324 concurrent workers is PROVEN, not merely bounded.** 
 
 ---
 
+### 2026-11-27 — Catch-up batches 3–4: run times as predicted; the 6 h walltime did NOT shorten the queue; economy processing is not slow
+**Context:** `qhist` for 8218701–8218703 and processing stage 1 (8296490–8296493). Subjob → config mapping read from `cmdfile_chA_0{2,3,4}.sh`, not inferred; every node ran four identical runs.
+
+**Run times, `simfalse`, per run (= node elapsed):**
+
+| | fri10 | fri15 | fri30 | fri60 | fri120 |
+|---|---|---|---|---|---|
+| lcp03 | 1.77–1.94 | 2.14–2.28 | 2.60–2.76 | 2.77–2.92 | 2.91–3.00 |
+| lcp04 | 1.55–1.60 | 1.93–2.02 | 2.37–2.39 | 2.67–2.75 | 2.68–2.84 |
+| lcp05 | 1.98–2.37 | 2.75 (1 node) | | | |
+
+More-fire-is-faster holds on every landscape. At fri120 the order is lcp01 (3.26–3.37) > lcp03 > lcp04 > lcp02 (2.58–2.69). lcp05 runs ~1.0–1.1× lcp01 at fri10/15, so its fri120 *projects* to ~3.6–3.7 h. That makes it batch 5's longest run, and 6 h still leaves ≥1.6× margin. Peak memory 194 GB (lcp03 fri120), 83% of 235. CPU 20–34%.
+
+**Queue, inter-batch gap with the request in force:**
+
+| gap | hours | request |
+|---|---|---|
+| b1 → b2 | 29.4 | 12 h |
+| b2 → b3 (22-0227 → 24-1423) | 59.9 | 12 h, then 6 h for the last ~6 h |
+| b3 → b4 (24-1729 → 26-1347) | **44.3** | **6 h throughout** |
+
+**Halving the request did not shorten the gap. For model batches the walltime-backfill hypothesis of 2026-11-24 is not supported.** Batch 3 starting a few hours after the `qalter` is the same coincidence as October's 7884494. That batch started minutes after its cut, and the next batch then waited ≥14 h at the shorter request; here, the next batch waited 44 h. **Do not cut model walltime further on this theory.** 6 h stays because it is safe and costs nothing, not because it buys queue position.
+
+**Batches 3 and 4 started as a block:** all 16 subjobs within 6 min and 1 min respectively, against 86 and 113 min for batches 1 and 2. *Inferred, not confirmed:* after ~2 days of eligible-time aging the array reached the top of the queue, and PBS reserved nodes for it and started it all at once. That would mean these jobs ran by reservation, not backfill, which would explain why the requested walltime made no difference. This cannot be checked from the user side: `qstat -f '8218704[]' | grep -i estimated` returns nothing on Derecho for a queued economy array. That means either PBS computed no estimate or Derecho does not expose one, and the two cannot be told apart.
+
+**Processing on economy is NOT slow, which corrects the 2026-11-24 entry's expectation of ~2.9 h a cycle.** Stage 1's four batches ran 08:38–11:19 with inter-batch gaps of **2, 13 and 1 min**, ~40 min a cycle and no slower than premium's ~53 min. A 1 h request backfills almost at once. Worst node **0.69 h** (lcp02 fri120), with lcp01 fri120 at 0.61 h. Within a processing cmdfile the nodes follow sort order: b01 = fri10 / **fri120** / fri15, b02 = fri30 / fri60. So `b01[1]` is always the heavy node. Memory 70–115 GB. Stage 1 was verified at 1,080 of 1,080 parquet.
+
+**The contrast is the useful finding:** in the same economy queue on the same day, 1 h jobs started within minutes while 6 h jobs waited ~2 days. Short holes exist; a model run (≥1.5 h, typically 2–4 h) cannot be made short enough to use them.
+
+---
+
 ### 2026-11-24 — Catch-up round: fri60/120 measured, queue is the cost, walltime cut to 6 h, processing staged
 **Context:** a week after submission only batches 1–2 (8218700, 8218701) had run. Run times were as predicted; the queue was not.
 

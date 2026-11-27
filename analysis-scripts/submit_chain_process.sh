@@ -37,9 +37,11 @@ fi
 # only overwrites its own parquet, so re-running one costs nothing but time.
 #
 # PRIORITY: economy -- reverted 2026-11-24. Premium (1.5x charge) was set 2026-11-02 to cut
-# queue wait while the allocation position was uncertain; that pressure is gone. Expect a
-# slower chain: September's economy chain ran ~2.9 h per batch cycle against premium's
-# ~53 min (2026-11-13/14), and the difference is almost entirely queue.
+# queue wait while the allocation position was uncertain; that pressure is gone. The
+# expected cost did NOT materialise: measured 2026-11-24 on economy, four batches ran
+# back to back with inter-batch gaps of 2, 13 and 1 min, ~40 min a cycle -- no slower
+# than premium's ~53 min (2026-11-13/14). A 1 h request backfills almost at once.
+# One weekday-morning sample; September's ~2.9 h/cycle shows a busy spell can be slower.
 LAUNCH="launch_cf -A UCEM0001 -l walltime=1:00:00 --steps-per-node ${STEPS_PER_NODE} --ppn 128 --nthreads ${NTHREADS} --mem 235GB -l job_priority=economy"
 
 script_dir=$(cd "$(dirname "$0")" && pwd)
